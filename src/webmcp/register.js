@@ -81,6 +81,10 @@ export const ALWAYS_ON_TOOLS = [
  *
  * `present` is asked on every store change and answers from the claim alone, so the same claim
  * always produces the same tool set and a reader can predict it without running anything.
+ *
+ * `appears` and `disappears` are the reason clauses the page reads out to the person when the tool
+ * is published or withdrawn. They live beside the rule that decides it, so a new conditional tool
+ * arrives with its own wording instead of needing a matching edit in the UI layer.
  */
 export const CONDITIONAL_TOOLS = [
   {
@@ -228,16 +232,12 @@ export const NO_PACK_REASON =
   + 'listed. That is a loading problem on our side, not a statement that your claim needs nothing.';
 
 /**
- * The names the page may hand the loaded rule pack under.
+ * The one name the page hands the loaded rule pack under.
  *
- * TWO NAMES ON PURPOSE, AND THIS IS A SCAR. This layer was written to read ctx.policyPack while
- * src/ui/app.js was written to set ctx.pack. Nothing failed: every pack aware tool simply answered
- * NO_PACK_REASON forever, on a page whose tests were all green, because a missing pack is a state
- * this code handles politely. Accepting both names is what makes the requirement tools actually
- * reachable. Do not "tidy" this back to one name without grepping src/ui/app.js first, and if you
- * do settle on one, delete the other from this list in the same commit so it stays a closed set.
+ * src/ui/app.js sets ctx.pack in applyPack, and this is the only writer in the tree. Named here
+ * once so a rename is a single grep rather than a hunt through nine tool files.
  */
-const PACK_KEYS = ['policyPack', 'pack'];
+const PACK_KEY = 'pack';
 
 /**
  * The loaded rule pack, or null when the page has none.
@@ -252,10 +252,8 @@ const PACK_KEYS = ['policyPack', 'pack'];
  */
 export function packOf(ctx) {
   if (!ctx) return null;
-  for (const key of PACK_KEYS) {
-    const pack = ctx[key];
-    if (pack && typeof pack === 'object' && Array.isArray(pack.requirements)) return pack;
-  }
+  const pack = ctx[PACK_KEY];
+  if (pack && typeof pack === 'object' && Array.isArray(pack.requirements)) return pack;
   return null;
 }
 
@@ -390,17 +388,27 @@ export function onToolChange(handler) {
  * event.
  *
  * Reconciles are queued behind one another because registering is asynchronous and the store is
- * not: two answers arriving in the same tick would otherwise race to register the same name.
+ * not: two answers arriving in the same tick would otherwise race to register the same name. That
+ * queue is the first of two guards. The second is inside registerTools, which skips a name it
+ * already holds a controller for, so even a racing caller cannot register the same tool twice.
  *
  * @param {object} context the tool context, carrying at least `store`
  * @param {{instrument?: Function, onChange?: Function}} [options]
  *        instrument wraps each factory, which is how the page ledgers calls
- *        onChange is called with every change to the registered set
+ *        onChange is called with every change to the registered set. It is called inside a try, so
+ *        a listener that throws cannot take down the page that is still booting behind it.
  * @returns {Promise<{status: object, registered: Function, reconcile: Function, stop: Function}>}
  */
 export async function startToolSurface(context, options = {}) {
   const instrument = typeof options.instrument === 'function' ? options.instrument : (factory) => factory;
-  const announce = typeof options.onChange === 'function' ? options.onChange : () => {};
+  const listener = typeof options.onChange === 'function' ? options.onChange : () => {};
+
+  // A listener that throws must not break the page. The first reconcile is awaited by the caller
+  // while the rest of the page is still being wired, so an unguarded throw here would take the
+  // boot down with it rather than losing one announcement.
+  const announce = (payload) => {
+    try { listener(payload); } catch (ignored) { /* a listener must never break the page */ }
+  };
 
   const conditional = CONDITIONAL_TOOLS.map((entry) => ({ ...entry, name: null }));
 
@@ -420,12 +428,17 @@ export async function startToolSurface(context, options = {}) {
   }
 
   async function reconcileNow(reason) {
-    if (!status.available) return { reason, added: [], removed: [], failed: [] };
+    if (!status.available) return { reason, added: [], removed: [], failed: [], changes: [] };
 
     const claim = claimNow();
     const added = [];
     const removed = [];
     const failed = [];
+
+    // One entry per tool that actually moved, carrying the clause its own rule wrote. The page
+    // reads these out, so a second conditional tool gets an announcement without the UI layer
+    // learning anything new about it.
+    const changes = [];
 
     for (const entry of conditional) {
       let wanted = false;
@@ -442,12 +455,17 @@ export async function startToolSurface(context, options = {}) {
         if (result.registered.length) {
           entry.name = result.registered[0];
           added.push(entry.name);
+          changes.push({ name: entry.name, published: true, because: entry.appears });
         } else if (result.skipped.length) {
           entry.name = result.skipped[0];
         }
         for (const problem of result.failed) failed.push(problem);
       } else if (!wanted && held) {
-        if (unregisterTool(entry.name)) removed.push(entry.name);
+        const name = entry.name;
+        if (unregisterTool(name)) {
+          removed.push(name);
+          changes.push({ name, published: false, because: entry.disappears });
+        }
       }
     }
 
@@ -457,20 +475,25 @@ export async function startToolSurface(context, options = {}) {
         added,
         removed,
         failed,
+        changes,
         registered: registeredToolNames(),
         available: status.available,
         api: status.api,
       });
     }
 
-    return { reason, added, removed, failed };
+    return { reason, added, removed, failed, changes };
   }
 
   const reconcile = (reason) => queue(() => reconcileNow(reason || 'claim changed'));
 
   let unsubscribeStore = () => {};
   if (context && context.store && typeof context.store.subscribe === 'function') {
-    unsubscribeStore = context.store.subscribe(() => { reconcile('claim changed'); });
+    // The store notifies synchronously and nobody awaits this, so the rejection has to be caught
+    // here or a refused registration becomes an unhandled rejection on the page.
+    unsubscribeStore = context.store.subscribe(() => {
+      reconcile('claim changed').catch(() => { /* the queue already reported what it could */ });
+    });
   }
 
   const unsubscribeToolChange = onToolChange(() => {
@@ -479,6 +502,7 @@ export async function startToolSurface(context, options = {}) {
       added: [],
       removed: [],
       failed: [],
+      changes: [],
       registered: registeredToolNames(),
       available: status.available,
       api: status.api,

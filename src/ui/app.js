@@ -14,7 +14,12 @@
  * claim.provenance through the core helpers, so there is one record of who wrote what.
  *
  * The insurer's rules are data. A rule pack is fetched, checked by src/core/policy.js and handed to
- * the same six tools, so switching insurer changes the answers and renames nothing.
+ * the same tools, so switching insurer changes the answers and renames nothing.
+ *
+ * Which tools exist is not decided here either. src/webmcp/register.js owns the surface: this file
+ * hands it the context and an instrument wrapper, and is told what changed. It used to keep its own
+ * list of factories and its own register or withdraw loop alongside the one in that module, which
+ * meant tool surface policy lived in the UI layer and two lifecycles had to agree.
  *
  * All the rules live in src/core. This file never validates a value or coerces a type: it hands
  * what it was given to dispatch and reports what came back.
@@ -28,23 +33,7 @@ import { loadPolicyPack, describePack } from '../core/policy.js';
 import { deriveRequirements, summariseRequirements } from '../core/requirements.js';
 
 import { createView } from './render.js';
-import {
-  registerTools,
-  unregisterTool,
-  textOfResult,
-  onToolChange,
-  registeredToolNames
-} from '../webmcp/register.js';
-
-import describeClaimTool from '../webmcp/tools/describe_claim.js';
-import readClaimStateTool from '../webmcp/tools/read_claim_state.js';
-import applyClaimPatchTool from '../webmcp/tools/apply_claim_patch.js';
-import validateClaimTool from '../webmcp/tools/validate_claim.js';
-import checkCoverageTool from '../webmcp/tools/check_coverage.js';
-import getRepairEstimateTool from '../webmcp/tools/get_repair_estimate.js';
-import getRequirementsTool from '../webmcp/tools/get_requirements.js';
-import readEvidenceNotesTool from '../webmcp/tools/read_evidence_notes.js';
-import getAssistanceOptionsTool from '../webmcp/tools/get_assistance_options.js';
+import { startToolSurface, textOfResult, registeredToolNames } from '../webmcp/register.js';
 
 const FIXTURE_URL = './fixtures/demo-collision.json';
 const LEDGER_LIMIT = 40;
@@ -71,30 +60,6 @@ const FALLBACK_FIXTURE = {
     { id: 'kestrel', path: './fixtures/insurers/kestrel.json' }
   ],
   claim: {}
-};
-
-/** Always available while the page is open. */
-const TOOL_FACTORIES = [
-  describeClaimTool,
-  readClaimStateTool,
-  applyClaimPatchTool,
-  validateClaimTool,
-  checkCoverageTool,
-  getRepairEstimateTool,
-  getRequirementsTool,
-  readEvidenceNotesTool
-];
-
-/**
- * Registered only while the claim says the vehicle cannot be driven, and withdrawn the moment that
- * answer changes back. The tool set is part of the state: an agent listing the page's tools before
- * and after that one answer sees a different list, which is the page saying what is relevant now
- * instead of publishing every branch of the rulebook at once.
- */
-const CONDITIONAL_TOOL = {
-  name: 'get_assistance_options',
-  factory: getAssistanceOptionsTool,
-  wanted: (claim) => Boolean(claim) && claim.vehicle_drivable === false
 };
 
 boot();
@@ -157,11 +122,10 @@ async function boot() {
   let agentDepth = 0;
   let refusalBuffer = null;
 
-  /* Tool registration. toolStatus holds what the browser answered once; the live list of names
-     always comes from register.js, because the conditional tool comes and goes. */
+  /* Tool registration. toolStatus holds what the browser last answered about the surface as a
+     whole; the live list of names always comes from register.js rather than from here, because the
+     conditional tool comes and goes and a remembered list would go stale. */
   let toolStatus = { available: false, api: null, registered: [], skipped: [], failed: [] };
-  let toolsReady = false;
-  let toolSync = Promise.resolve();
 
   let snapshot = snapshotOf(claimNow());
 
@@ -218,19 +182,16 @@ async function boot() {
     view.renderRevision(next.revision);
     drawClaim(changed);
     drawRequirements();
-    syncConditionalTools();
   });
 
   wireControls();
 
-  toolStatus = await registerTools(context, TOOL_FACTORIES.map(instrument));
-  toolsReady = true;
+  // One call brings up the whole surface and keeps it matching the claim. register.js holds the
+  // lists, subscribes to the same store, serialises its own registrations and listens for the
+  // browser's toolchange event, so nothing about which tools exist is decided in this file.
+  const surface = await startToolSurface(context, { instrument, onChange: onToolSurfaceChange });
+  noteToolStatus(surface.status);
   refreshStatus();
-  syncConditionalTools();
-
-  // The browser tells us when the tool set changes. The count on screen should never be a stale
-  // claim about what an agent can actually call.
-  onToolChange(refreshStatus);
 
   /* Reading the store */
 
@@ -429,6 +390,20 @@ async function boot() {
     };
   }
 
+  /**
+   * What the browser last answered about the surface as a whole.
+   *
+   * A run that reports no failures leaves the last recorded ones alone, so a refusal the browser
+   * raised stays on the strip instead of being cleared by the next quiet reconcile.
+   */
+  function noteToolStatus(next) {
+    toolStatus = {
+      ...toolStatus,
+      ...next,
+      failed: next && next.failed && next.failed.length ? next.failed : toolStatus.failed
+    };
+  }
+
   function refreshStatus() {
     view.renderStatus({
       ...toolStatus,
@@ -439,35 +414,31 @@ async function boot() {
   }
 
   /**
-   * Register or withdraw the tool that only exists while the car cannot be driven.
+   * register.js has changed the surface, or the browser has told it the surface changed.
    *
-   * Serialised through one promise chain, because the store notifies synchronously and a burst of
-   * changes would otherwise start two registrations of the same name at once.
+   * Every sentence read out here is built from the clause the rule in register.js wrote next to
+   * itself, so a tool that comes and goes for some other reason announces itself correctly without
+   * this file knowing anything about it. Nothing is read out for a registration the browser
+   * refused: the failure goes to the strip, which is where a reason belongs.
+   *
+   * THE PAYLOAD IS THE ONLY SAFE SOURCE HERE. startToolSurface calls this during its own first
+   * reconcile, which is before the const holding its return value has been assigned, so reading
+   * that handle for available, api or the registered list would be a use before initialisation.
+   * It would also be a quiet one, because register.js calls this inside a try. That is why the
+   * strip reads registeredToolNames from the module, and why the returned reconcile and stop
+   * handles have no caller: the page lives as long as the surface does.
    */
-  function syncConditionalTools() {
-    if (!toolsReady || !toolStatus.available) return;
-    toolSync = toolSync.then(async () => {
-      const wanted = CONDITIONAL_TOOL.wanted(claimNow());
-      const held = registeredToolNames().includes(CONDITIONAL_TOOL.name);
-      if (wanted === held) return;
+  function onToolSurfaceChange(change) {
+    noteToolStatus({ available: change.available, api: change.api, failed: change.failed });
 
-      if (wanted) {
-        const added = await registerTools(context, [instrument(CONDITIONAL_TOOL.factory)]);
-        if (added.failed.length) {
-          toolStatus = { ...toolStatus, failed: added.failed };
-        } else {
-          view.announce(`The car cannot be driven, so this page has published ${CONDITIONAL_TOOL.name} to your agent.`);
-        }
-      } else {
-        unregisterTool(CONDITIONAL_TOOL.name);
-        view.announce(`The car can be driven again, so ${CONDITIONAL_TOOL.name} has been withdrawn from your agent.`);
-      }
-      refreshStatus();
-    }).catch(() => {
-      // A registration the browser refused must not stop the page. The strip reports what is
-      // actually held either way, because it reads register.js rather than a remembered list.
-      refreshStatus();
-    });
+    for (const entry of change.changes || []) {
+      const clause = sentenceCase(entry.because || 'the claim changed');
+      view.announce(entry.published
+        ? `${clause}, so this page has published ${entry.name} to your agent.`
+        : `${clause}, so ${entry.name} has been withdrawn from your agent.`);
+    }
+
+    refreshStatus();
   }
 
   function addLedgerEntry(entry) {
@@ -614,9 +585,9 @@ async function boot() {
     drawClaim([]);
     drawRequirements();
     view.announce('You requested roadside assistance. There is no tool for that button.');
-    // A tool that only exists after this click is registered by calling registerTools again with
-    // that one factory. register.js keeps a controller per tool and skips names already held, so a
-    // second call adds without disturbing the six already registered.
+    // Pressing this changes nothing about the tool surface. The tool that reads out the assistance
+    // options exists while the claim says the vehicle cannot be driven, which is a fact about the
+    // claim, and register.js is what watches it.
   }
 
   function startOver() {
@@ -676,6 +647,15 @@ function safeArgs(input) {
 
 function clockNow() {
   return new Date().toTimeString().slice(0, 8);
+}
+
+/**
+ * Start a reason clause as a sentence. The clauses are written lower case in register.js so they
+ * read correctly inside a longer sentence too, and only the first letter moves here.
+ */
+function sentenceCase(text) {
+  const body = String(text || '');
+  return body.charAt(0).toUpperCase() + body.slice(1);
 }
 
 function isEmpty(value) {
