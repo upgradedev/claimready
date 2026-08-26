@@ -1,0 +1,165 @@
+{
+  "id": "demo-collision",
+  "version": 1,
+  "note": "Synthetic data only. The insurer, the policy, the vehicle, the plate and every person named here are invented for this demo. No real policy or customer is represented.",
+  "policy": {
+    "id": "MTR-2026-0417",
+    "product": "Motor Comprehensive",
+    "currency": "EUR",
+    "holder": {
+      "name": "Maria K.",
+      "customer_ref": "CUS-88231"
+    },
+    "period": {
+      "start": "2026-01-01",
+      "end": "2026-12-31",
+      "clause": "PL-1.2"
+    },
+    "vehicle": {
+      "make": "Volara",
+      "model": "Terra 5",
+      "year": 2022,
+      "plate": "SYN-4417",
+      "class": "compact"
+    },
+    "coverages": [
+      {
+        "code": "own_damage",
+        "label": "Own damage",
+        "clause": "OD-4.1",
+        "active": true,
+        "deductible": 250,
+        "incident_types": ["collision", "vandalism", "weather", "fire"]
+      },
+      {
+        "code": "glass",
+        "label": "Glass",
+        "clause": "GL-2.3",
+        "active": true,
+        "deductible": 0,
+        "incident_types": ["glass"]
+      },
+      {
+        "code": "third_party",
+        "label": "Third party liability",
+        "clause": "TP-1.1",
+        "active": true,
+        "deductible": 0,
+        "incident_types": []
+      },
+      {
+        "code": "theft",
+        "label": "Theft and attempted theft",
+        "clause": "TH-7.2",
+        "active": false,
+        "deductible": 400,
+        "incident_types": ["theft"],
+        "inactive_reason": "The theft and attempted theft rider was quoted at renewal but was not added to this policy, so a stolen vehicle is not covered."
+      }
+    ],
+    "excluded_drivers": [
+      {
+        "name": "Nikos P.",
+        "clause": "EX-9.1",
+        "reason": "Nikos P. is listed as an excluded driver on this policy, so any incident while he is at the wheel falls outside cover."
+      }
+    ]
+  },
+  "claim": {
+    "incident_date": "2026-08-20",
+    "incident_type": "collision",
+    "driver": "Maria K.",
+    "location": "Car park, Harbour Road",
+    "damage_zone": null,
+    "severity": null,
+    "vehicle_drivable": null,
+    "description": null
+  },
+  "scenarios": [
+    {
+      "id": "covered-collision",
+      "label": "Covered collision",
+      "note": "The everyday case. Own damage answers yes and the 250 excess applies.",
+      "expect": { "covered": true, "clause": "OD-4.1", "deductible": 250 },
+      "claim": {
+        "incident_date": "2026-08-20",
+        "incident_type": "collision",
+        "damage_zone": 10,
+        "severity": "dent",
+        "vehicle_drivable": true,
+        "driver": "Maria K.",
+        "location": "Car park, Harbour Road",
+        "description": "A delivery van reversed into the left front wing while the car was parked. The wing is creased and the door rubs when it opens."
+      }
+    },
+    {
+      "id": "uncovered-theft",
+      "label": "Theft with no theft rider",
+      "note": "The policy can say no. The rider was never added, so clause TH-7.2 answers for it.",
+      "expect": { "covered": false, "clause": "TH-7.2", "deductible": null },
+      "claim": {
+        "incident_date": "2026-08-11",
+        "incident_type": "theft",
+        "vehicle_drivable": false,
+        "driver": "Maria K.",
+        "location": "Residential street, Alder Lane",
+        "police_report_ref": "PR-2026-55810",
+        "description": "The car was taken overnight from outside the house. It was locked and both keys are still with me."
+      }
+    },
+    {
+      "id": "glass-zero-excess",
+      "label": "Glass claim, no excess",
+      "note": "Shows that a deductible of 0 is a real answer and reads differently from no cover at all.",
+      "expect": { "covered": true, "clause": "GL-2.3", "deductible": 0 },
+      "claim": {
+        "incident_date": "2026-08-23",
+        "incident_type": "glass",
+        "damage_zone": 12,
+        "severity": "scratch",
+        "vehicle_drivable": true,
+        "driver": "Maria K.",
+        "location": "Motorway, junction 12",
+        "description": "A stone thrown up by a lorry chipped the windscreen on the passenger side. The chip has started to spread."
+      }
+    },
+    {
+      "id": "excluded-driver",
+      "label": "Excluded driver at the wheel",
+      "note": "Cover exists for the incident but not for this driver. Clause EX-9.1 beats the coverage section.",
+      "expect": { "covered": false, "clause": "EX-9.1", "deductible": null },
+      "claim": {
+        "incident_date": "2026-07-11",
+        "incident_type": "collision",
+        "damage_zone": 3,
+        "severity": "dent",
+        "vehicle_drivable": true,
+        "driver": "Nikos P.",
+        "location": "Town centre, Mill Street",
+        "description": "My brother was driving to the shops and clipped a bollard on the passenger side, denting the front door."
+      }
+    },
+    {
+      "id": "outside-policy-period",
+      "label": "Incident before cover started",
+      "note": "The date decides it. Clause PL-1.2 puts the incident outside the policy period.",
+      "expect": { "covered": false, "clause": "PL-1.2", "deductible": null },
+      "claim": {
+        "incident_date": "2025-11-04",
+        "incident_type": "collision",
+        "damage_zone": 6,
+        "severity": "dent",
+        "vehicle_drivable": true,
+        "driver": "Maria K.",
+        "location": "Supermarket car park, Beech Road",
+        "description": "Someone reversed into the back of the car and left. I only reported it now that I have found the paperwork."
+      }
+    }
+  ],
+  "demo_prompts": [
+    "What does this claim still need from me?",
+    "The damage is a dent at 10 o'clock and the car still drives. Fill that in and describe it for me.",
+    "Am I covered for this, and what will it cost me?",
+    "Roughly what is the repair worth?"
+  ]
+}

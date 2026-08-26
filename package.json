@@ -1,0 +1,13 @@
+{
+  "name": "claimready",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "This file exists for one reason: it sets type=module so the .js files under src and tests are ES modules for Node exactly as they already are for the browser. It declares no dependencies and never will. Nothing here is installed, there is no lock file, and no CI step runs a package manager.",
+  "scripts": {
+    "test": "node --test tests/unit",
+    "style": "node scripts/check_style.mjs",
+    "readiness": "node scripts/readiness.mjs"
+  }
+}

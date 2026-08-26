@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaimReady, the policy aware claim desk</title>
+<meta name="description" content="A motor insurance claim page that hands your own agent its policy rules as typed WebMCP tools. The agent drafts and checks the claim. Only you can file it.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="./assets/styles.css">
+<script type="module" src="./src/ui/app.js"></script>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to the claim draft</a>
+
+<header class="site-header">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">CR</span>
+    <span class="brand-text">
+      <span class="brand-name">ClaimReady</span>
+      <span class="brand-sub">Motor claim desk</span>
+    </span>
+  </div>
+
+  <div class="session">
+    <p class="session-line">
+      <span class="session-name" data-el="persona-name">Loading the session</span>
+      <span class="session-sep" aria-hidden="true"></span>
+      <span class="session-policy" data-el="persona-policy">Policy pending</span>
+    </p>
+    <p class="session-note" data-el="persona-note">Demonstration session. The claimant, the vehicle and the policy are invented for this demo.</p>
+  </div>
+</header>
+
+<p class="lede">
+  The insurer's page hands your own agent its policy rules as typed tools, so a claim is checked
+  against your actual cover while you describe it, and only you can file it.
+</p>
+
+<section class="strip" data-el="strip" aria-label="Agent connection">
+  <p class="strip-line">
+    <span class="dot" data-el="status-dot" aria-hidden="true"></span>
+    <span class="strip-text" data-el="status-text" role="status">Looking for an agent connection</span>
+  </p>
+  <p class="strip-detail" data-el="status-detail"></p>
+  <details class="strip-help">
+    <summary>No agent in this browser?</summary>
+    <div class="strip-help-body">
+      <p>The page works on its own. You can fill the draft by hand and every panel still runs.</p>
+      <p>To watch an agent drive it, open this page in a browser that supports WebMCP, then ask the
+        agent to read the claim, fill what is missing, and check your cover.</p>
+      <p><a href="./README.md">Read the short setup note in the README</a></p>
+    </div>
+  </details>
+</section>
+
+<noscript>
+  <p class="strip strip-warn">This page needs JavaScript. The claim draft, the cover check and the
+    agent tools all run in your browser, and nothing is sent anywhere.</p>
+</noscript>
+
+<main id="main">
+
+  <section class="panel panel-claim" aria-labelledby="h-claim">
+    <div class="panel-head">
+      <h2 id="h-claim">Claim draft</h2>
+      <p class="panel-sub">Your agent and you write to the same draft. Every row shows who set it last.</p>
+    </div>
+    <ul class="fields" data-el="fields"></ul>
+
+    <details class="optional-block" data-el="optional-details">
+      <summary>Optional details</summary>
+      <p class="optional-note">Not needed to file. Your agent can set these too, and the group opens
+        by itself when it does, so nothing is written where you cannot see it.</p>
+      <ul class="fields" data-el="fields-optional"></ul>
+    </details>
+
+    <p class="field-error" data-el="field-error" role="alert"></p>
+  </section>
+
+  <div class="col">
+
+    <section class="panel" aria-labelledby="h-cover">
+      <div class="panel-head">
+        <h2 id="h-cover">Cover check</h2>
+        <p class="panel-sub">Checked against the policy on this page, clause by clause.</p>
+      </div>
+      <div class="panel-body" data-el="coverage-body">
+        <p class="empty">Not checked yet. Ask your agent to check the cover, or press the button below.</p>
+      </div>
+      <div class="panel-foot">
+        <button type="button" class="btn btn-quiet" data-el="check-coverage-btn">Check cover</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-band">
+      <div class="panel-head">
+        <h2 id="h-band">Repair band</h2>
+        <p class="panel-sub">A triage band from a fixed parts table. Not a quote, not a prediction.</p>
+      </div>
+      <div class="panel-body" data-el="estimate-body">
+        <p class="empty">No band yet. It needs a damage position and a severity on the draft.</p>
+      </div>
+      <div class="panel-foot">
+        <button type="button" class="btn btn-quiet" data-el="check-estimate-btn">Show the band</button>
+      </div>
+    </section>
+
+    <section class="panel panel-actions" aria-labelledby="h-you">
+      <div class="panel-head">
+        <h2 id="h-you">Your decisions</h2>
+        <p class="panel-sub">These buttons are human only. They are never registered as agent tools,
+          so an agent can draft and check a claim and can file nothing.</p>
+      </div>
+
+      <div class="panel-body">
+        <button type="button" class="btn btn-primary" data-el="file-btn" disabled>File this claim</button>
+        <p class="reason" data-el="file-reason">Waiting for the draft to be complete.</p>
+        <p class="filed" data-el="file-result" role="status"></p>
+
+        <button type="button" class="btn btn-quiet" data-el="assistance-btn">Request roadside assistance</button>
+        <p class="reason" data-el="assistance-state">Not requested. A person on this page asks for it, an agent cannot.</p>
+
+        <button type="button" class="btn btn-plain" data-el="reset-btn">Start over</button>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="panel panel-ledger" aria-labelledby="h-ledger">
+    <div class="panel-head">
+      <h2 id="h-ledger">Tool call ledger</h2>
+      <p class="panel-sub">Newest first. Every tool call your agent makes lands here, with what it sent and what it got back.</p>
+    </div>
+    <p class="empty" data-el="ledger-empty">No tool calls yet.</p>
+    <ol class="ledger" data-el="ledger"></ol>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <p>Synthetic demonstration data throughout. No real policy, no real claimant, no request leaves your browser.</p>
+</footer>
+
+</body>
+</html>

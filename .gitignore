@@ -1,0 +1,28 @@
+# ClaimReady has zero dependencies and no build step.
+# If any of these ever appear, something was installed that should not have been.
+
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Local tooling and hosting state
+.vercel/
+.netlify/
+.cache/
+coverage/
+tmp/
+*.log
+
+# Secrets never belong in this repo. The runtime makes no network calls.
+.env
+.env.*
+*.pem
+*.key
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

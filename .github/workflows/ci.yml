@@ -1,0 +1,106 @@
+name: CI
+
+# ClaimReady has zero dependencies. No job installs anything, ever.
+# If a step here ever needs a package manager, the change is wrong.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      require_live_url:
+        description: "Fail the readiness job if the live judge URL is not reachable"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE is required only for repositories owned by an organisation.
+          # A personal public repository needs nothing here.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  style:
+    name: Style gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: No em dash, no annotation that does not exist, no foreign project name, tool budgets
+        run: node scripts/check_style.mjs
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: The domain must be testable without a browser
+        run: |
+          if [ ! -d tests/unit ]; then
+            echo "tests/unit does not exist. The domain is untested, and that is a real failure, not a missing directory."
+            exit 1
+          fi
+          node --test tests/unit
+
+  readiness:
+    name: Readiness gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Prove the gate can fail before trusting it
+        run: node scripts/readiness.mjs --selftest
+
+      # The live check is mandatory once the repository variable CLAIMREADY_URL exists.
+      # Until then the LIVE row prints NOT DEPLOYED, which is never counted as a pass and is
+      # always reported as submission blocking. It is never quietly turned green.
+      - name: Readiness table
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          REQUIRE_LIVE: ${{ inputs.require_live_url }}
+        run: |
+          if [ -n "${CLAIMREADY_URL}" ]; then
+            echo "CLAIMREADY_URL is set. The live judge URL will be fetched and a failure fails this job."
+            node scripts/readiness.mjs --ci
+          elif [ "${REQUIRE_LIVE}" = "true" ]; then
+            echo "Live check demanded by hand but CLAIMREADY_URL is not set as a repository variable."
+            node scripts/readiness.mjs --ci
+          else
+            echo "::warning title=Live URL not deployed::CLAIMREADY_URL is not set as a repository variable, so nothing was fetched and the live row proves nothing. Set it once the site is deployed."
+            node scripts/readiness.mjs --ci --allow-undeployed
+          fi
