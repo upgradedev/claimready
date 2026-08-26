@@ -12,7 +12,7 @@ are almost never wrong about what happened, they are wrong about what this parti
 needed. The driver's own assistant is already open and the trigger is the sentence they were going
 to say anyway, so what this removes is the retyping.
 
-## Why this fits WebMCP
+## Why this is a strong fit for WebMCP
 
 A policy is not general knowledge. What is covered, what the deductible is and what the intake
 needs live on one origin and change per customer. The insurer publishes typed tools and
@@ -28,7 +28,7 @@ of after a call queue and a letter. The person keeps the truth and the final act
 shows who set it last, any field can be pinned against an agent, and the page works fully without
 one.
 
-## What people and agents can now do together
+## What people and agents can do together that was impossible before
 
 Two of us can write to the same document at once and neither one silently overwrites the other.
 
