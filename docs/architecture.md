@@ -98,11 +98,18 @@ registeredToolNames()        what this page believes is registered
 onToolChange(handler)        subscribe to the browser's toolchange event
 toResult(text)               wrap as an MCP content array and clamp to the output budget
 textOfResult(result)         pull the text back out, for the on page ledger
+startToolSurface(ctx, opts)  the page's ONLY entry point: registers the always on tools, keeps
+                             the conditional ones matching the claim, and reports every change
 ```
 
+`startToolSurface` is the single integration point. The page does not know which tools exist and
+holds no list of them: `ALWAYS_ON_TOOLS` and `CONDITIONAL_TOOLS` live here, the store subscription
+lives here, and the page only supplies a context and receives a description of what moved.
+
 Registration holds one `AbortController` per tool name, because not every tool exists at page
-load. Roadside assistance status only becomes a tool after a person has actually requested
-assistance, and it disappears again when the request is closed. That is
+load. Roadside assistance options become a tool the moment the claim says the vehicle cannot be
+driven, and the tool is withdrawn again when that stops being true. Nobody has to press anything
+for it to appear, and pressing the assistance button does not change the tool set. That is
 `registerTool(definition, { signal })` plus the `toolchange` event, and it is why registration is a
 layer rather than a loop at the bottom of a file.
 
