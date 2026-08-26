@@ -522,7 +522,14 @@ function checkDescription(root) {
   if (!text) {
     return row('D3', 'deliverable: written description', FAIL, 'docs/submission/description.md does not exist', SUBMISSION);
   }
-  const required = ['theme fit', 'better', 'impossible', 'implemented'];
+  // The four elements the challenge rules require the description to cover, in the organizer's
+  // own words: "Why your use case is a strong fit for WebMCP", "How it creates a better user
+  // experience", "what people and agents can do together that was difficult or impossible
+  // before", "Briefly explain how you implemented WebMCP". An earlier version of this check
+  // looked for "theme fit", which appears nowhere in the rules: it confused the Stage One
+  // pass/fail gate on fitting the theme with this deliverable. Corrected against the live rules
+  // page on 2026-08-26, https://webmcp.devpost.com/rules
+  const required = ['fit for webmcp', 'better', 'impossible', 'implemented'];
   const lowered = text.toLowerCase();
   const missing = required.filter((token) => !lowered.includes(token));
   return row(

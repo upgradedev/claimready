@@ -219,9 +219,14 @@ export function scanFile(path, root) {
   // scripts in this directory talk ABOUT tools and their own strings are not tool
   // metadata, so they are out of scope for the budget rule and stay in scope for every
   // other rule.
+  // The whole WebMCP layer is in scope by PATH, not by whether a file happens to contain the
+  // literal registerTool. Coverage that depends on a substring silently disappears the day a
+  // file is refactored, which is exactly what happened when the page stopped holding its own
+  // tool list: app.js dropped out of this rule without anything reporting it.
   const isToolFile = /^src\/(?:[^/]+\/)*tools\/[^/]+\.js$/.test(rel);
+  const isToolLayer = rel.startsWith('src/webmcp/');
   const describesTools =
-    !rel.startsWith('scripts/') && (isToolFile || source.includes('registerTool'));
+    !rel.startsWith('scripts/') && (isToolFile || isToolLayer || source.includes('registerTool'));
 
   if (describesTools) {
     // Parameter descriptions live between inputSchema and the next top level key.
