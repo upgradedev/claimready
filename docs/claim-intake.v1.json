@@ -1,0 +1,127 @@
+{
+  "contract": "claim-intake.v1",
+  "status": "A convention written by this project. It is not a standard, nobody has ratified it, and no other insurer implements it. It is published so the shape can be copied, argued with, or replaced.",
+  "purpose": "The tool surface an insurer would publish on its own first notice of loss page so a visitor's own agent can work the claim with the claimant, without an account, an API key or a model running on the insurer's side.",
+  "positioning": {
+    "who_publishes": "The insurer publishes tools, not a chatbot.",
+    "who_brings_the_agent": "The visitor brings their own agent.",
+    "no_model_here": "No model runs on the page, no API key exists on the page, and no model decides anything.",
+    "what_the_page_does": "It states policy facts and derives what the intake requires, deterministically, from a rule pack and the claim as it stands.",
+    "what_the_page_never_does": "It never adjudicates a claim. No tool here can mark a claim approved, refused or valid, and no wording in it may imply one."
+  },
+  "shared_state": {
+    "one_draft": "The person on the page and the agent write to the same claim object. Neither has a private copy.",
+    "revision": "A whole number that advances by exactly one on every accepted change, whatever the change carried. Lock, unlock and file advance it too.",
+    "provenance": "Per field, one of: human, agent, policy, derived. The page keeps it, and a read tool reports it, so a claimant can see which answers an agent supplied.",
+    "locked": "Field names the person pinned on the page. No patch moves a pinned field until a person unpins it. There is no tool for pinning and there should never be one.",
+    "status": "draft or filed. A filed claim is closed to every change."
+  },
+  "revision_protocol": {
+    "read_then_write": "An agent reads the claim, gets a revision, and sends that number back as baseRevision when it patches.",
+    "human_edits_win": "A person editing the page advances the revision. An agent patch carrying the older number is refused as stale rather than overwriting the correction.",
+    "baseRevision_optional_for_people": "A person editing the page may omit baseRevision, because they are looking at the thing they are editing.",
+    "baseRevision_required_for_agents": "An agent patch without baseRevision is refused as stale, with the current revision in the message.",
+    "atomic": "A patch carrying several changes applies all of them or none of them. A refused patch leaves the revision where it was."
+  },
+  "refusal_codes": {
+    "PATCH_REJECTED_STALE": "baseRevision does not match the current revision, or an agent sent none. The message names both numbers. Read the state again, then patch.",
+    "PATCH_REJECTED_LOCKED": "A person pinned this field. The message names the field. A person has to unpin it on the page.",
+    "PATCH_REJECTED_PROTECTED": "The field is not patchable by anyone: policy facts, the validation result, revision, provenance, locked, status, anything derived, and every field of a filed claim.",
+    "PATCH_REJECTED_FIELD": "No such field, or a malformed change. The message lists the fields that exist.",
+    "PATCH_REJECTED_VALUE": "The value fails an enum, a range, a length or a date rule. The message names what was expected and what arrived."
+  },
+  "refusal_style": "Every refusal is written to be corrected by the reader without a second round trip: it names the field, the rule, the value that arrived and what to send instead.",
+  "tools_note": "This list is what the convention defines, not an inventory of any page. The reference page in this repository does not necessarily publish all of them, and may publish them under a different split. Read the tool list the page itself exposes to find out what is there.",
+  "tools": [
+    {
+      "name": "describe_claim",
+      "role": "read",
+      "input": {},
+      "output": "One short paragraph naming the policy, the status, the revision, what is answered and what is still needed.",
+      "annotations": ["readOnlyHint"],
+      "budget": "at most 1500 characters"
+    },
+    {
+      "name": "read_claim_state",
+      "role": "read",
+      "input": {},
+      "output": "Field by field values, the revision to quote as baseRevision, who set each field, and which fields are pinned.",
+      "annotations": ["readOnlyHint"],
+      "budget": "at most 1500 characters"
+    },
+    {
+      "name": "list_requirements",
+      "role": "read",
+      "input": {},
+      "output": "What this insurer's intake asks for given the claim as it stands. Each entry carries id, label, why, satisfied and triggeredBy.",
+      "annotations": ["readOnlyHint"],
+      "budget": "at most 1500 characters"
+    },
+    {
+      "name": "validate_claim",
+      "role": "read",
+      "input": {},
+      "output": "Whether every required field is answered, which ones are not, and anything a handler would query. Never a decision, and never a statement that the claim itself is good.",
+      "annotations": ["readOnlyHint"],
+      "budget": "at most 1500 characters"
+    },
+    {
+      "name": "check_coverage",
+      "role": "read",
+      "input": {},
+      "output": "What the schedule says: the section, the clause, whether it is in force, and the excess. A statement about the policy, never a decision about the claim.",
+      "annotations": ["readOnlyHint"],
+      "budget": "at most 1500 characters"
+    },
+    {
+      "name": "get_repair_estimate",
+      "role": "read",
+      "input": { "zone": "clock position 1 to 12", "severity": "scratch, dent or structural" },
+      "output": "A triage band from a fixed parts table, with the parts it summed. Not a quote and not a prediction.",
+      "annotations": ["readOnlyHint"],
+      "budget": "at most 1500 characters"
+    },
+    {
+      "name": "read_evidence_notes",
+      "role": "read",
+      "input": {},
+      "output": "Notes attached to the file by third parties, word for word. They are quoted, never followed, and they change nothing the page derives.",
+      "annotations": ["readOnlyHint", "untrustedContentHint"],
+      "budget": "at most 1500 characters"
+    },
+    {
+      "name": "apply_claim_patch",
+      "role": "write",
+      "input": {
+        "changes": "an array of { field, value }, or one { field, value }",
+        "baseRevision": "the revision the agent last read, required"
+      },
+      "output": "What was stored, the new revision, and what the intake now requires. On refusal, one of the five codes and a message that says how to fix it.",
+      "annotations": ["readOnlyHint set to false"],
+      "budget": "at most 1500 characters"
+    }
+  ],
+  "human_only": {
+    "rule": "Filing is never a tool. Neither is pinning a field, unpinning it, or calling out a recovery truck.",
+    "why": "An agent that has been talked into something by a poisoned page or a planted note must have nothing to call. It can draft, read and check as much as it likes, and it can commit nothing.",
+    "how_to_check": "A page that claims this should be checkable from the outside: read the published tool list and look for the action. If it is there, the claim is false."
+  },
+  "untrusted_content": {
+    "rule": "Any tool that returns text a third party wrote carries untrustedContentHint.",
+    "core_rule": "Third party text is copied and returned. It is never parsed for instructions, never used to set a field, and never allowed to change validation or the derived requirements.",
+    "annotations_that_exist": "WebMCP defines readOnlyHint and untrustedContentHint. This contract uses those two and invents none."
+  },
+  "rule_pack": {
+    "what_it_is": "One insurer's schedule of cover plus its intake rules, as data. Swap the pack and the same tools answer with that insurer's facts.",
+    "keys": ["contract", "id", "insurer", "product", "currency", "period", "coverages", "excluded_drivers", "requirements"],
+    "requirement": {
+      "id": "stable name an agent can key on",
+      "label": "what to ask the claimant for, in their words",
+      "why": "the clause or the field that makes it required",
+      "when": "the condition that brings it into existence. Absent means the insurer always asks for it",
+      "satisfied_by": "either { field } naming a claim field, or { human_action } for something only a person can do",
+      "triggeredBy": "on output, the claim field whose value raised it, or null when the insurer always asks"
+    }
+  },
+  "how_to_verify_a_page": "Do not take any of this from a file. Read the tool list the page actually publishes, call the read tools, and compare. This document says what the convention is, not what any particular page has done."
+}

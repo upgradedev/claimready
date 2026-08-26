@@ -1,0 +1,111 @@
+{
+  "contract": "claim-intake.v1",
+  "id": "kestrel",
+  "insurer": "Kestrel Assurance",
+  "product": "Motor Comprehensive Plus",
+  "currency": "EUR",
+  "note": "Kestrel Assurance is an invented insurer, written to differ from the other pack on purpose. Theft is in force here and glass carries an excess, the excesses are not the same amounts, nobody is excluded from driving, and a collision claim is asked for a witness. Same tools, same page, different answers.",
+  "period": {
+    "start": "2026-01-01",
+    "end": "2026-12-31",
+    "clause": "KP-2.1"
+  },
+  "coverages": [
+    {
+      "code": "own_damage",
+      "label": "Own damage",
+      "clause": "OD-1.7",
+      "active": true,
+      "deductible": 150,
+      "incident_types": ["collision", "vandalism", "weather", "fire"]
+    },
+    {
+      "code": "glass",
+      "label": "Glass",
+      "clause": "GL-5.1",
+      "active": true,
+      "deductible": 75,
+      "incident_types": ["glass"]
+    },
+    {
+      "code": "third_party",
+      "label": "Third party liability",
+      "clause": "TP-2.0",
+      "active": true,
+      "deductible": 0,
+      "incident_types": []
+    },
+    {
+      "code": "theft",
+      "label": "Theft and attempted theft",
+      "clause": "TH-3.4",
+      "active": true,
+      "deductible": 500,
+      "incident_types": ["theft"]
+    }
+  ],
+  "excluded_drivers": [],
+  "requirements": [
+    {
+      "id": "date_of_loss",
+      "label": "The date the incident happened",
+      "why": "Clause KF-1.1 asks for the date of loss on every first notice, because the date decides whether the policy was in force.",
+      "satisfied_by": { "field": "incident_date" }
+    },
+    {
+      "id": "claimant_account",
+      "label": "Your own account of what happened",
+      "why": "Clause KF-1.2 asks the claimant to describe the incident in their own words before a handler reads the file.",
+      "satisfied_by": { "field": "description" }
+    },
+    {
+      "id": "impact_position",
+      "label": "Where on the car the impact landed",
+      "why": "Clause OD-1.7 settles damage panel by panel, so the impact position decides which panels are in scope.",
+      "when": { "field": "incident_type", "not_equals": "theft" },
+      "satisfied_by": { "field": "damage_zone" }
+    },
+    {
+      "id": "damage_severity",
+      "label": "How heavy the damage is",
+      "why": "Clause OD-1.9 routes a structural job to a body shop on the insurer list and a light job to any repairer.",
+      "satisfied_by": { "field": "severity" }
+    },
+    {
+      "id": "drivable_status",
+      "label": "Whether the car can still be driven",
+      "why": "Clause KR-8.1 makes the drivable answer the switch between a booked repair and a recovery.",
+      "satisfied_by": { "field": "vehicle_drivable" }
+    },
+    {
+      "id": "named_witness",
+      "label": "The name of a witness to the collision",
+      "why": "Clause WT-4.4 asks a collision claimant to name a witness where there is one, because a disputed collision turns on the statements.",
+      "when": { "field": "incident_type", "equals": "collision" },
+      "satisfied_by": { "field": "witness_name" }
+    },
+    {
+      "id": "police_report",
+      "label": "The police report reference",
+      "why": "Clause KP-6.6 asks for a police report reference on a theft claim. Structural damage on its own does not raise it here.",
+      "when": { "field": "incident_type", "equals": "theft" },
+      "satisfied_by": { "field": "police_report_ref" }
+    },
+    {
+      "id": "roadside_collection",
+      "label": "Roadside collection for a car that cannot be driven",
+      "why": "Clause KR-8.3 covers collection of a vehicle that cannot be driven, and this policy will not book a repair slot until the collection is arranged.",
+      "when": { "field": "vehicle_drivable", "equals": false },
+      "satisfied_by": {
+        "human_action": "a person presses Request roadside assistance on this page. There is no tool for it, so an agent has to ask the claimant to do it."
+      }
+    },
+    {
+      "id": "collection_address",
+      "label": "Where the car is now, so it can be collected",
+      "why": "Clause KR-8.3 sends a recovery truck to the vehicle, and a truck needs somewhere to go.",
+      "when": { "field": "vehicle_drivable", "equals": false },
+      "satisfied_by": { "field": "location" }
+    }
+  ]
+}

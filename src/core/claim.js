@@ -1,14 +1,28 @@
 /**
  * Claim draft model for the ClaimReady FNOL page.
  *
- * PURE MODULE. No DOM, no window, no document, no fetch, no timers, no I/O.
- * It runs unchanged under `node --test` and inside the browser as an ES module.
+ * PURE MODULE. No DOM, no browser globals, no network, no timers, no I/O.
+ * It runs unchanged under `node --test` and inside a page as an ES module.
  *
  * Everything here returns plain data. The WebMCP tools layer is responsible for
  * turning that data into tool output. Core never builds an MCP envelope.
  *
- * Treat every claim object as immutable. `applyPatch` returns a new claim on
- * success and hands back the original, untouched, on failure.
+ * THE CLAIM IS THE SHARED STATE. A person on the page and a visitor's agent both
+ * write to the same object, so the object itself has to carry who wrote what and
+ * how many times it has moved:
+ *
+ *   revision    a counter that advances by exactly one on every accepted change
+ *   provenance  { field: 'agent' | 'human' | 'policy' | 'derived' }
+ *   locked      field names a person pinned, which no patch may move
+ *   status      'draft' or 'filed'
+ *
+ * An agent patch must name the revision it read. If a person edited the page in
+ * between, the revision has moved and the patch is refused as stale, with both
+ * numbers in the message. That refusal is the point: it is what makes a shared
+ * draft safe to write to from two sides at once.
+ *
+ * Treat every claim object as immutable. Every function here returns a new claim
+ * on success and hands back the original, untouched, on failure.
  */
 
 /** Incident categories a claim may declare. Also the enum for the tool schema. */
@@ -73,8 +87,62 @@ export const OPTIONAL_FIELDS = ['driver', 'location', 'police_report_ref', 'witn
 /** Every field `applyPatch` will accept. Anything else is rejected by name. */
 export const PATCHABLE_FIELDS = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS];
 
-/** Fields the claim carries that no tool and no agent may ever write. */
-export const READ_ONLY_FIELDS = ['policy_id', 'reference', 'status', 'filed_at'];
+/** Bookkeeping the claim carries that no patch may ever write, from either side. */
+export const PROTECTED_STORED_FIELDS = [
+  'policy_id',
+  'reference',
+  'status',
+  'filed_at',
+  'revision',
+  'provenance',
+  'locked',
+  'evidence_notes',
+];
+
+/**
+ * Names that are computed from the claim rather than stored on it. Nobody may
+ * patch them either, and naming them explicitly means an agent that tries gets
+ * "this is derived" instead of the vaguer "no such field".
+ */
+export const DERIVED_NAMES = [
+  'requirements',
+  'validation',
+  'ready',
+  'missing',
+  'warnings',
+  'coverage',
+  'covered',
+  'deductible',
+  'estimate',
+];
+
+/** Everything a patch refuses to touch, whoever is asking. */
+export const PROTECTED_FIELDS = [...PROTECTED_STORED_FIELDS, ...DERIVED_NAMES];
+
+/**
+ * Kept as an alias because the earlier model called this set read only. Same
+ * list, one name for it, so no reader has to work out which is authoritative.
+ */
+export const READ_ONLY_FIELDS = PROTECTED_FIELDS;
+
+/** Who a patch may claim to be. 'policy' and 'derived' are set by core alone. */
+export const ACTORS = ['human', 'agent'];
+
+/** Every value that can appear in `claim.provenance`. */
+export const PROVENANCE_SOURCES = ['human', 'agent', 'policy', 'derived'];
+
+/**
+ * The refusal vocabulary. These strings are part of the published contract in
+ * docs/claim-intake.v1.json, so a model can branch on the code and a reader can
+ * grep for it. Five codes, no more: anything a patch refuses is one of these.
+ */
+export const PATCH_CODES = {
+  stale: 'PATCH_REJECTED_STALE',
+  locked: 'PATCH_REJECTED_LOCKED',
+  protected: 'PATCH_REJECTED_PROTECTED',
+  field: 'PATCH_REJECTED_FIELD',
+  value: 'PATCH_REJECTED_VALUE',
+};
 
 /** Character caps. The tools layer should mirror these in its input schema. */
 export const DESCRIPTION_MAX_LENGTH = 240;
@@ -91,6 +159,9 @@ const MAX_YEAR = 2099;
 
 const BOOLEAN_TRUE = ['true', 'yes'];
 const BOOLEAN_FALSE = ['false', 'no'];
+
+/** Enough of the protected list to be useful in a refusal, without a wall of text. */
+const PROTECTED_IN_MESSAGES = 'policy facts, the validation result, revision, provenance, locked and status';
 
 function isIsoDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -197,25 +268,87 @@ const VALIDATORS = {
   witness_name: textField('witness_name', WITNESS_MAX_LENGTH),
 };
 
+/* --------------------------------------------------------------- internals */
+
 function emptyClaim() {
   const claim = {
     policy_id: null,
     reference: null,
     status: 'draft',
     filed_at: null,
+    revision: 0,
+    provenance: {},
+    locked: [],
+    evidence_notes: [],
   };
   for (const field of PATCHABLE_FIELDS) claim[field] = null;
   return claim;
 }
+
+/** A shallow copy that never shares the two containers a caller could mutate. */
+function copyClaim(claim) {
+  return {
+    ...claim,
+    provenance: { ...claim.provenance },
+    locked: [...claim.locked],
+    evidence_notes: [...claim.evidence_notes],
+  };
+}
+
+function currentRevision(claim) {
+  return Number.isInteger(claim.revision) ? claim.revision : 0;
+}
+
+function lockedList(claim) {
+  return Array.isArray(claim.locked) ? claim.locked : [];
+}
+
+function isEmptyValue(value) {
+  if (value === null || value === undefined) return true;
+  return typeof value === 'string' && value.trim().length === 0;
+}
+
+/**
+ * One evidence note, normalised and kept verbatim.
+ *
+ * The text is never parsed, never matched against a pattern and never acted on.
+ * A note is third party content: it belongs to whoever uploaded it, and the only
+ * thing this app does with it is hand it back exactly as it arrived.
+ */
+function normaliseNote(note, index) {
+  const source = note && typeof note === 'object' ? note : {};
+  return {
+    id: typeof source.id === 'string' ? source.id : `note-${index + 1}`,
+    author: typeof source.author === 'string' ? source.author : 'unknown',
+    received_at: typeof source.received_at === 'string' ? source.received_at : null,
+    text: typeof source.text === 'string' ? source.text : '',
+  };
+}
+
+function normaliseNotes(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map(normaliseNote);
+}
+
+/** The single validation path. `applyPatch` and `createClaim` both go through it. */
+function coerceField(field, value) {
+  return VALIDATORS[field](value);
+}
+
+/* ------------------------------------------------------------------ create */
 
 /**
  * Build a claim from a fixture.
  *
  * Accepts either the whole parsed fixture (an object with `policy` and `claim`)
  * or a single scenario object (an object with `claim`), or a flat seed of claim
- * fields. Every seed value is pushed through `applyPatch`, so a typo or a bad
- * value in the fixture throws here instead of silently leaving a field missing
- * for the rest of the app.
+ * fields. Every seed value is pushed through the same validators a patch uses,
+ * so a typo or a bad value in the fixture throws here instead of silently
+ * leaving a field missing for the rest of the app.
+ *
+ * A field that arrives from the fixture is attributed to 'policy': the insurer's
+ * own page put it there, neither the claimant nor an agent did. The new claim is
+ * at revision 0, because seeding is not a change anyone made.
  *
  * @param {object} [fixture]
  * @returns {object} a new claim
@@ -232,93 +365,411 @@ export function createClaim(fixture) {
   const seed = isWrapper && source.claim && typeof source.claim === 'object' ? source.claim : {};
   const flat = isWrapper ? seed : source;
 
-  let claim = emptyClaim();
+  const claim = emptyClaim();
   claim.policy_id = source.policy?.id ?? flat.policy_id ?? null;
   claim.reference = flat.reference ?? null;
-  claim.status = 'draft';
-  claim.filed_at = null;
+  claim.evidence_notes = normaliseNotes(flat.evidence_notes ?? source.evidence_notes);
 
   for (const [field, value] of Object.entries(flat)) {
-    if (READ_ONLY_FIELDS.includes(field)) continue;
+    if (PROTECTED_FIELDS.includes(field)) continue;
     if (value === null || value === undefined) continue;
-    const result = applyPatch(claim, field, value);
-    if (!result.ok) {
-      throw new TypeError(`Fixture claim field "${field}" is not usable: ${result.error}`);
+    if (!PATCHABLE_FIELDS.includes(field)) {
+      throw new TypeError(
+        `Fixture claim field "${field}" is not usable: "${field}" is not a field on this claim.`,
+      );
     }
-    claim = result.claim;
+    const checked = coerceField(field, value);
+    if (!checked.ok) {
+      throw new TypeError(`Fixture claim field "${field}" is not usable: ${checked.error}`);
+    }
+    claim[field] = checked.value;
+    claim.provenance[field] = 'policy';
   }
 
   return claim;
 }
 
 /**
- * Set one field on a claim.
+ * Take an object that is already claim shaped and fill in anything it lacks.
  *
- * PURE. On success it returns a brand new claim and leaves the input alone. On
- * failure it returns the original claim object unchanged, so a caller can
- * always keep using `result.claim`.
+ * Used when a store is handed a claim rather than a fixture. A claim written
+ * before the revision counter existed, or one that came back through JSON, still
+ * has to satisfy every invariant the rest of core relies on.
  *
- * Passing null clears an optional field. Passing null for a required field is
- * refused, because a required field that was answered should not be un answered
- * by an agent.
+ * @param {object} value
+ * @returns {object} a complete, normalised claim
+ */
+export function hydrateClaim(value) {
+  if (!value || typeof value !== 'object') {
+    throw new TypeError('hydrateClaim needs a claim object.');
+  }
+  const claim = { ...emptyClaim(), ...value };
+  claim.revision = Number.isInteger(value.revision) && value.revision >= 0 ? value.revision : 0;
+  claim.status = value.status === 'filed' ? 'filed' : 'draft';
+  claim.provenance = value.provenance && typeof value.provenance === 'object' ? { ...value.provenance } : {};
+  claim.locked = Array.isArray(value.locked)
+    ? value.locked.filter((field) => PATCHABLE_FIELDS.includes(field))
+    : [];
+  claim.evidence_notes = normaliseNotes(value.evidence_notes);
+  return claim;
+}
+
+/* ------------------------------------------------------------------- patch */
+
+function refusal(claim, code, error) {
+  return { claim, ok: false, error, code, applied: [], revision: currentRevision(claim) };
+}
+
+/**
+ * Accept one change, an array of changes, or nothing usable.
+ * @returns {{ok: true, list: Array}|{ok: false, error: string}}
+ */
+function normaliseChanges(changes) {
+  const list = Array.isArray(changes) ? changes : [changes];
+
+  if (list.length === 0) {
+    return { ok: false, error: 'A patch has to carry at least one change. Send { field, value } or an array of them.' };
+  }
+
+  const seen = [];
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      return {
+        ok: false,
+        error: `Every change must be an object shaped { field, value }. Received ${JSON.stringify(entry ?? null)}.`,
+      };
+    }
+    if (typeof entry.field !== 'string' || entry.field.trim().length === 0) {
+      return {
+        ok: false,
+        error: `Every change must name a field as a string. Received ${JSON.stringify(entry.field ?? null)}.`,
+      };
+    }
+    const field = entry.field.trim();
+    if (seen.includes(field)) {
+      return {
+        ok: false,
+        error: `"${field}" appears twice in one patch. Name each field once, with the value you want it to end at.`,
+      };
+    }
+    seen.push(field);
+  }
+
+  return { ok: true, list: list.map((entry) => ({ field: entry.field.trim(), value: entry.value })) };
+}
+
+function staleRefusal(claim, actor, baseRevision) {
+  const revision = currentRevision(claim);
+
+  if (baseRevision === null || baseRevision === undefined) {
+    if (actor === 'agent') {
+      return (
+        `An agent patch has to carry baseRevision, and this one carried none. The claim is at revision ${revision}. ` +
+        `Read the claim state again, then send the patch with baseRevision ${revision}.`
+      );
+    }
+    return null;
+  }
+
+  const asNumber = typeof baseRevision === 'string' ? Number(baseRevision.trim()) : baseRevision;
+  if (!Number.isInteger(asNumber) || asNumber < 0) {
+    return (
+      `baseRevision must be the whole number you read off the claim, and ${JSON.stringify(baseRevision)} is not one. ` +
+      `The claim is at revision ${revision}.`
+    );
+  }
+
+  if (asNumber !== revision) {
+    return (
+      `expected revision ${asNumber}, current revision ${revision}. ` +
+      'Read the claim state again before patching: somebody changed the draft after you read it, and their answer wins until you have seen it.'
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Apply a set of changes to a claim, all of them or none of them.
+ *
+ * ATOMIC. Every change is validated before any change is stored. If one is
+ * refused, nothing is written and the revision does not move, so a partly
+ * applied batch can never exist for anyone to read.
+ *
+ * REVISION GUARDED. `baseRevision` is the revision the caller last read. It is
+ * optional for a person editing the page, because a person is looking at the
+ * thing they are editing. It is required for an agent, which is not: an agent
+ * patch with no baseRevision is refused as stale and told to read state first.
+ *
+ * On success the revision advances by exactly one, however many fields the
+ * patch carried, and every field it wrote is attributed to the actor.
  *
  * @param {object} claim
- * @param {string} field
- * @param {*} value
- * @returns {{claim: object, ok: boolean, error: (string|null)}}
+ * @param {{field: string, value: *}|Array<{field: string, value: *}>} changes
+ * @param {{actor?: 'human'|'agent', baseRevision?: (number|string|null)}} [options]
+ * @returns {{claim: object, ok: boolean, error: (string|null), code: (string|null),
+ *            applied: string[], revision: number}}
  */
-export function applyPatch(claim, field, value) {
+export function applyPatch(claim, changes, options = {}) {
   if (!claim || typeof claim !== 'object') {
     throw new TypeError('applyPatch needs a claim object.');
   }
 
-  if (READ_ONLY_FIELDS.includes(field)) {
-    return {
+  const settings = options && typeof options === 'object' ? options : {};
+  const actor = settings.actor === undefined ? 'human' : settings.actor;
+  const baseRevision = settings.baseRevision === undefined ? null : settings.baseRevision;
+
+  if (!ACTORS.includes(actor)) {
+    return refusal(
       claim,
-      ok: false,
-      error: `"${field}" is set by the insurer and cannot be changed here.`,
-    };
+      PATCH_CODES.value,
+      `actor must be one of: ${ACTORS.join(', ')}. Received ${JSON.stringify(actor)}.`,
+    );
   }
 
-  if (!PATCHABLE_FIELDS.includes(field)) {
-    return {
+  // The filed check comes first on purpose. A stale refusal tells the reader to
+  // read again and retry, and on a filed claim that retry can never work. Saying
+  // "this is closed" straight away costs one round trip less and is the truth.
+  if (claim.status === 'filed') {
+    return refusal(
       claim,
-      ok: false,
-      error: `"${field}" is not a field on this claim. Editable fields are: ${PATCHABLE_FIELDS.join(', ')}.`,
+      PATCH_CODES.protected,
+      'This claim has already been filed, so every field on it is closed to changes. Reading it again will not help. Nothing was changed.',
+    );
+  }
+
+  const stale = staleRefusal(claim, actor, baseRevision);
+  if (stale) return refusal(claim, PATCH_CODES.stale, stale);
+
+  const normalised = normaliseChanges(changes);
+  if (!normalised.ok) return refusal(claim, PATCH_CODES.field, normalised.error);
+
+  const locked = lockedList(claim);
+  const staged = [];
+
+  // Pass one: check everything. Nothing is written in this loop, which is what
+  // makes the whole patch all or nothing.
+  for (const change of normalised.list) {
+    const { field, value } = change;
+
+    if (PROTECTED_FIELDS.includes(field)) {
+      return refusal(
+        claim,
+        PATCH_CODES.protected,
+        `"${field}" is not patchable by anyone, by the page or by an agent: ${PROTECTED_IN_MESSAGES} are set by the insurer's page. Nothing was changed.`,
+      );
+    }
+
+    if (!PATCHABLE_FIELDS.includes(field)) {
+      return refusal(
+        claim,
+        PATCH_CODES.field,
+        `"${field}" is not a field on this claim. The fields that exist are: ${PATCHABLE_FIELDS.join(', ')}. Nothing was changed.`,
+      );
+    }
+
+    if (locked.includes(field)) {
+      return refusal(
+        claim,
+        PATCH_CODES.locked,
+        `"${field}" was pinned by the person on the page, so no patch can move it. A person has to unpin it on the page before this value can change. Nothing was changed.`,
+      );
+    }
+
+    if (value === null || value === undefined) {
+      if (REQUIRED_FIELDS.includes(field)) {
+        return refusal(
+          claim,
+          PATCH_CODES.value,
+          `${field} is required, so it cannot be cleared. Send the corrected value instead of an empty one. Nothing was changed.`,
+        );
+      }
+      staged.push({ field, value: null });
+      continue;
+    }
+
+    const checked = coerceField(field, value);
+    if (!checked.ok) {
+      return refusal(claim, PATCH_CODES.value, `${checked.error} Nothing was changed.`);
+    }
+    staged.push({ field, value: checked.value });
+  }
+
+  // Pass two: write. Everything below here is known to be valid.
+  const next = copyClaim(claim);
+  const applied = [];
+
+  for (const { field, value } of staged) {
+    next[field] = value;
+    if (value === null) delete next.provenance[field];
+    else next.provenance[field] = actor;
+    applied.push(field);
+  }
+
+  next.revision = currentRevision(claim) + 1;
+
+  return { claim: next, ok: true, error: null, code: null, applied, revision: next.revision };
+}
+
+/* -------------------------------------------------------------- lock, file */
+
+function lockGuard(claim, field) {
+  if (!claim || typeof claim !== 'object') {
+    throw new TypeError('lockField needs a claim object.');
+  }
+  if (claim.status === 'filed') {
+    return {
+      code: PATCH_CODES.protected,
+      error: 'This claim has already been filed, so pinning a field on it changes nothing.',
     };
   }
+  if (PROTECTED_FIELDS.includes(field)) {
+    return {
+      code: PATCH_CODES.protected,
+      error: `"${field}" is not a field a person fills in, so there is nothing to pin.`,
+    };
+  }
+  if (!PATCHABLE_FIELDS.includes(field)) {
+    return {
+      code: PATCH_CODES.field,
+      error: `"${field}" is not a field on this claim. The fields that exist are: ${PATCHABLE_FIELDS.join(', ')}.`,
+    };
+  }
+  return null;
+}
+
+/**
+ * Pin a field, so no patch from either side can move it.
+ *
+ * A human only concept. There is no tool for it and there should never be one:
+ * pinning is how the person on the page says "I have checked this one myself".
+ * Pinning a field that is already pinned is allowed and changes nothing, so the
+ * revision does not move.
+ *
+ * @param {object} claim
+ * @param {string} field
+ * @returns {{claim: object, ok: boolean, error: (string|null), code: (string|null), revision: number}}
+ */
+export function lockField(claim, field) {
+  const refused = lockGuard(claim, field);
+  if (refused) {
+    return { claim, ok: false, error: refused.error, code: refused.code, revision: currentRevision(claim) };
+  }
+  if (lockedList(claim).includes(field)) {
+    return { claim, ok: true, error: null, code: null, revision: currentRevision(claim) };
+  }
+
+  const next = copyClaim(claim);
+  next.locked = [...lockedList(claim), field];
+  next.revision = currentRevision(claim) + 1;
+  return { claim: next, ok: true, error: null, code: null, revision: next.revision };
+}
+
+/**
+ * Unpin a field. Human only, same as pinning it.
+ *
+ * @param {object} claim
+ * @param {string} field
+ * @returns {{claim: object, ok: boolean, error: (string|null), code: (string|null), revision: number}}
+ */
+export function unlockField(claim, field) {
+  const refused = lockGuard(claim, field);
+  if (refused) {
+    return { claim, ok: false, error: refused.error, code: refused.code, revision: currentRevision(claim) };
+  }
+  if (!lockedList(claim).includes(field)) {
+    return { claim, ok: true, error: null, code: null, revision: currentRevision(claim) };
+  }
+
+  const next = copyClaim(claim);
+  next.locked = lockedList(claim).filter((entry) => entry !== field);
+  next.revision = currentRevision(claim) + 1;
+  return { claim: next, ok: true, error: null, code: null, revision: next.revision };
+}
+
+/** Whether a person has pinned this field. */
+export function isLocked(claim, field) {
+  return Boolean(claim && typeof claim === 'object') && lockedList(claim).includes(field);
+}
+
+/** Who set this field, or null if nobody has. */
+export function provenanceOf(claim, field) {
+  if (!claim || typeof claim !== 'object' || !claim.provenance) return null;
+  const source = claim.provenance[field];
+  return PROVENANCE_SOURCES.includes(source) ? source : null;
+}
+
+/**
+ * Mark the claim filed. Human only, and never reachable from a tool.
+ *
+ * Filing is a change like any other, so it advances the revision: an agent
+ * holding an older number finds out that the draft moved under it.
+ *
+ * @param {object} claim
+ * @param {{at?: string}} [options] timestamp supplied by the caller, never invented here
+ * @returns {{claim: object, ok: boolean, error: (string|null), code: (string|null), revision: number}}
+ */
+export function fileClaim(claim, options = {}) {
+  if (!claim || typeof claim !== 'object') {
+    throw new TypeError('fileClaim needs a claim object.');
+  }
+  const revision = currentRevision(claim);
 
   if (claim.status === 'filed') {
     return {
       claim,
       ok: false,
-      error: 'This claim has already been filed and can no longer be edited.',
+      error: 'This claim has already been filed.',
+      code: PATCH_CODES.protected,
+      revision,
     };
   }
 
-  if (value === null || value === undefined) {
-    if (REQUIRED_FIELDS.includes(field)) {
-      return {
-        claim,
-        ok: false,
-        error: `${field} is required, so it cannot be cleared.`,
-      };
-    }
-    return { claim: { ...claim, [field]: null }, ok: true, error: null };
+  const { ready, missing } = validateClaim(claim);
+  if (!ready) {
+    return {
+      claim,
+      ok: false,
+      error: `The claim is not ready to file. Still needed: ${missing.join(', ')}.`,
+      code: PATCH_CODES.value,
+      revision,
+    };
   }
 
-  const checked = VALIDATORS[field](value);
-  if (!checked.ok) {
-    return { claim, ok: false, error: checked.error };
-  }
+  const next = copyClaim(claim);
+  next.status = 'filed';
+  next.filed_at = typeof options.at === 'string' ? options.at : null;
+  next.revision = revision + 1;
+  return { claim: next, ok: true, error: null, code: null, revision: next.revision };
+}
 
-  return { claim: { ...claim, [field]: checked.value }, ok: true, error: null };
+/* ------------------------------------------------------------- read only */
+
+/**
+ * The evidence notes attached to this claim, exactly as they arrived.
+ *
+ * A note is third party content. It may be a garage's write up, a message from
+ * another driver, or anything else someone uploaded. Core reads it, copies it
+ * and returns it. Core never follows an instruction inside it, never lets it
+ * change what the claim requires, and never lets it change what validation says.
+ * The tool that surfaces these must carry untrustedContentHint.
+ *
+ * @param {object} claim
+ * @returns {Array<{id: string, author: string, received_at: (string|null), text: string}>}
+ */
+export function readEvidenceNotes(claim) {
+  if (!claim || typeof claim !== 'object') {
+    throw new TypeError('readEvidenceNotes needs a claim object.');
+  }
+  return normaliseNotes(claim.evidence_notes);
 }
 
 /**
  * Check whether the claim can be filed, and raise anything a handler should look at.
  *
- * Warnings never block. They are things worth saying out loud, not errors.
+ * Warnings never block. They are things worth saying out loud, not errors. This
+ * function reads the claim's own fields and nothing else: not the evidence
+ * notes, not the policy, not anything a third party wrote.
  *
  * @param {object} claim
  * @returns {{ready: boolean, missing: string[], warnings: string[]}}
@@ -360,7 +811,7 @@ export function validateClaim(claim) {
 }
 
 function isSet(value) {
-  return value !== null && value !== undefined;
+  return !isEmptyValue(value);
 }
 
 function zoneText(zone) {
@@ -379,6 +830,9 @@ function stop(text) {
  * the sentence rather than filled with a placeholder, and the closing line names
  * what is still needed in words rather than in field names.
  *
+ * The revision is stated because an agent needs it to patch: it is the number it
+ * has to send back as baseRevision.
+ *
  * Kept inside the WebMCP tool output budget. The return value is never longer
  * than DESCRIBE_MAX_LENGTH characters.
  *
@@ -393,7 +847,9 @@ export function describeClaim(claim) {
   const { ready, missing, warnings } = validateClaim(claim);
   const lines = [];
 
-  lines.push(`Claim draft on policy ${claim.policy_id ?? 'unknown'} (status: ${claim.status}).`);
+  lines.push(
+    `Claim draft on policy ${claim.policy_id ?? 'unknown'} (status: ${claim.status}, revision ${currentRevision(claim)}).`,
+  );
 
   const type = claim.incident_type;
   const date = claim.incident_date;
@@ -422,6 +878,20 @@ export function describeClaim(claim) {
   if (claim.description) lines.push(stop(`Account given: ${claim.description}`));
   if (claim.police_report_ref) lines.push(stop(`Police report: ${claim.police_report_ref}`));
   if (claim.witness_name) lines.push(stop(`Witness: ${claim.witness_name}`));
+
+  // Named, but never at the cost of the summary. Two of them read as a sentence;
+  // ten would eat the budget and push the "still needed" line off the end, which
+  // is the one line the claimant actually acts on.
+  const pinned = lockedList(claim);
+  if (pinned.length > 0) {
+    const named = pinned.slice(0, 2).map((field) => FIELD_LABELS[field]);
+    const rest = pinned.length - named.length;
+    lines.push(
+      `Pinned by the claimant, so no patch can move ${pinned.length === 1 ? 'it' : 'them'}: ${named.join(', ')}${
+        rest > 0 ? ` and ${rest} more` : ''
+      }.`,
+    );
+  }
 
   lines.push(
     ready

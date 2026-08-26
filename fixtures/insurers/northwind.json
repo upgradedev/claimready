@@ -1,0 +1,116 @@
+{
+  "contract": "claim-intake.v1",
+  "id": "northwind",
+  "insurer": "Northwind Mutual",
+  "product": "Motor Comprehensive",
+  "currency": "EUR",
+  "note": "Northwind Mutual is an invented insurer. Every clause id, amount and rule below was written for this demo and belongs to no real policy. Load a different pack and the same tools answer with that insurer's schedule instead.",
+  "period": {
+    "start": "2026-01-01",
+    "end": "2026-12-31",
+    "clause": "PL-1.2"
+  },
+  "coverages": [
+    {
+      "code": "own_damage",
+      "label": "Own damage",
+      "clause": "OD-4.1",
+      "active": true,
+      "deductible": 250,
+      "incident_types": ["collision", "vandalism", "weather", "fire"]
+    },
+    {
+      "code": "glass",
+      "label": "Glass",
+      "clause": "GL-2.3",
+      "active": true,
+      "deductible": 0,
+      "incident_types": ["glass"]
+    },
+    {
+      "code": "third_party",
+      "label": "Third party liability",
+      "clause": "TP-1.1",
+      "active": true,
+      "deductible": 0,
+      "incident_types": []
+    },
+    {
+      "code": "theft",
+      "label": "Theft and attempted theft",
+      "clause": "TH-7.2",
+      "active": false,
+      "deductible": 400,
+      "incident_types": ["theft"],
+      "inactive_reason": "The theft and attempted theft rider was quoted at renewal but was not added to this policy, so a stolen vehicle is not covered."
+    }
+  ],
+  "excluded_drivers": [
+    {
+      "name": "Nikos P.",
+      "clause": "EX-9.1",
+      "reason": "Nikos P. is listed as an excluded driver on this policy, so any incident while he is at the wheel falls outside cover."
+    }
+  ],
+  "requirements": [
+    {
+      "id": "date_of_loss",
+      "label": "The date the incident happened",
+      "why": "Clause FN-1.1 asks for the date of loss on every first notice, because the date decides whether the policy was in force.",
+      "satisfied_by": { "field": "incident_date" }
+    },
+    {
+      "id": "claimant_account",
+      "label": "Your own account of what happened",
+      "why": "Clause FN-1.3 asks the claimant to describe the incident in their own words before a handler reads the file.",
+      "satisfied_by": { "field": "description" }
+    },
+    {
+      "id": "impact_position",
+      "label": "Where on the car the impact landed",
+      "why": "Clause OD-4.1 settles damage panel by panel, so the impact position decides which panels are in scope.",
+      "when": { "field": "incident_type", "not_equals": "theft" },
+      "satisfied_by": { "field": "damage_zone" }
+    },
+    {
+      "id": "damage_severity",
+      "label": "How heavy the damage is",
+      "why": "Clause OD-4.4 routes a structural job to a body shop on the insurer list and a light job to any repairer.",
+      "satisfied_by": { "field": "severity" }
+    },
+    {
+      "id": "drivable_status",
+      "label": "Whether the car can still be driven",
+      "why": "Clause RA-3.1 makes the drivable answer the switch between a booked repair and a recovery.",
+      "satisfied_by": { "field": "vehicle_drivable" }
+    },
+    {
+      "id": "police_report",
+      "label": "The police report reference",
+      "why": "Clause PR-6.2 asks for a police report reference when the shell is out of true or the vehicle was taken.",
+      "when": {
+        "any_of": [
+          { "field": "severity", "equals": "structural" },
+          { "field": "incident_type", "equals": "theft" }
+        ]
+      },
+      "satisfied_by": { "field": "police_report_ref" }
+    },
+    {
+      "id": "roadside_collection",
+      "label": "Roadside collection for a car that cannot be driven",
+      "why": "Clause RA-3.2 covers collection of a vehicle that cannot be driven, and this policy will not book a repair slot until the collection is arranged.",
+      "when": { "field": "vehicle_drivable", "equals": false },
+      "satisfied_by": {
+        "human_action": "a person presses Request roadside assistance on this page. There is no tool for it, so an agent has to ask the claimant to do it."
+      }
+    },
+    {
+      "id": "collection_address",
+      "label": "Where the car is now, so it can be collected",
+      "why": "Clause RA-3.2 sends a recovery truck to the vehicle, and a truck needs somewhere to go.",
+      "when": { "field": "vehicle_drivable", "equals": false },
+      "satisfied_by": { "field": "location" }
+    }
+  ]
+}

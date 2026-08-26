@@ -10,12 +10,22 @@ import {
   REQUIRED_FIELDS,
   OPTIONAL_FIELDS,
   PATCHABLE_FIELDS,
+  PROTECTED_FIELDS,
   READ_ONLY_FIELDS,
+  PATCH_CODES,
+  PROVENANCE_SOURCES,
   DESCRIPTION_MAX_LENGTH,
   DESCRIBE_MAX_LENGTH,
   FIELD_LABELS,
   createClaim,
+  hydrateClaim,
   applyPatch,
+  lockField,
+  unlockField,
+  isLocked,
+  provenanceOf,
+  fileClaim,
+  readEvidenceNotes,
   validateClaim,
   describeClaim,
 } from '../../src/core/claim.js';
@@ -25,6 +35,16 @@ const fixture = JSON.parse(readFileSync(FIXTURE_URL, 'utf8'));
 
 function snapshot(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+/**
+ * One change, as a person on the page makes it. Most of the tests below were
+ * written against the older single field signature and still read better this
+ * way. The batch form, the actor and the revision guard are exercised directly
+ * further down, where they are the subject rather than the setup.
+ */
+function patch(claim, field, value, options) {
+  return applyPatch(claim, { field, value }, options);
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +125,7 @@ test('applyPatch rejects an unknown field and changes nothing', () => {
   const claim = createClaim(fixture);
   const before = snapshot(claim);
 
-  const result = applyPatch(claim, 'payout_amount', 5000);
+  const result = patch(claim, 'payout_amount', 5000);
 
   assert.equal(result.ok, false);
   assert.match(result.error, /payout_amount/);
@@ -117,9 +137,11 @@ test('applyPatch rejects an unknown field and changes nothing', () => {
 test('applyPatch refuses fields the insurer owns', () => {
   const claim = createClaim(fixture);
   for (const field of READ_ONLY_FIELDS) {
-    const result = applyPatch(claim, field, 'anything');
+    const result = patch(claim, field, 'anything');
     assert.equal(result.ok, false, `${field} should not be writable`);
-    assert.match(result.error, /cannot be changed|not a field/);
+    assert.equal(result.code, PATCH_CODES.protected, `${field} should refuse as protected`);
+    assert.match(result.error, new RegExp(`"${field}" is not patchable by anyone`));
+    assert.equal(result.revision, claim.revision, 'a refused patch must not move the revision');
   }
 });
 
@@ -128,7 +150,7 @@ test('applyPatch rejects an out of range damage_zone', () => {
   const before = snapshot(claim);
 
   for (const bad of [0, 13, -1, 100]) {
-    const result = applyPatch(claim, 'damage_zone', bad);
+    const result = patch(claim, 'damage_zone', bad);
     assert.equal(result.ok, false, `damage_zone ${bad} should be refused`);
     assert.deepEqual(snapshot(result.claim), before);
   }
@@ -137,7 +159,7 @@ test('applyPatch rejects an out of range damage_zone', () => {
 test('applyPatch rejects a damage_zone that is not a whole number', () => {
   const claim = createClaim(fixture);
   for (const bad of [12.5, 'ten', '', '3.5', true, null]) {
-    const result = applyPatch(claim, 'damage_zone', bad);
+    const result = patch(claim, 'damage_zone', bad);
     assert.equal(result.ok, false, `damage_zone ${String(bad)} should be refused`);
   }
 });
@@ -145,7 +167,7 @@ test('applyPatch rejects a damage_zone that is not a whole number', () => {
 test('applyPatch accepts every valid damage_zone', () => {
   const claim = createClaim(fixture);
   for (const zone of DAMAGE_ZONES) {
-    const result = applyPatch(claim, 'damage_zone', zone);
+    const result = patch(claim, 'damage_zone', zone);
     assert.equal(result.ok, true, `damage_zone ${zone} should be accepted`);
     assert.equal(result.claim.damage_zone, zone);
   }
@@ -155,7 +177,7 @@ test('applyPatch returns a new claim and leaves the original alone', () => {
   const claim = createClaim(fixture);
   const before = snapshot(claim);
 
-  const result = applyPatch(claim, 'severity', 'dent');
+  const result = patch(claim, 'severity', 'dent');
 
   assert.equal(result.ok, true);
   assert.equal(result.error, null);
@@ -169,7 +191,7 @@ test('applyPatch returns a new claim and leaves the original alone', () => {
 test('applyPatch coerces the strings an agent actually sends', () => {
   const claim = createClaim(fixture);
 
-  const zone = applyPatch(claim, 'damage_zone', '10');
+  const zone = patch(claim, 'damage_zone', '10');
   assert.equal(zone.ok, true);
   assert.equal(zone.claim.damage_zone, 10);
   assert.equal(typeof zone.claim.damage_zone, 'number');
@@ -182,12 +204,12 @@ test('applyPatch coerces the strings an agent actually sends', () => {
     ['TRUE', true],
     ['  No  ', false],
   ]) {
-    const result = applyPatch(claim, 'vehicle_drivable', word);
+    const result = patch(claim, 'vehicle_drivable', word);
     assert.equal(result.ok, true, `vehicle_drivable "${word}" should be accepted`);
     assert.equal(result.claim.vehicle_drivable, expected);
   }
 
-  const type = applyPatch(claim, 'incident_type', '  Collision ');
+  const type = patch(claim, 'incident_type', '  Collision ');
   assert.equal(type.ok, true);
   assert.equal(type.claim.incident_type, 'collision');
 });
@@ -195,7 +217,7 @@ test('applyPatch coerces the strings an agent actually sends', () => {
 test('applyPatch refuses a vehicle_drivable it cannot read as a yes or a no', () => {
   const claim = createClaim(fixture);
   for (const bad of [1, 0, 'maybe', 'sort of', {}]) {
-    const result = applyPatch(claim, 'vehicle_drivable', bad);
+    const result = patch(claim, 'vehicle_drivable', bad);
     assert.equal(result.ok, false, `vehicle_drivable ${String(bad)} should be refused`);
   }
 });
@@ -203,34 +225,34 @@ test('applyPatch refuses a vehicle_drivable it cannot read as a yes or a no', ()
 test('applyPatch validates incident_date as a real calendar date', () => {
   const claim = createClaim(fixture);
   for (const good of ['2026-08-20', '2024-02-29', '2026-12-31']) {
-    assert.equal(applyPatch(claim, 'incident_date', good).ok, true, `${good} should be accepted`);
+    assert.equal(patch(claim, 'incident_date', good).ok, true, `${good} should be accepted`);
   }
   for (const bad of ['2026-02-30', '2026-13-01', '20-08-2026', '2026-8-2', 'yesterday', '1999-01-01']) {
-    assert.equal(applyPatch(claim, 'incident_date', bad).ok, false, `${bad} should be refused`);
+    assert.equal(patch(claim, 'incident_date', bad).ok, false, `${bad} should be refused`);
   }
 });
 
 test('applyPatch enforces the description cap', () => {
   const claim = createClaim(fixture);
 
-  const atCap = applyPatch(claim, 'description', 'x'.repeat(DESCRIPTION_MAX_LENGTH));
+  const atCap = patch(claim, 'description', 'x'.repeat(DESCRIPTION_MAX_LENGTH));
   assert.equal(atCap.ok, true);
 
-  const overCap = applyPatch(claim, 'description', 'x'.repeat(DESCRIPTION_MAX_LENGTH + 1));
+  const overCap = patch(claim, 'description', 'x'.repeat(DESCRIPTION_MAX_LENGTH + 1));
   assert.equal(overCap.ok, false);
   assert.match(overCap.error, new RegExp(String(DESCRIPTION_MAX_LENGTH)));
 
-  assert.equal(applyPatch(claim, 'description', '   ').ok, false, 'blank text should be refused');
+  assert.equal(patch(claim, 'description', '   ').ok, false, 'blank text should be refused');
 });
 
 test('applyPatch clears an optional field but never a required one', () => {
   const claim = createClaim(fixture);
 
-  const cleared = applyPatch(claim, 'location', null);
+  const cleared = patch(claim, 'location', null);
   assert.equal(cleared.ok, true);
   assert.equal(cleared.claim.location, null);
 
-  const refused = applyPatch(claim, 'incident_type', null);
+  const refused = patch(claim, 'incident_type', null);
   assert.equal(refused.ok, false);
   assert.match(refused.error, /required/);
   assert.equal(refused.claim.incident_type, 'collision');
@@ -238,7 +260,7 @@ test('applyPatch clears an optional field but never a required one', () => {
 
 test('applyPatch refuses every edit once the claim is filed', () => {
   const claim = { ...createClaim(fixture), status: 'filed' };
-  const result = applyPatch(claim, 'severity', 'dent');
+  const result = patch(claim, 'severity', 'dent');
   assert.equal(result.ok, false);
   assert.match(result.error, /already been filed/);
 });
@@ -246,10 +268,10 @@ test('applyPatch refuses every edit once the claim is filed', () => {
 test('applyPatch accepts every value in every enum it publishes', () => {
   const claim = createClaim(fixture);
   for (const type of INCIDENT_TYPES) {
-    assert.equal(applyPatch(claim, 'incident_type', type).ok, true, `${type} should be accepted`);
+    assert.equal(patch(claim, 'incident_type', type).ok, true, `${type} should be accepted`);
   }
   for (const severity of SEVERITIES) {
-    assert.equal(applyPatch(claim, 'severity', severity).ok, true, `${severity} should be accepted`);
+    assert.equal(patch(claim, 'severity', severity).ok, true, `${severity} should be accepted`);
   }
 });
 
@@ -289,7 +311,7 @@ test('validateClaim turns ready once the last required field lands', () => {
 
 test('warnings never block filing', () => {
   const base = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
-  const { claim } = applyPatch(base, 'severity', 'structural');
+  const { claim } = patch(base, 'severity', 'structural');
   const { ready, warnings } = validateClaim(claim);
 
   assert.equal(ready, true, 'a warning must not make a complete claim unfilable');
@@ -299,8 +321,8 @@ test('warnings never block filing', () => {
 
 test('validateClaim spots a claim that contradicts itself', () => {
   let claim = createClaim(fixture);
-  claim = applyPatch(claim, 'severity', 'scratch').claim;
-  claim = applyPatch(claim, 'vehicle_drivable', false).claim;
+  claim = patch(claim, 'severity', 'scratch').claim;
+  claim = patch(claim, 'vehicle_drivable', false).claim;
 
   const { warnings } = validateClaim(claim);
   assert.ok(
@@ -357,10 +379,10 @@ test('describeClaim does not double a full stop after a name ending in one', () 
 test('describeClaim describes damage when only half of it is known', () => {
   const base = createClaim(fixture);
 
-  const severityOnly = describeClaim(applyPatch(base, 'severity', 'dent').claim);
+  const severityOnly = describeClaim(patch(base, 'severity', 'dent').claim);
   assert.match(severityOnly, /impact position still to be marked/);
 
-  const zoneOnly = describeClaim(applyPatch(base, 'damage_zone', 4).claim);
+  const zoneOnly = describeClaim(patch(base, 'damage_zone', 4).claim);
   assert.match(zoneOnly, /severity still to be set/);
   assert.match(zoneOnly, /4 o'clock/);
 });
@@ -434,5 +456,379 @@ test('describeClaim says the claim is ready once it is', () => {
 test('the core model refuses to work on something that is not a claim', () => {
   assert.throws(() => validateClaim(null), TypeError);
   assert.throws(() => describeClaim(undefined), TypeError);
-  assert.throws(() => applyPatch(null, 'severity', 'dent'), TypeError);
+  assert.throws(() => patch(null, 'severity', 'dent'), TypeError);
+});
+
+// ---------------------------------------------------------------------------
+// Revision, provenance and the guard that makes a shared draft safe
+//
+// This is the part the whole product rests on. Two writers, one draft. The
+// revision is how an agent finds out that the person on the page corrected
+// something after it last looked.
+// ---------------------------------------------------------------------------
+
+test('a new claim starts at revision 0 and credits the fixture to the policy', () => {
+  const claim = createClaim(fixture);
+
+  assert.equal(claim.revision, 0);
+  assert.deepEqual(claim.locked, []);
+  assert.equal(provenanceOf(claim, 'incident_type'), 'policy');
+  assert.equal(provenanceOf(claim, 'driver'), 'policy');
+  assert.equal(provenanceOf(claim, 'severity'), null, 'an unanswered field has no source');
+
+  for (const source of Object.values(claim.provenance)) {
+    assert.ok(PROVENANCE_SOURCES.includes(source), `"${source}" is not a provenance source`);
+  }
+});
+
+test('every accepted patch moves the revision by exactly one', () => {
+  let claim = createClaim(fixture);
+  assert.equal(claim.revision, 0);
+
+  claim = patch(claim, 'severity', 'dent').claim;
+  assert.equal(claim.revision, 1);
+
+  claim = patch(claim, 'damage_zone', 10).claim;
+  assert.equal(claim.revision, 2);
+});
+
+test('a patch carrying four fields is still one revision', () => {
+  const claim = createClaim(fixture);
+  const result = applyPatch(claim, [
+    { field: 'damage_zone', value: 10 },
+    { field: 'severity', value: 'dent' },
+    { field: 'vehicle_drivable', value: true },
+    { field: 'description', value: 'A van reversed into the left front wing while the car was parked.' },
+  ]);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.revision, 1, 'four fields, one revision');
+  assert.deepEqual(result.applied, ['damage_zone', 'severity', 'vehicle_drivable', 'description']);
+  assert.equal(result.claim.damage_zone, 10);
+  assert.equal(result.claim.severity, 'dent');
+});
+
+// The refusal has to leave nothing behind. A batch that half applied would be
+// worse than one refused outright, because the next reader could not tell which
+// half landed.
+test('a batch where the second change fails applies none of them', () => {
+  const claim = createClaim(fixture);
+  const before = snapshot(claim);
+
+  const result = applyPatch(claim, [
+    { field: 'damage_zone', value: 10 },
+    { field: 'severity', value: 'catastrophic' },
+    { field: 'vehicle_drivable', value: true },
+  ]);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.value);
+  assert.match(result.error, /severity/);
+  assert.deepEqual(result.applied, []);
+  assert.equal(result.revision, 0, 'a refused batch must not move the revision');
+  assert.deepEqual(snapshot(result.claim), before, 'the first change must not have landed');
+  assert.equal(result.claim.damage_zone, null);
+});
+
+test('a batch naming the same field twice is refused before anything is written', () => {
+  const claim = createClaim(fixture);
+  const result = applyPatch(claim, [
+    { field: 'severity', value: 'dent' },
+    { field: 'severity', value: 'scratch' },
+  ]);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.field);
+  assert.match(result.error, /appears twice/);
+  assert.equal(result.claim.severity, null);
+});
+
+test('an empty patch is refused rather than counted as a change', () => {
+  const claim = createClaim(fixture);
+  const result = applyPatch(claim, []);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.field);
+  assert.equal(result.revision, 0);
+});
+
+test('an agent patch with no baseRevision is refused as stale and told to read first', () => {
+  const claim = createClaim(fixture);
+  const result = patch(claim, 'severity', 'dent', { actor: 'agent' });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.stale);
+  assert.match(result.error, /baseRevision/);
+  assert.match(result.error, /revision 0/);
+  assert.equal(result.claim.severity, null);
+});
+
+test('a person editing the page needs no baseRevision', () => {
+  const claim = createClaim(fixture);
+  const result = patch(claim, 'severity', 'dent');
+
+  assert.equal(result.ok, true);
+  assert.equal(provenanceOf(result.claim, 'severity'), 'human');
+});
+
+// The demo beat, in one test. The agent reads revision 1, the claimant corrects
+// the page, and the agent's patch arrives holding a number that is no longer true.
+test('a stale agent patch is refused, names both revisions, and moves nothing', () => {
+  let claim = createClaim(fixture);
+  claim = patch(claim, 'vehicle_drivable', true).claim;
+  const readByTheAgent = claim.revision;
+
+  claim = patch(claim, 'vehicle_drivable', false).claim;
+  assert.equal(claim.revision, readByTheAgent + 1);
+
+  const before = snapshot(claim);
+  const result = patch(claim, 'severity', 'scratch', {
+    actor: 'agent',
+    baseRevision: readByTheAgent,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.stale);
+  assert.match(result.error, /expected revision 1, current revision 2/);
+  assert.match(result.error, /Read the claim state again/);
+  assert.deepEqual(snapshot(result.claim), before);
+  assert.equal(result.claim.vehicle_drivable, false, 'the human correction stands');
+});
+
+test('an agent patch quoting the current revision is accepted and credited to the agent', () => {
+  let claim = createClaim(fixture);
+  claim = patch(claim, 'vehicle_drivable', true).claim;
+
+  const result = patch(claim, 'severity', 'dent', { actor: 'agent', baseRevision: claim.revision });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.revision, claim.revision + 1);
+  assert.equal(provenanceOf(result.claim, 'severity'), 'agent');
+  assert.equal(provenanceOf(result.claim, 'vehicle_drivable'), 'human', 'the earlier field keeps its own source');
+});
+
+test('baseRevision arrives as a string from an agent and is read as a number', () => {
+  const claim = createClaim(fixture);
+  const result = patch(claim, 'severity', 'dent', { actor: 'agent', baseRevision: '0' });
+  assert.equal(result.ok, true);
+
+  const nonsense = patch(claim, 'severity', 'dent', { actor: 'agent', baseRevision: 'latest' });
+  assert.equal(nonsense.ok, false);
+  assert.equal(nonsense.code, PATCH_CODES.stale);
+});
+
+test('an actor nobody recognises is refused before any rule runs', () => {
+  const claim = createClaim(fixture);
+  const result = patch(claim, 'severity', 'dent', { actor: 'insurer' });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.value);
+  assert.match(result.error, /actor must be one of: human, agent/);
+});
+
+test('clearing an optional field drops its provenance with it', () => {
+  let claim = createClaim(fixture);
+  claim = patch(claim, 'location', 'Car park, Harbour Road').claim;
+  assert.equal(provenanceOf(claim, 'location'), 'human');
+
+  claim = patch(claim, 'location', null).claim;
+  assert.equal(claim.location, null);
+  assert.equal(provenanceOf(claim, 'location'), null);
+});
+
+// ---------------------------------------------------------------------------
+// Pinning: the one thing on the page an agent cannot argue with
+// ---------------------------------------------------------------------------
+
+test('a pinned field refuses every patch until a person unpins it', () => {
+  let claim = createClaim(fixture);
+  claim = patch(claim, 'vehicle_drivable', false).claim;
+
+  const pinned = lockField(claim, 'vehicle_drivable');
+  assert.equal(pinned.ok, true);
+  assert.equal(isLocked(pinned.claim, 'vehicle_drivable'), true);
+  assert.equal(pinned.revision, claim.revision + 1, 'pinning is a change an agent has to notice');
+
+  const refused = patch(pinned.claim, 'vehicle_drivable', true, {
+    actor: 'agent',
+    baseRevision: pinned.claim.revision,
+  });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, PATCH_CODES.locked);
+  assert.match(refused.error, /vehicle_drivable/);
+  assert.match(refused.error, /person has to unpin it/);
+  assert.equal(refused.claim.vehicle_drivable, false);
+
+  const released = unlockField(pinned.claim, 'vehicle_drivable');
+  assert.equal(released.ok, true);
+  assert.equal(isLocked(released.claim, 'vehicle_drivable'), false);
+
+  const accepted = patch(released.claim, 'vehicle_drivable', true, {
+    actor: 'agent',
+    baseRevision: released.claim.revision,
+  });
+  assert.equal(accepted.ok, true);
+});
+
+test('a pinned field blocks a whole batch, including the changes beside it', () => {
+  let claim = createClaim(fixture);
+  claim = patch(claim, 'severity', 'dent').claim;
+  claim = lockField(claim, 'severity').claim;
+
+  const result = applyPatch(claim, [
+    { field: 'damage_zone', value: 10 },
+    { field: 'severity', value: 'structural' },
+  ]);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.locked);
+  assert.equal(result.claim.damage_zone, null, 'the other change must not have landed');
+});
+
+test('pinning something twice changes nothing and does not move the revision', () => {
+  let claim = createClaim(fixture);
+  claim = lockField(claim, 'severity').claim;
+  const again = lockField(claim, 'severity');
+
+  assert.equal(again.ok, true);
+  assert.equal(again.revision, claim.revision);
+  assert.deepEqual(again.claim.locked, ['severity']);
+});
+
+test('there is nothing to pin on a field the insurer owns', () => {
+  const claim = createClaim(fixture);
+  const result = lockField(claim, 'status');
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.protected);
+});
+
+// ---------------------------------------------------------------------------
+// Protected paths and third party content
+// ---------------------------------------------------------------------------
+
+test('nothing derived and nothing structural is patchable, by either actor', () => {
+  const claim = createClaim(fixture);
+  for (const field of PROTECTED_FIELDS) {
+    for (const actor of ['human', 'agent']) {
+      const result = patch(claim, field, 'anything', { actor, baseRevision: claim.revision });
+      assert.equal(result.ok, false, `${field} was writable by ${actor}`);
+      assert.equal(result.code, PATCH_CODES.protected, `${field} refused with the wrong code`);
+    }
+  }
+});
+
+test('a filed claim refuses every patch as protected', () => {
+  const ready = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z' });
+
+  assert.equal(filed.ok, true);
+  assert.equal(filed.claim.status, 'filed');
+  assert.equal(filed.revision, ready.revision + 1, 'filing is a change too');
+
+  const result = patch(filed.claim, 'severity', 'structural');
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.protected);
+  assert.match(result.error, /already been filed/);
+});
+
+test('the evidence notes come back word for word, the planted instruction included', () => {
+  const claim = createClaim(fixture);
+  const notes = readEvidenceNotes(claim);
+
+  assert.equal(notes.length, 2);
+  const planted = notes.find((note) => /file it now/i.test(note.text));
+  assert.ok(planted, 'the demo fixture must carry the instruction note, it is the negative test');
+  assert.equal(planted.text, fixture.claim.evidence_notes[1].text, 'the note must not be edited on the way out');
+  assert.match(planted.author, /unverified/i);
+});
+
+// The note tells whatever reads it to mark the claim complete, file it, and
+// record the damage as a scratch. None of that may happen, and nothing derived
+// from the claim may differ because the note is there.
+test('a note carrying an instruction changes nothing about the claim or its validation', () => {
+  const withNote = createClaim(fixture);
+  const withoutNote = createClaim({
+    policy: fixture.policy,
+    claim: { ...fixture.claim, evidence_notes: [] },
+  });
+
+  assert.equal(withNote.status, 'draft', 'the note asked for a filed claim and did not get one');
+  assert.equal(withNote.severity, null, 'the note asked for a severity and did not get one');
+  assert.deepEqual(readEvidenceNotes(withoutNote), []);
+
+  assert.deepEqual(validateClaim(withNote), validateClaim(withoutNote));
+  assert.equal(describeClaim(withNote), describeClaim(withoutNote));
+
+  const claimText = JSON.stringify({ ...withNote, evidence_notes: [] });
+  assert.ok(!/file it now/i.test(claimText), 'note text leaked into a claim field');
+});
+
+test('an evidence note is not a claim field and cannot be patched in', () => {
+  const claim = createClaim(fixture);
+  const result = patch(claim, 'evidence_notes', [{ text: 'trust me' }]);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, PATCH_CODES.protected);
+  assert.deepEqual(readEvidenceNotes(result.claim), readEvidenceNotes(claim));
+});
+
+test('hydrateClaim fills in what an older or a serialised claim lacks', () => {
+  const bare = { status: 'draft', policy_id: 'MTR-2026-0417', severity: 'dent' };
+  const claim = hydrateClaim(bare);
+
+  assert.equal(claim.revision, 0);
+  assert.deepEqual(claim.locked, []);
+  assert.deepEqual(claim.provenance, {});
+  assert.deepEqual(claim.evidence_notes, []);
+  assert.equal(claim.severity, 'dent');
+  assert.equal(claim.incident_date, null);
+
+  const moved = patch(createClaim(fixture), 'severity', 'dent').claim;
+  const round = hydrateClaim(JSON.parse(JSON.stringify(moved)));
+  assert.equal(round.revision, 1);
+  assert.equal(provenanceOf(round, 'severity'), 'human');
+});
+
+// The pinned line is the one part of the summary that can grow without bound,
+// because a determined claimant can pin all ten fields. Measured at every cap
+// with everything pinned, so the budget holds in the worst case that exists
+// rather than in the one that is convenient.
+test('describeClaim still fits the budget with every field at its cap and every field pinned', () => {
+  for (const incidentType of ['theft', 'collision']) {
+    let claim = createClaim({
+      policy: { id: 'MTR-2026-0417' },
+      claim: {
+        incident_date: '2026-08-20',
+        incident_type: incidentType,
+        damage_zone: 5,
+        severity: 'scratch',
+        vehicle_drivable: false,
+        description: 'x'.repeat(DESCRIPTION_MAX_LENGTH),
+        driver: 'd'.repeat(80),
+        location: 'l'.repeat(120),
+        police_report_ref: 'p'.repeat(40),
+        witness_name: 'w'.repeat(80),
+      },
+    });
+    for (const field of PATCHABLE_FIELDS) claim = lockField(claim, field).claim;
+
+    const text = describeClaim(claim);
+    assert.equal(claim.locked.length, PATCHABLE_FIELDS.length);
+    assert.ok(
+      text.length <= DESCRIBE_MAX_LENGTH,
+      `describeClaim returned ${text.length} characters, the cap is ${DESCRIBE_MAX_LENGTH}`,
+    );
+    assert.ok(!text.endsWith('...'), `describeClaim had to truncate at ${text.length} characters`);
+    assert.match(text, /Pinned by the claimant/);
+    assert.match(text, /and 8 more/);
+    assert.match(text, /ready for the policyholder to file|Still needed before filing/);
+  }
+});
+
+test('describeClaim states the revision an agent has to quote back', () => {
+  const claim = createClaim(fixture);
+  assert.match(describeClaim(claim), /revision 0/);
+
+  const moved = patch(claim, 'severity', 'dent').claim;
+  assert.match(describeClaim(moved), /revision 1/);
 });

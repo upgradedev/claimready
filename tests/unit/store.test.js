@@ -291,3 +291,197 @@ test('the fixture object itself is never written to', () => {
 
   assert.equal(JSON.stringify(fixture), before);
 });
+
+// ---------------------------------------------------------------------------
+// One draft, two writers
+//
+// The store is where the page and the agent meet. Everything below is about
+// what happens when both of them write to the same claim.
+// ---------------------------------------------------------------------------
+
+test('the store carries the revision, and a page edit moves it by one', () => {
+  const store = createStore(fixture);
+  assert.equal(store.getState().claim.revision, 0);
+
+  const result = store.dispatch({ type: 'patch', field: 'severity', value: 'dent' });
+  assert.equal(result.revision, 1);
+  assert.equal(store.getState().claim.revision, 1);
+  assert.deepEqual(result.applied, ['severity']);
+});
+
+test('a page edit is a human edit, and a tool patch is an agent edit', () => {
+  const store = createStore(fixture);
+
+  store.dispatch({ type: 'patch', field: 'severity', value: 'dent' });
+  assert.equal(store.getState().claim.provenance.severity, 'human');
+
+  store.dispatch({
+    type: 'patch',
+    field: 'damage_zone',
+    value: 10,
+    actor: 'agent',
+    baseRevision: store.getState().claim.revision,
+  });
+  assert.equal(store.getState().claim.provenance.damage_zone, 'agent');
+  assert.equal(store.getState().claim.provenance.severity, 'human', 'the earlier field kept its source');
+});
+
+test('an agent patch through the store must quote the revision it read', () => {
+  const store = createStore(fixture);
+
+  const blind = store.dispatch({ type: 'patch', field: 'severity', value: 'dent', actor: 'agent' });
+  assert.equal(blind.ok, false);
+  assert.equal(blind.code, 'PATCH_REJECTED_STALE');
+  assert.equal(store.getState().claim.severity, null);
+  assert.equal(store.getState().lastCode, 'PATCH_REJECTED_STALE');
+});
+
+// The whole demonstration in one test. The agent reads, the claimant corrects
+// the page, and the agent's next write is refused rather than silently undoing
+// the correction.
+test('a human correction on the page beats an agent patch that has not seen it', () => {
+  const store = createStore(fixture);
+
+  store.dispatch({ type: 'patch', field: 'vehicle_drivable', value: true, actor: 'agent', baseRevision: 0 });
+  const readByTheAgent = store.getState().claim.revision;
+
+  store.dispatch({ type: 'patch', field: 'vehicle_drivable', value: false });
+
+  const stale = store.dispatch({
+    type: 'patch',
+    field: 'severity',
+    value: 'scratch',
+    actor: 'agent',
+    baseRevision: readByTheAgent,
+  });
+
+  assert.equal(stale.ok, false);
+  assert.equal(stale.code, 'PATCH_REJECTED_STALE');
+  assert.match(stale.error, /expected revision 1, current revision 2/);
+  assert.equal(store.getState().claim.vehicle_drivable, false, 'the correction stands');
+  assert.equal(store.getState().claim.severity, null, 'nothing from the stale patch landed');
+
+  const reread = store.getState().claim.revision;
+  const retry = store.dispatch({
+    type: 'patch',
+    field: 'severity',
+    value: 'structural',
+    actor: 'agent',
+    baseRevision: reread,
+  });
+  assert.equal(retry.ok, true, 'reading again is all it takes to recover');
+});
+
+test('one dispatch can carry several changes, and it is still one revision', () => {
+  const store = createStore(fixture);
+  const result = store.dispatch({
+    type: 'patch',
+    actor: 'agent',
+    baseRevision: 0,
+    changes: [
+      { field: 'damage_zone', value: '10' },
+      { field: 'severity', value: 'dent' },
+      { field: 'vehicle_drivable', value: 'true' },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.revision, 1);
+  assert.deepEqual(result.applied, ['damage_zone', 'severity', 'vehicle_drivable']);
+  assert.equal(store.getState().claim.damage_zone, 10);
+  assert.equal(store.getState().claim.vehicle_drivable, true);
+});
+
+test('a batch that fails halfway leaves the store exactly where it was', () => {
+  const store = createStore(fixture);
+  const before = snapshot(store.getState().claim);
+
+  const result = store.dispatch({
+    type: 'patch',
+    changes: [
+      { field: 'damage_zone', value: 10 },
+      { field: 'severity', value: 'terminal' },
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'PATCH_REJECTED_VALUE');
+  assert.deepEqual(snapshot(store.getState().claim), before);
+  assert.equal(store.getState().claim.revision, 0);
+});
+
+test('pinning a field on the page stops the agent moving it', () => {
+  const store = createStore(fixture);
+  store.dispatch({ type: 'patch', field: 'severity', value: 'structural' });
+
+  const pinned = store.dispatch({ type: 'lock', field: 'severity' });
+  assert.equal(pinned.ok, true);
+  assert.deepEqual(store.getState().claim.locked, ['severity']);
+
+  const refused = store.dispatch({
+    type: 'patch',
+    field: 'severity',
+    value: 'scratch',
+    actor: 'agent',
+    baseRevision: store.getState().claim.revision,
+  });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, 'PATCH_REJECTED_LOCKED');
+  assert.equal(store.getState().claim.severity, 'structural');
+
+  store.dispatch({ type: 'unlock', field: 'severity' });
+  assert.deepEqual(store.getState().claim.locked, []);
+  const allowed = store.dispatch({
+    type: 'patch',
+    field: 'severity',
+    value: 'scratch',
+    actor: 'agent',
+    baseRevision: store.getState().claim.revision,
+  });
+  assert.equal(allowed.ok, true);
+});
+
+test('pinning tells the subscribers, because the page has to redraw the pin', () => {
+  const store = createStore(fixture);
+  let calls = 0;
+  store.subscribe(() => {
+    calls += 1;
+  });
+
+  store.dispatch({ type: 'lock', field: 'severity' });
+  assert.equal(calls, 1);
+});
+
+test('filing advances the revision too, so a cached read cannot miss it', () => {
+  const store = readyStore();
+  const before = store.getState().claim.revision;
+
+  const result = store.dispatch({ type: 'file', at: '2026-08-26T09:30:00.000Z' });
+  assert.equal(result.ok, true);
+  assert.equal(store.getState().claim.revision, before + 1);
+});
+
+test('reset puts the revision, the pins and the provenance back as well', () => {
+  const store = createStore(fixture);
+
+  store.dispatch({ type: 'patch', field: 'severity', value: 'dent' });
+  store.dispatch({ type: 'lock', field: 'severity' });
+  assert.equal(store.getState().claim.revision, 2);
+
+  store.dispatch({ type: 'reset' });
+  const claim = store.getState().claim;
+  assert.equal(claim.revision, 0);
+  assert.deepEqual(claim.locked, []);
+  assert.equal(claim.provenance.severity, undefined);
+  assert.equal(claim.provenance.incident_type, 'policy', 'what the fixture supplied is still the fixture');
+});
+
+test('the store carries the evidence notes and never lets a patch touch them', () => {
+  const store = createStore(fixture);
+  assert.equal(store.getState().claim.evidence_notes.length, 2);
+
+  const result = store.dispatch({ type: 'patch', field: 'evidence_notes', value: [] });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'PATCH_REJECTED_PROTECTED');
+  assert.equal(store.getState().claim.evidence_notes.length, 2);
+});

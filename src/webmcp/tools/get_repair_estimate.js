@@ -79,7 +79,11 @@ export default (ctx) => ({
     }
 
     const band = estimateRepair({ zone, severity, vehicleClass: ctx.vehicleClass });
-    ctx.publish('estimate', { band, zone, severity, whatIf, source: 'agent' });
+    // Guarded for the same reason as in check_coverage: the page is the usual caller, not the only
+    // possible one.
+    if (typeof ctx.publish === 'function') {
+      ctx.publish('estimate', { band, zone, severity, whatIf, source: 'agent' });
+    }
 
     const currency = band.currency || ctx.currency;
     const lines = [];

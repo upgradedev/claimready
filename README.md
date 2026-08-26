@@ -40,9 +40,9 @@ flowchart TB
 
   subgraph origin["claimready, one origin, no runtime network calls"]
     MCP["WebMCP layer: detect document.modelContext, register tools with an AbortSignal each"]
-    TOOLS["Tools: describe, read, patch, validate, check cover, estimate"]
+    TOOLS["Tools: describe, read, requirements, patch, validate, check cover, estimate, evidence notes, assistance options"]
     STORE["Store: one claim draft, subscribers notified on every change"]
-    CORE["Core domain: claim rules, coverage table, repair bands. Pure, no DOM"]
+    CORE["Core domain: claim rules, insurer rule packs, derived requirements, coverage table, repair bands. Pure, no DOM"]
     UI["Page: fields, evidence, live tool call ledger"]
     HUMAN["Human only, no tool reaches these: File claim, Request roadside assistance"]
   end
@@ -110,14 +110,22 @@ carries an instruction aimed at a model.
 |---|---|---|---|
 | `read_claim_state` | reads | `readOnlyHint: true`, `untrustedContentHint: true` | built |
 | `describe_claim` | reads | `readOnlyHint: true`, `untrustedContentHint: true` | built |
+| `get_requirements` | reads | `readOnlyHint: true` | built |
 | `apply_claim_patch` | writes one field of the page's draft | `readOnlyHint: false` | built |
 | `validate_claim` | reads | `readOnlyHint: true` | built |
 | `check_coverage` | reads | `readOnlyHint: true` | built |
 | `get_repair_estimate` | reads | `readOnlyHint: true` | built |
-| `get_assistance_status` | reads, and only exists after a person asks for assistance | `readOnlyHint: true` | not yet built |
+| `read_evidence_notes` | reads | `readOnlyHint: true`, `untrustedContentHint: true` | built |
+| `get_assistance_options` | reads, and is registered only while the claim says the vehicle cannot be driven | `readOnlyHint: true` | built |
 
-`untrustedContentHint` is set on the two tools that hand back free text a person typed. The claim
-description is the visitor's words, not the insurer's, and it is labelled that way. The one tool
+The first eight are registered for the life of the page. `get_assistance_options` comes and goes:
+`src/webmcp/register.js` re-asks `CONDITIONAL_TOOLS` on every store change, so the tool appears when
+`vehicle_drivable` is false and is withdrawn when the car is drivable again. The page's status strip
+reads the live registered list, so you can watch the count move.
+
+`untrustedContentHint` is set on the three tools that hand back free text the insurer did not write.
+The claim description is the visitor's words, and the evidence notes are a repairer's and a third
+party's words, so none of it is the insurer speaking and all of it is labelled that way. The one tool
 that writes says `readOnlyHint: false` out loud rather than leaving the annotation off, because an
 empty annotations block leaves an agent unable to tell a write apart from a tool nobody got round
 to annotating.
@@ -146,7 +154,7 @@ Our choices, mapped to the Chrome WebMCP tool security guide at
 |---|---|
 | Keep tools same origin | Every tool is registered on this origin. `exposedTo` is never passed, and the readiness gate fails if it appears. The `tools` Permissions Policy is left at its default of `self`, and `vercel.json` deliberately sets no entry for it. |
 | Use the annotations that exist | `readOnlyHint` and `untrustedContentHint`, declared explicitly on every tool rather than left to a default. The style gate rejects annotation names from other dialects. |
-| Validate every input in code | JSON Schema tells the agent the shape. It is not the check. Two tools take input, `apply_claim_patch` and `get_repair_estimate`, and both re-validate in code against the enums in `src/core/claim.js`, so an unknown field or an out of range value comes back as a sentence the agent can correct itself from rather than being written. The rest declare an empty schema and take no input at all, which you can confirm with `grep -c "properties: {}" src/webmcp/tools/*.js`. |
+| Validate every input in code | JSON Schema tells the agent the shape. It is not the check. Three tools take input, `apply_claim_patch`, `get_repair_estimate` and `get_requirements`, and each re-validates in code against the enums in `src/core/claim.js` or the loaded rule pack, so an unknown field, an unknown requirement id or an out of range value comes back as a sentence the agent can correct itself from rather than being written. The other six declare an empty schema and take no input at all, which you can confirm with `grep -c "properties: {}" src/webmcp/tools/*.js`. |
 | Keep tool output small | Tool output is capped at 1500 characters, the budget from the guide. Tool names are capped at 30 characters, tool descriptions at 500, parameter descriptions at 150, all enforced by `node scripts/check_style.mjs`. |
 | Keep tool metadata descriptive | Descriptions say what a tool returns. None of them tells the model what to do, which is the line that keeps tool metadata from becoming an instruction channel. |
 | Do not treat origin restrictions as a security boundary | We do not. Same origin registration limits accidental exposure, it does not stop a hostile page or a compromised agent. The real boundary here is that the two actions with consequences are not in the tool surface at all, so no amount of persuasion reaches them. |
@@ -225,18 +233,19 @@ go stale between commits.
 | Readiness gate, with a self test that proves it fails | built | `node scripts/readiness.mjs --selftest` |
 | Static hosting config, strict CSP, no build step | built | `cat vercel.json` |
 | MIT licence | built | `cat LICENSE` |
-| Core domain: claim, coverage, estimate, store | built | `node --test tests/unit`, and row `PUR` |
+| Core domain: claim, coverage, estimate, store, insurer rule packs, derived requirements | built | `node --test tests/unit`, and row `PUR` |
 | WebMCP registration layer, one AbortController per tool | built | `cat src/webmcp/register.js` |
 | Tools | built | count them with `ls src/webmcp/tools/*.js`, and row `TOL` |
 | Page and tool call ledger | built | open `index.html`, and row `IDX` |
 | Unit tests | built | `node --test tests/unit` prints the pass and fail counts |
 | Live URL a judge can open | not yet deployed | `node scripts/readiness.mjs` row `LIVE` |
 | Damage sketch module, agent draws and human corrects | not yet built | absent from `src/webmcp/tools` |
-| Roadside assistance dispatch simulation, the tool that appears after a human click | not yet built | absent from `src/webmcp/tools` |
+| Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
+| Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
 | Declarative form step, the HTML attribute API | not yet built | absent from `index.html` |
 | Evals against the tool surface | not yet built | absent from `tests` |
 | Public video | not yet built | `node scripts/readiness.mjs` row `D4` |
-| Written description | not yet built | `node scripts/readiness.mjs` row `D3` |
+| Written description | started, not yet complete | `node scripts/readiness.mjs` row `D3` names the elements still missing |
 
 Every count in this README comes with the command that produces it, so no number here has to be
 believed. The readiness gate is the live version of this table, and it is the one to trust when the
@@ -247,11 +256,12 @@ two disagree.
 ```
 index.html            the judge URL, static, no inline script or style
 assets/styles.css     all styling, external because our CSP forbids inline styles
-src/core/             pure domain: store, claim, coverage, estimate. No DOM, no fetch
+src/core/             pure domain: store, claim, coverage, estimate, policy packs, requirements. No DOM, no fetch
 src/webmcp/register.js  API detection, registration with one AbortController per tool, output budget
 src/webmcp/tools/     one tool per file, one default exported factory each
 src/ui/               rendering, the tool call ledger, and the human only buttons
 fixtures/             the synthetic policy, vehicle and parts table
+fixtures/insurers/    the insurer rule packs the requirements are derived from
 tests/unit/           node --test, no runner
 scripts/              the style gate and the readiness gate, both dependency free
 docs/architecture.md  the layer map and the dependency rule

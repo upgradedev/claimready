@@ -22,6 +22,12 @@
     </span>
   </div>
 
+  <div class="revision" data-el="revision-chip">
+    <span class="revision-label">Draft revision</span>
+    <span class="revision-number" data-el="revision">0</span>
+    <span class="revision-note">Every accepted change moves this, whoever made it.</span>
+  </div>
+
   <div class="session">
     <p class="session-line">
       <span class="session-name" data-el="persona-name">Loading the session</span>
@@ -40,7 +46,7 @@
 <section class="strip" data-el="strip" aria-label="Agent connection">
   <p class="strip-line">
     <span class="dot" data-el="status-dot" aria-hidden="true"></span>
-    <span class="strip-text" data-el="status-text" role="status">Looking for an agent connection</span>
+    <span class="strip-text" data-el="status-text">Looking for an agent connection</span>
   </p>
   <p class="strip-detail" data-el="status-detail"></p>
   <details class="strip-help">
@@ -54,6 +60,19 @@
   </details>
 </section>
 
+<p class="live-region" data-el="live" role="status" aria-live="polite"></p>
+
+<section class="demo-bar" aria-label="Demonstration controls">
+  <div class="demo-control">
+    <label class="demo-label" for="insurer-select">Insurer rule pack</label>
+    <select id="insurer-select" class="demo-select" data-el="insurer-select">
+      <option value="">Loading</option>
+    </select>
+  </div>
+  <button type="button" class="btn btn-plain btn-inline" data-el="reset-btn">Load synthetic incident</button>
+  <p class="demo-note" data-el="pack-note">Same tools, a different insurer's rules.</p>
+</section>
+
 <noscript>
   <p class="strip strip-warn">This page needs JavaScript. The claim draft, the cover check and the
     agent tools all run in your browser, and nothing is sent anywhere.</p>
@@ -64,8 +83,10 @@
   <section class="panel panel-claim" aria-labelledby="h-claim">
     <div class="panel-head">
       <h2 id="h-claim">Claim draft</h2>
-      <p class="panel-sub">Your agent and you write to the same draft. Every row shows who set it last.</p>
+      <p class="panel-sub">Your agent and you write to the same draft. Every row shows who set it
+        last, and you can pin a row so an agent cannot change it.</p>
     </div>
+    <p class="claim-note" data-el="claim-note"></p>
     <ul class="fields" data-el="fields"></ul>
 
     <details class="optional-block" data-el="optional-details">
@@ -79,6 +100,16 @@
   </section>
 
   <div class="col">
+
+    <section class="panel panel-req" aria-labelledby="h-req">
+      <div class="panel-head">
+        <h2 id="h-req">What this intake still needs</h2>
+        <p class="panel-sub">Read from the insurer's published rules and the draft as it stands.
+          Change an answer and this list is worked out again, on the page, with no model involved.</p>
+      </div>
+      <p class="req-summary" data-el="req-summary">Working out what the intake asks for.</p>
+      <ul class="reqs" data-el="requirements"></ul>
+    </section>
 
     <section class="panel" aria-labelledby="h-cover">
       <div class="panel-head">
@@ -120,8 +151,6 @@
 
         <button type="button" class="btn btn-quiet" data-el="assistance-btn">Request roadside assistance</button>
         <p class="reason" data-el="assistance-state">Not requested. A person on this page asks for it, an agent cannot.</p>
-
-        <button type="button" class="btn btn-plain" data-el="reset-btn">Start over</button>
       </div>
     </section>
 
@@ -130,7 +159,8 @@
   <section class="panel panel-ledger" aria-labelledby="h-ledger">
     <div class="panel-head">
       <h2 id="h-ledger">Tool call ledger</h2>
-      <p class="panel-sub">Newest first. Every tool call your agent makes lands here, with what it sent and what it got back.</p>
+      <p class="panel-sub">Newest first. Every tool call your agent makes lands here, with what it
+        sent, what it got back, and anything the rules refused.</p>
     </div>
     <p class="empty" data-el="ledger-empty">No tool calls yet.</p>
     <ol class="ledger" data-el="ledger"></ol>

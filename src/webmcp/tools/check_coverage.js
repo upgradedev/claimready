@@ -51,7 +51,9 @@ export default (ctx) => ({
     }
 
     const decision = checkCoverage(ctx.policy, claim);
-    ctx.publish('coverage', { decision, source: 'agent' });
+    // The page shows the same answer the agent just got. Guarded because a tool must still work
+    // when it is driven from a harness that has no page to publish to.
+    if (typeof ctx.publish === 'function') ctx.publish('coverage', { decision, source: 'agent' });
 
     const lines = [`Cover decision on policy ${ctx.policyId}: ${decision.covered ? 'COVERED' : 'NOT COVERED'}.`];
 

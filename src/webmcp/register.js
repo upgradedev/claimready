@@ -1,5 +1,5 @@
 /**
- * WebMCP registration layer.
+ * WebMCP registration layer, and the tool surface this page publishes.
  *
  * Feature detects the API, registers each tool under its own AbortController so any single tool
  * can be withdrawn later, and never throws when the API is absent. A browser with no agent falls
@@ -7,7 +7,48 @@
  *
  * The entry point moved from navigator.modelContext to document.modelContext, and both names are
  * still live in different builds, so both are probed.
+ *
+ * DESIGN RULE, NOT A TODO. Three actions are deliberately absent from this surface and must stay
+ * absent:
+ *   1. Filing the claim. Only the person on the page can commit a claim to the insurer.
+ *   2. Unpinning a field the person pinned. Pinning is how they say "I checked this one myself",
+ *      so nothing an agent can call may release it.
+ *   3. Requesting roadside assistance. An agent can read the options and say what they are. The
+ *      button is pressed by a person.
+ * An agent that has been talked into something by a poisoned web page can therefore draft, read
+ * and check all it likes, and can commit nothing. Adding a tool for any of the three would make
+ * the product claim false, and the readiness gate fails the build if one appears.
+ *
+ * THE TOOL SET IS NOT FIXED. get_assistance_options exists only while the claim says the vehicle
+ * cannot be driven. It is registered when that answer becomes false and withdrawn when it stops
+ * being false, so the surface an agent sees is a function of the claim, not a constant.
+ *
+ * A NOTE ON THE IMPORT CYCLE BELOW, AND A TRAP THAT WAS LIVE HERE. This module imports the tool
+ * modules, and each tool module imports toResult from here. Two separate rules keep that working,
+ * and an earlier version of this comment only knew about the first one.
+ *
+ *   1. Do not add a top level constant in a tool file that is computed from an import of this
+ *      module. A tool file may only define a factory, because toResult and friends are function
+ *      declarations that are not initialised until this module finishes evaluating.
+ *   2. The tool lists below must not READ an imported binding while this module is evaluating,
+ *      which is why every entry is wrapped in an arrow rather than named directly. Without the
+ *      wrapper, importing any tool module before this one crashed the entire graph with
+ *      "Cannot access 'describeClaimTool' before initialization": the tool module started, pulled
+ *      in this module, and this module's array literal read a binding the half finished tool
+ *      module had not yet assigned. Entering through this file happened to work, so the page was
+ *      fine and the first per-tool test file would not have been. The arrows defer that read to
+ *      call time, so the graph can now be entered through any module in it.
  */
+
+import describeClaimTool from './tools/describe_claim.js';
+import readClaimStateTool from './tools/read_claim_state.js';
+import applyClaimPatchTool from './tools/apply_claim_patch.js';
+import validateClaimTool from './tools/validate_claim.js';
+import checkCoverageTool from './tools/check_coverage.js';
+import getRepairEstimateTool from './tools/get_repair_estimate.js';
+import getRequirementsTool from './tools/get_requirements.js';
+import readEvidenceNotesTool from './tools/read_evidence_notes.js';
+import getAssistanceOptionsTool from './tools/get_assistance_options.js';
 
 /** Chrome's secure tools guidance caps a single tool result at 1500 characters. */
 export const MAX_TOOL_OUTPUT_CHARS = 1500;
@@ -16,6 +57,39 @@ const TRUNCATION_MARK = ' [output truncated]';
 
 /** name -> AbortController, so unregisterTool(name) can withdraw exactly one tool. */
 const controllers = new Map();
+
+/**
+ * The tools that exist for the whole life of the page.
+ *
+ * Each entry is an arrow that forwards to the factory rather than the factory itself. See rule 2
+ * in the header: naming the imports directly here is what made this module unsafe to reach through
+ * a tool file. The arrow costs one call and buys an import graph with no entry order to remember.
+ */
+export const ALWAYS_ON_TOOLS = [
+  (ctx) => describeClaimTool(ctx),
+  (ctx) => readClaimStateTool(ctx),
+  (ctx) => getRequirementsTool(ctx),
+  (ctx) => applyClaimPatchTool(ctx),
+  (ctx) => validateClaimTool(ctx),
+  (ctx) => checkCoverageTool(ctx),
+  (ctx) => getRepairEstimateTool(ctx),
+  (ctx) => readEvidenceNotesTool(ctx),
+];
+
+/**
+ * Tools that come and go with the claim.
+ *
+ * `present` is asked on every store change and answers from the claim alone, so the same claim
+ * always produces the same tool set and a reader can predict it without running anything.
+ */
+export const CONDITIONAL_TOOLS = [
+  {
+    factory: (ctx) => getAssistanceOptionsTool(ctx),
+    present: (claim) => Boolean(claim) && claim.vehicle_drivable === false,
+    appears: 'the claim says the vehicle cannot be driven',
+    disappears: 'the vehicle is drivable again',
+  },
+];
 
 /**
  * The live model context object, or null when this browser has no agent surface.
@@ -75,12 +149,148 @@ export function textOfResult(result) {
   return String(result);
 }
 
+/* ------------------------------------------------------------------ budget */
+
+/**
+ * Assemble a result that fits the output budget by dropping detail, never by dropping the lines
+ * that tell the agent what to do next.
+ *
+ * The head and the tail are always kept whole. Body entries are added while they fit, and when
+ * any are left over the caller's `more` line says how many, so a reader is never quietly given a
+ * shorter list than the page actually holds. This is why the revision belongs in the head: the
+ * one number the whole read then write protocol depends on can never be the thing that got cut.
+ *
+ * @param {{head?: string[], body?: string[], tail?: string[], limit?: number, more?: Function}} parts
+ * @returns {string}
+ */
+export function budgetedBlock(parts) {
+  const head = (parts && parts.head) || [];
+  const body = (parts && parts.body) || [];
+  const tail = (parts && parts.tail) || [];
+  const limit = (parts && parts.limit) || MAX_TOOL_OUTPUT_CHARS;
+  const more = (parts && parts.more) || ((count) => `${count} more not shown.`);
+
+  // One newline is charged per line, head and tail alike. That over reserves by a character or
+  // two, which is the right direction to be wrong in.
+  const fixed = [...head, ...tail].reduce((sum, line) => sum + line.length + 1, 0);
+
+  const fit = (reserve) => {
+    let used = 0;
+    const taken = [];
+    for (const entry of body) {
+      const cost = entry.length + 1;
+      if (fixed + used + cost + reserve > limit) break;
+      taken.push(entry);
+      used += cost;
+    }
+    return taken;
+  };
+
+  let taken = fit(0);
+  if (taken.length < body.length) {
+    const dropped = body.length - taken.length;
+    const moreLine = more(dropped);
+    taken = fit(moreLine.length + 1);
+    const stillDropped = body.length - taken.length;
+    const lines = [...head, ...taken];
+    if (stillDropped > 0) lines.push(more(stillDropped));
+    return [...lines, ...tail].join('\n');
+  }
+
+  return [...head, ...taken, ...tail].join('\n');
+}
+
+/**
+ * Trim one piece of text to a length and say so when it happens.
+ * @param {string} text
+ * @param {number} limit
+ * @param {string} [mark]
+ * @returns {string}
+ */
+export function clip(text, limit, mark = ' [trimmed]') {
+  const body = typeof text === 'string' ? text : String(text === undefined || text === null ? '' : text);
+  if (body.length <= limit) return body;
+  const room = Math.max(0, limit - mark.length);
+  return body.slice(0, room).trimEnd() + mark;
+}
+
+/* -------------------------------------------------------------- rule pack */
+
+/**
+ * The sentence a tool says when the insurer's intake rules did not load.
+ *
+ * It is the same shape as the no schedule wording in check_coverage, and for the same reason:
+ * "nothing is required" would be a false statement about someone's claim, so the honest answer
+ * names the loading problem instead.
+ */
+export const NO_PACK_REASON =
+  "The insurer's intake rules did not load on this page, so what the intake asks for cannot be "
+  + 'listed. That is a loading problem on our side, not a statement that your claim needs nothing.';
+
+/**
+ * The names the page may hand the loaded rule pack under.
+ *
+ * TWO NAMES ON PURPOSE, AND THIS IS A SCAR. This layer was written to read ctx.policyPack while
+ * src/ui/app.js was written to set ctx.pack. Nothing failed: every pack aware tool simply answered
+ * NO_PACK_REASON forever, on a page whose tests were all green, because a missing pack is a state
+ * this code handles politely. Accepting both names is what makes the requirement tools actually
+ * reachable. Do not "tidy" this back to one name without grepping src/ui/app.js first, and if you
+ * do settle on one, delete the other from this list in the same commit so it stays a closed set.
+ */
+const PACK_KEYS = ['policyPack', 'pack'];
+
+/**
+ * The loaded rule pack, or null when the page has none.
+ *
+ * Read defensively on purpose. deriveRequirements throws when the pack is missing, and a tool
+ * that throws reaches the agent as a hard failure instead of a sentence it can act on. The shape
+ * is checked rather than trusted, so a half loaded pack is treated as no pack instead of throwing
+ * somewhere further in.
+ *
+ * @param {object} ctx
+ * @returns {object|null}
+ */
+export function packOf(ctx) {
+  if (!ctx) return null;
+  for (const key of PACK_KEYS) {
+    const pack = ctx[key];
+    if (pack && typeof pack === 'object' && Array.isArray(pack.requirements)) return pack;
+  }
+  return null;
+}
+
+/**
+ * What answers one requirement, read from the pack rule of that id.
+ *
+ * deriveRequirements reports whether a requirement is satisfied, not which field would satisfy
+ * it, and an agent that has to guess the field name from the label will guess wrong. The pack
+ * already holds the answer, so join on the id rather than inventing a mapping.
+ *
+ * @param {object|null} pack
+ * @param {string} id
+ * @returns {{field: (string|null), humanAction: (string|null)}}
+ */
+export function satisfiedByOf(pack, id) {
+  const rules = pack && Array.isArray(pack.requirements) ? pack.requirements : [];
+  for (const rule of rules) {
+    if (!rule || rule.id !== id) continue;
+    const target = rule.satisfied_by || {};
+    return {
+      field: typeof target.field === 'string' ? target.field : null,
+      humanAction: typeof target.human_action === 'string' ? target.human_action : null,
+    };
+  }
+  return { field: null, humanAction: null };
+}
+
+/* ---------------------------------------------------------- registration */
+
 /**
  * Register tools with the browser's model context.
  *
  * Safe to call more than once. Names already registered are skipped rather than clobbered, so a
- * later call can add a single tool (for example one that only exists after a human presses a
- * button) without disturbing the controllers already held.
+ * later call can add a single tool (for example one that only exists while the vehicle cannot be
+ * driven) without disturbing the controllers already held.
  *
  * @param {object} context handed to every tool factory. Carries the store the tools write to.
  * @param {Array<Function|object>} tools tool factories, or ready made tool descriptors.
@@ -166,6 +376,125 @@ export function onToolChange(handler) {
   modelContext.addEventListener('toolchange', wrapped);
   return () => {
     try { modelContext.removeEventListener('toolchange', wrapped); } catch (ignored) { /* already detached */ }
+  };
+}
+
+/* ------------------------------------------------------------- lifecycle */
+
+/**
+ * Bring up the whole tool surface and keep it matching the claim.
+ *
+ * This is the only call the page needs to make. It registers the always on tools, works out
+ * which conditional tools the current claim calls for, subscribes to the store so that answer is
+ * recomputed on every change from either side, and listens for the browser's own toolchange
+ * event.
+ *
+ * Reconciles are queued behind one another because registering is asynchronous and the store is
+ * not: two answers arriving in the same tick would otherwise race to register the same name.
+ *
+ * @param {object} context the tool context, carrying at least `store`
+ * @param {{instrument?: Function, onChange?: Function}} [options]
+ *        instrument wraps each factory, which is how the page ledgers calls
+ *        onChange is called with every change to the registered set
+ * @returns {Promise<{status: object, registered: Function, reconcile: Function, stop: Function}>}
+ */
+export async function startToolSurface(context, options = {}) {
+  const instrument = typeof options.instrument === 'function' ? options.instrument : (factory) => factory;
+  const announce = typeof options.onChange === 'function' ? options.onChange : () => {};
+
+  const conditional = CONDITIONAL_TOOLS.map((entry) => ({ ...entry, name: null }));
+
+  const status = await registerTools(context, ALWAYS_ON_TOOLS.map(instrument));
+
+  let chain = Promise.resolve();
+  const queue = (work) => {
+    chain = chain.then(work, work);
+    return chain;
+  };
+
+  function claimNow() {
+    const store = context && context.store;
+    if (!store || typeof store.getState !== 'function') return null;
+    const state = store.getState();
+    return state ? state.claim : null;
+  }
+
+  async function reconcileNow(reason) {
+    if (!status.available) return { reason, added: [], removed: [], failed: [] };
+
+    const claim = claimNow();
+    const added = [];
+    const removed = [];
+    const failed = [];
+
+    for (const entry of conditional) {
+      let wanted = false;
+      try {
+        wanted = entry.present(claim) === true;
+      } catch (error) {
+        wanted = false;
+      }
+
+      const held = Boolean(entry.name) && controllers.has(entry.name);
+
+      if (wanted && !held) {
+        const result = await registerTools(context, [instrument(entry.factory)]);
+        if (result.registered.length) {
+          entry.name = result.registered[0];
+          added.push(entry.name);
+        } else if (result.skipped.length) {
+          entry.name = result.skipped[0];
+        }
+        for (const problem of result.failed) failed.push(problem);
+      } else if (!wanted && held) {
+        if (unregisterTool(entry.name)) removed.push(entry.name);
+      }
+    }
+
+    if (added.length || removed.length || failed.length) {
+      announce({
+        reason,
+        added,
+        removed,
+        failed,
+        registered: registeredToolNames(),
+        available: status.available,
+        api: status.api,
+      });
+    }
+
+    return { reason, added, removed, failed };
+  }
+
+  const reconcile = (reason) => queue(() => reconcileNow(reason || 'claim changed'));
+
+  let unsubscribeStore = () => {};
+  if (context && context.store && typeof context.store.subscribe === 'function') {
+    unsubscribeStore = context.store.subscribe(() => { reconcile('claim changed'); });
+  }
+
+  const unsubscribeToolChange = onToolChange(() => {
+    announce({
+      reason: 'the browser reported a tool change',
+      added: [],
+      removed: [],
+      failed: [],
+      registered: registeredToolNames(),
+      available: status.available,
+      api: status.api,
+    });
+  });
+
+  await reconcile('page opened');
+
+  return {
+    status,
+    registered: registeredToolNames,
+    reconcile,
+    stop() {
+      unsubscribeStore();
+      unsubscribeToolChange();
+    },
   };
 }
 

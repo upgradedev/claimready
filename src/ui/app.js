@@ -2,16 +2,19 @@
  * ClaimReady, the wiring.
  *
  * One store, two writers. The person on the page and the visitor's agent both go through the same
- * dispatch, so a tool call is visible on the page the moment it lands, field by field. That
- * mirroring is the whole demonstration.
+ * dispatch, so a tool call is visible on the page the moment it lands, field by field, and both
+ * sides read the same revision number. That mirroring is the whole demonstration.
  *
- * What an agent cannot do is filing. Filing and roadside assistance are buttons, never tools, so an
- * agent that has been talked into something by a poisoned web page can draft and check all it likes
- * and can commit nothing.
+ * What an agent cannot do is filing. Filing, roadside assistance and pinning a field are buttons,
+ * never tools, so an agent that has been talked into something by a poisoned web page can draft and
+ * check all it likes and can commit nothing.
  *
- * Provenance (who set each field) lives here rather than in the store, because the store's action
- * shape carries no source. A tool call raises a depth counter while it runs, so anything that
- * changes during it is attributed to the agent, and anything else to the person.
+ * Who set each field lives on the claim, in src/core, not here. This file used to keep its own
+ * parallel record and guess the writer from a depth counter. It no longer does: it reads
+ * claim.provenance through the core helpers, so there is one record of who wrote what.
+ *
+ * The insurer's rules are data. A rule pack is fetched, checked by src/core/policy.js and handed to
+ * the same six tools, so switching insurer changes the answers and renames nothing.
  *
  * All the rules live in src/core. This file never validates a value or coerces a type: it hands
  * what it was given to dispatch and reports what came back.
@@ -21,9 +24,17 @@ import { createStore } from '../core/store.js';
 import { validateClaim, PATCHABLE_FIELDS } from '../core/claim.js';
 import { checkCoverage } from '../core/coverage.js';
 import { estimateRepair } from '../core/estimate.js';
+import { loadPolicyPack, describePack } from '../core/policy.js';
+import { deriveRequirements, summariseRequirements } from '../core/requirements.js';
 
 import { createView } from './render.js';
-import { registerTools, textOfResult, onToolChange, registeredToolNames } from '../webmcp/register.js';
+import {
+  registerTools,
+  unregisterTool,
+  textOfResult,
+  onToolChange,
+  registeredToolNames
+} from '../webmcp/register.js';
 
 import describeClaimTool from '../webmcp/tools/describe_claim.js';
 import readClaimStateTool from '../webmcp/tools/read_claim_state.js';
@@ -31,15 +42,21 @@ import applyClaimPatchTool from '../webmcp/tools/apply_claim_patch.js';
 import validateClaimTool from '../webmcp/tools/validate_claim.js';
 import checkCoverageTool from '../webmcp/tools/check_coverage.js';
 import getRepairEstimateTool from '../webmcp/tools/get_repair_estimate.js';
+import getRequirementsTool from '../webmcp/tools/get_requirements.js';
+import readEvidenceNotesTool from '../webmcp/tools/read_evidence_notes.js';
+import getAssistanceOptionsTool from '../webmcp/tools/get_assistance_options.js';
 
 const FIXTURE_URL = './fixtures/demo-collision.json';
 const LEDGER_LIMIT = 40;
 const DESCRIPTION_DEBOUNCE_MS = 500;
 
+const NO_PACK_REASON = 'The insurer rule pack did not load, so this page cannot say what the intake '
+  + 'asks for. That is a loading problem on our side, not a statement that nothing is required.';
+
 /**
  * Used only when the sample file cannot be fetched or is refused, so the page never renders empty.
  * Same shape as the fixture on disk, so the degraded path hands src/core exactly what the normal
- * path does.
+ * path does, and it still points at the rule packs so the requirements panel can come up.
  */
 const FALLBACK_FIXTURE = {
   policy: {
@@ -48,17 +65,37 @@ const FALLBACK_FIXTURE = {
     holder: { name: 'Maria K.' },
     vehicle: { make: 'Sample', model: 'Hatchback', plate: 'SYN-0000', class: 'compact' }
   },
+  insurer_pack: 'northwind',
+  available_packs: [
+    { id: 'northwind', path: './fixtures/insurers/northwind.json' },
+    { id: 'kestrel', path: './fixtures/insurers/kestrel.json' }
+  ],
   claim: {}
 };
 
+/** Always available while the page is open. */
 const TOOL_FACTORIES = [
   describeClaimTool,
   readClaimStateTool,
   applyClaimPatchTool,
   validateClaimTool,
   checkCoverageTool,
-  getRepairEstimateTool
+  getRepairEstimateTool,
+  getRequirementsTool,
+  readEvidenceNotesTool
 ];
+
+/**
+ * Registered only while the claim says the vehicle cannot be driven, and withdrawn the moment that
+ * answer changes back. The tool set is part of the state: an agent listing the page's tools before
+ * and after that one answer sees a different list, which is the page saying what is relevant now
+ * instead of publishing every branch of the rulebook at once.
+ */
+const CONDITIONAL_TOOL = {
+  name: 'get_assistance_options',
+  factory: getAssistanceOptionsTool,
+  wanted: (claim) => Boolean(claim) && claim.vehicle_drivable === false
+};
 
 boot();
 
@@ -82,78 +119,118 @@ async function boot() {
     store = createStore(fixture);
   }
 
-  const policy = fixture.policy || {};
-  const holder = policy.holder && typeof policy.holder === 'object' ? policy.holder.name : policy.holder;
+  const embeddedPolicy = fixture.policy || {};
+  const holder = embeddedPolicy.holder && typeof embeddedPolicy.holder === 'object'
+    ? embeddedPolicy.holder.name
+    : embeddedPolicy.holder;
 
   // Without a schedule of coverages there is nothing to check a claim against, and the honest
   // answer is "cannot be checked", never "not covered". A policy with no sections would otherwise
   // read as a refusal, which would be a false statement about someone's cover.
-  const hasPolicySchedule = Array.isArray(policy.coverages) && policy.coverages.length > 0;
   const noScheduleReason = 'The sample policy schedule did not load, so cover cannot be checked '
     + 'against it. This is a loading problem, not a decision about your cover.';
 
   const persona = {
-    policyId: String(policy.id || policy.policy_id || 'unknown'),
+    policyId: String(embeddedPolicy.id || embeddedPolicy.policy_id || 'unknown'),
     holder: String(holder || 'the policyholder'),
-    currency: String(policy.currency || 'EUR'),
-    vehicleClass: String((policy.vehicle && policy.vehicle.class) || 'compact'),
+    currency: String(embeddedPolicy.currency || 'EUR'),
+    vehicleClass: String((embeddedPolicy.vehicle && embeddedPolicy.vehicle.class) || 'compact'),
     note: 'Demonstration session. The claimant, the vehicle and the policy are invented for this demo.'
   };
 
   /* Page state that is not claim state. The store contract has no action for any of it. */
   const ui = { coverage: null, estimate: null, assistanceAt: null };
   const ledger = [];
-  const provenance = new Map();
 
+  /**
+   * Rule packs, keyed by the id the sample file gave them. Every pack listed is fetched at boot so
+   * the picker can be labelled with the insurer's own name, and a pack that fails to load keeps its
+   * entry with the reason attached rather than vanishing from the list.
+   */
+  const packs = new Map();
+  let activePackId = null;
+
+  /* Tool call bookkeeping. agentDepth says a tool is on the stack, and refusals raised while it is
+     are collected into the buffer belonging to that call. Reading store.lastCode before and after a
+     call would miss a refusal followed by a success inside the same call, which is exactly what a
+     batched patch does. */
   let agentDepth = 0;
+  let refusalBuffer = null;
+
+  /* Tool registration. toolStatus holds what the browser answered once; the live list of names
+     always comes from register.js, because the conditional tool comes and goes. */
+  let toolStatus = { available: false, api: null, registered: [], skipped: [], failed: [] };
+  let toolsReady = false;
+  let toolSync = Promise.resolve();
+
   let snapshot = snapshotOf(claimNow());
 
-  seedProvenance();
+  /* Requirement redraw bookkeeping. The panel is rebuilt only when the derived list actually moves,
+     so a keystroke in the description does not replay the "just appeared" highlight, and nothing is
+     marked new on the first draw or after a reset. */
+  let requirementIds = new Set();
+  let requirementSignature = null;
+  let requirementsPrimed = false;
+
+  const context = {
+    store,
+    pack: null,
+    policy: embeddedPolicy,
+    policyId: persona.policyId,
+    currency: persona.currency,
+    vehicleClass: persona.vehicleClass,
+    hasPolicySchedule: hasSchedule(embeddedPolicy),
+    noScheduleReason,
+    getRequirements,
+    publish
+  };
 
   view.renderPersona(persona);
   view.renderStatus({ available: false, api: null, registered: [], failed: [], fixtureSource, fixtureError });
+  view.renderRevision(claimNow().revision);
   view.renderCoverage(null);
   view.renderEstimate(null);
   view.renderLedger(ledger);
   drawClaim([]);
 
-  store.subscribe(() => {
-    const next = claimNow();
-    const changed = [];
+  await loadPacks();
+  applyPack(activePackId);
+  view.renderPackChoices(packChoices(), activePackId);
+  drawRequirements();
 
+  store.subscribe(() => {
+    const state = store.getState();
+
+    // A refusal notifies too. Whichever tool call is on the stack owns it, and the ledger shows it
+    // next to the call that caused it.
+    if (state.lastCode && agentDepth > 0 && refusalBuffer) {
+      refusalBuffer.push({ code: state.lastCode, error: state.lastError });
+    }
+
+    const next = state.claim;
+    const changed = [];
     for (const field of PATCHABLE_FIELDS) {
       if (Object.is(snapshot[field], next[field])) continue;
       changed.push(field);
-      if (isEmpty(next[field])) provenance.delete(field);
-      else provenance.set(field, agentDepth > 0 ? 'agent' : 'you');
     }
-
     snapshot = snapshotOf(next);
-    drawClaim(changed);
-  });
 
-  const context = {
-    store,
-    policy,
-    policyId: persona.policyId,
-    currency: persona.currency,
-    vehicleClass: persona.vehicleClass,
-    hasPolicySchedule,
-    noScheduleReason,
-    getProvenance: () => provenance,
-    publish
-  };
+    view.renderRevision(next.revision);
+    drawClaim(changed);
+    drawRequirements();
+    syncConditionalTools();
+  });
 
   wireControls();
 
-  const status = await registerTools(context, TOOL_FACTORIES.map(instrument));
-  view.renderStatus({ ...status, fixtureSource, fixtureError });
+  toolStatus = await registerTools(context, TOOL_FACTORIES.map(instrument));
+  toolsReady = true;
+  refreshStatus();
+  syncConditionalTools();
 
   // The browser tells us when the tool set changes. The count on screen should never be a stale
   // claim about what an agent can actually call.
-  onToolChange(() => {
-    view.renderStatus({ ...status, registered: registeredToolNames(), fixtureSource, fixtureError });
-  });
+  onToolChange(refreshStatus);
 
   /* Reading the store */
 
@@ -161,12 +238,88 @@ async function boot() {
     return store.getState().claim;
   }
 
-  function seedProvenance() {
-    // A field that arrives already filled was started by the claimant, not by an agent.
-    const claim = claimNow();
-    for (const field of PATCHABLE_FIELDS) {
-      if (!isEmpty(claim[field])) provenance.set(field, 'you');
+  /* Rule packs */
+
+  async function loadPacks() {
+    const listed = Array.isArray(fixture.available_packs) && fixture.available_packs.length
+      ? fixture.available_packs
+      : FALLBACK_FIXTURE.available_packs;
+
+    const results = await Promise.all(listed.map((entry) => fetchPack(entry)));
+    for (const entry of results) packs.set(entry.id, entry);
+
+    // The sample file names the pack this customer is on. A pack that failed to load cannot be the
+    // active one, or the page would report no requirements while looking perfectly healthy.
+    const wanted = typeof fixture.insurer_pack === 'string' ? fixture.insurer_pack : null;
+    const named = wanted ? packs.get(wanted) : null;
+    const usable = results.find((entry) => entry.pack !== null);
+    if (named && named.pack) activePackId = named.id;
+    else if (usable) activePackId = usable.id;
+    else activePackId = results[0] ? results[0].id : null;
+  }
+
+  async function fetchPack(entry) {
+    const id = String(entry && entry.id ? entry.id : 'unknown');
+    const path = entry && entry.path ? String(entry.path) : '';
+    try {
+      const response = await fetch(path, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      const pack = loadPolicyPack(await response.json());
+      return { id, path, pack, error: null, label: pack.insurer };
+    } catch (error) {
+      return { id, path, pack: null, error: error && error.message ? error.message : String(error), label: id };
     }
+  }
+
+  function packChoices() {
+    return Array.from(packs.values()).map((entry) => ({ id: entry.id, label: entry.label }));
+  }
+
+  /**
+   * Point the whole page and every registered tool at one insurer's rules.
+   *
+   * The tools read ctx.policy inside execute rather than closing over it, so setting it here is all
+   * it takes. The store is never rebuilt: the tools hold the one they were registered with, and a
+   * second store would leave them writing to a draft nobody can see.
+   */
+  function applyPack(id) {
+    const entry = id ? packs.get(id) : null;
+    if (entry && entry.pack) {
+      activePackId = entry.id;
+      context.pack = entry.pack;
+      context.policy = entry.pack;
+      context.currency = entry.pack.currency;
+      context.hasPolicySchedule = hasSchedule(entry.pack);
+      view.renderPackNote(describePack(entry.pack));
+      return;
+    }
+
+    context.pack = null;
+    context.policy = embeddedPolicy;
+    context.currency = persona.currency;
+    context.hasPolicySchedule = hasSchedule(embeddedPolicy);
+    view.renderPackNote(entry && entry.error
+      ? `The ${entry.id} rule pack did not load: ${entry.error}. The cover check falls back to the schedule stored with this policy.`
+      : NO_PACK_REASON);
+  }
+
+  /**
+   * The requirements this insurer's intake raises right now, with the one page fact src/core cannot
+   * know: whether the person has already pressed the button that no tool can press.
+   */
+  function getRequirements() {
+    const pack = context.pack;
+    if (!pack) return [];
+    return deriveRequirements(pack, claimNow()).map((entry) => {
+      const rule = pack.requirements.find((item) => item.id === entry.id);
+      const humanOnly = Boolean(rule && rule.satisfied_by && rule.satisfied_by.human_action);
+      const shown = { ...entry, humanOnly, humanNote: null };
+      if (humanOnly && ui.assistanceAt) {
+        shown.humanNote = `You pressed Request roadside assistance at ${ui.assistanceAt}. `
+          + 'There is no tool for that button, so an agent could not have done it for you.';
+      }
+      return shown;
+    });
   }
 
   /* Drawing */
@@ -174,7 +327,7 @@ async function boot() {
   function drawClaim(changed) {
     const claim = claimNow();
     const verdict = validateClaim(claim);
-    view.renderClaim(claim, provenance, changed);
+    view.renderClaim(claim, changed);
     view.renderActions({
       ready: Boolean(verdict.ready),
       missing: verdict.missing || [],
@@ -184,10 +337,43 @@ async function boot() {
     });
   }
 
+  function drawRequirements() {
+    if (!context.pack) {
+      requirementIds = new Set();
+      requirementSignature = null;
+      requirementsPrimed = false;
+      view.renderRequirements({ entries: [], summary: '', newIds: [], blocked: NO_PACK_REASON });
+      return;
+    }
+
+    const entries = getRequirements();
+    const signature = entries.map((entry) => `${entry.id}|${entry.satisfied}|${entry.why}|${entry.humanNote}`).join('~');
+    if (signature === requirementSignature) return;
+
+    const ids = entries.map((entry) => entry.id);
+    const newIds = requirementsPrimed ? ids.filter((id) => !requirementIds.has(id)) : [];
+
+    requirementIds = new Set(ids);
+    requirementSignature = signature;
+    requirementsPrimed = true;
+
+    view.renderRequirements({
+      entries,
+      summary: summariseRequirements(entries),
+      newIds,
+      blocked: null
+    });
+
+    if (newIds.length) {
+      const labels = entries.filter((entry) => newIds.includes(entry.id)).map((entry) => entry.label);
+      view.announce(`The intake now asks for ${labels.join(', ')}.`);
+    }
+  }
+
   function publish(kind, payload) {
     const at = clockNow();
     if (kind === 'coverage') {
-      ui.coverage = { ...payload, at };
+      ui.coverage = { ...payload, at, insurer: context.pack ? context.pack.insurer : null };
       view.renderCoverage(ui.coverage);
     } else if (kind === 'estimate') {
       ui.estimate = { ...payload, at };
@@ -195,8 +381,8 @@ async function boot() {
     }
   }
 
-  /* Tool instrumentation: every call is ledgered, and anything it changes is attributed to the
-     agent. The tools themselves stay unaware of the ledger. */
+  /* Tool instrumentation: every call is ledgered with what it sent, what it got back, and every
+     refusal the rules raised while it ran. The tools themselves stay unaware of the ledger. */
 
   function instrument(factory) {
     return (ctx) => {
@@ -207,7 +393,11 @@ async function boot() {
         ...descriptor,
         execute: async (input, options) => {
           const at = clockNow();
+          const buffer = [];
+          const outer = refusalBuffer;
+          refusalBuffer = buffer;
           agentDepth += 1;
+
           let result;
           let failure = null;
           try {
@@ -216,6 +406,7 @@ async function boot() {
             failure = error;
           } finally {
             agentDepth -= 1;
+            refusalBuffer = outer;
           }
 
           addLedgerEntry({
@@ -223,14 +414,60 @@ async function boot() {
             name: descriptor.name,
             args: safeArgs(input),
             text: failure ? `error: ${failure && failure.message ? failure.message : String(failure)}` : textOfResult(result),
-            error: Boolean(failure)
+            error: Boolean(failure),
+            refusals: buffer
           });
+
+          view.announce(buffer.length
+            ? `Your agent called ${descriptor.name}. The page refused it: ${buffer[0].code}.`
+            : `Your agent called ${descriptor.name}. The draft is at revision ${claimNow().revision}.`);
 
           if (failure) throw failure;
           return result;
         }
       };
     };
+  }
+
+  function refreshStatus() {
+    view.renderStatus({
+      ...toolStatus,
+      registered: toolStatus.available ? registeredToolNames() : [],
+      fixtureSource,
+      fixtureError
+    });
+  }
+
+  /**
+   * Register or withdraw the tool that only exists while the car cannot be driven.
+   *
+   * Serialised through one promise chain, because the store notifies synchronously and a burst of
+   * changes would otherwise start two registrations of the same name at once.
+   */
+  function syncConditionalTools() {
+    if (!toolsReady || !toolStatus.available) return;
+    toolSync = toolSync.then(async () => {
+      const wanted = CONDITIONAL_TOOL.wanted(claimNow());
+      const held = registeredToolNames().includes(CONDITIONAL_TOOL.name);
+      if (wanted === held) return;
+
+      if (wanted) {
+        const added = await registerTools(context, [instrument(CONDITIONAL_TOOL.factory)]);
+        if (added.failed.length) {
+          toolStatus = { ...toolStatus, failed: added.failed };
+        } else {
+          view.announce(`The car cannot be driven, so this page has published ${CONDITIONAL_TOOL.name} to your agent.`);
+        }
+      } else {
+        unregisterTool(CONDITIONAL_TOOL.name);
+        view.announce(`The car can be driven again, so ${CONDITIONAL_TOOL.name} has been withdrawn from your agent.`);
+      }
+      refreshStatus();
+    }).catch(() => {
+      // A registration the browser refused must not stop the page. The strip reports what is
+      // actually held either way, because it reads register.js rather than a remembered list.
+      refreshStatus();
+    });
   }
 
   function addLedgerEntry(entry) {
@@ -246,8 +483,15 @@ async function boot() {
       const control = event.target;
       if (control && control.getAttribute && control.getAttribute('data-field')) commitControl(control);
     };
-    view.els.fields.addEventListener('change', onChange);
-    view.els.fieldsOptional.addEventListener('change', onChange);
+    const onClick = (event) => {
+      const button = event.target && event.target.closest ? event.target.closest('[data-pin]') : null;
+      if (button) togglePin(button);
+    };
+
+    for (const host of [view.els.fields, view.els.fieldsOptional]) {
+      host.addEventListener('change', onChange);
+      host.addEventListener('click', onClick);
+    }
 
     let descriptionTimer = null;
     view.els.fields.addEventListener('input', (event) => {
@@ -257,9 +501,13 @@ async function boot() {
       descriptionTimer = setTimeout(() => commitControl(control), DESCRIPTION_DEBOUNCE_MS);
     });
 
+    view.els.insurerSelect.addEventListener('change', (event) => {
+      switchPack(event.target.value);
+    });
+
     view.els.checkCoverageBtn.addEventListener('click', runCoverageByHand);
     view.els.checkEstimateBtn.addEventListener('click', runEstimateByHand);
-    view.els.fileBtn.addEventListener('click', fileClaim);
+    view.els.fileBtn.addEventListener('click', fileThisClaim);
     view.els.assistanceBtn.addEventListener('click', requestAssistance);
     view.els.resetBtn.addEventListener('click', startOver);
   }
@@ -280,17 +528,59 @@ async function boot() {
     }
   }
 
+  /**
+   * Pinning is human only and there is no tool for it, which is the point of the control. The
+   * button's own pressed state says which way to go, so the page never holds a second copy of what
+   * the claim already records.
+   */
+  function togglePin(button) {
+    const field = button.getAttribute('data-pin');
+    if (!field) return;
+    const pinned = button.getAttribute('aria-pressed') === 'true';
+    const result = store.dispatch({ type: pinned ? 'unlock' : 'lock', field });
+    if (!result.ok) {
+      view.showFieldError(result.error || 'That field could not be pinned.');
+      return;
+    }
+    view.showFieldError('');
+    view.announce(pinned
+      ? `You unpinned ${field}. An agent can change it again.`
+      : `You pinned ${field}. No agent patch can move it now.`);
+  }
+
+  function switchPack(id) {
+    if (!id || id === activePackId) return;
+    applyPack(id);
+
+    // A cover check run under another insurer's schedule is not this insurer's answer, so it goes
+    // rather than sitting there looking current. The repair band comes from a parts table and does
+    // not move with the pack, so it stays.
+    ui.coverage = null;
+    view.renderCoverage({
+      blocked: context.pack
+        ? `The rules changed to ${context.pack.insurer}. Run the cover check again to see what this schedule says.`
+        : context.noScheduleReason
+    });
+
+    requirementSignature = null;
+    requirementsPrimed = false;
+    drawRequirements();
+    view.announce(context.pack
+      ? `Rules switched to ${context.pack.insurer}. The same tools now answer with that schedule.`
+      : 'That rule pack could not be loaded.');
+  }
+
   function runCoverageByHand() {
     const claim = claimNow();
-    if (!hasPolicySchedule) {
-      view.renderCoverage({ blocked: noScheduleReason });
+    if (!context.hasPolicySchedule) {
+      view.renderCoverage({ blocked: context.noScheduleReason });
       return;
     }
     if (!claim.incident_type) {
       view.renderCoverage({ blocked: 'Pick what kind of incident it was first, then the cover can be checked.' });
       return;
     }
-    publish('coverage', { decision: checkCoverage(policy, claim), source: 'you' });
+    publish('coverage', { decision: checkCoverage(context.policy, claim), source: 'you' });
   }
 
   function runEstimateByHand() {
@@ -308,37 +598,47 @@ async function boot() {
     });
   }
 
-  function fileClaim() {
+  function fileThisClaim() {
     const result = store.dispatch({ type: 'file', at: clockNow() });
     if (!result.ok) {
       view.showFieldError(result.error || 'The claim could not be filed.');
       return;
     }
     view.showFieldError('');
+    view.announce('You filed the claim. The draft is closed to every writer, yours and your agent\'s.');
   }
 
   function requestAssistance() {
     if (ui.assistanceAt) return;
     ui.assistanceAt = clockNow();
     drawClaim([]);
+    drawRequirements();
+    view.announce('You requested roadside assistance. There is no tool for that button.');
     // A tool that only exists after this click is registered by calling registerTools again with
     // that one factory. register.js keeps a controller per tool and skips names already held, so a
     // second call adds without disturbing the six already registered.
   }
 
   function startOver() {
-    store.dispatch({ type: 'reset' });
-    provenance.clear();
-    seedProvenance();
+    // Page state first, then the draft. The subscriber redraws the moment the reset lands, and it
+    // should not redraw against a roadside request that this reset has already cancelled.
     ui.coverage = null;
     ui.estimate = null;
     ui.assistanceAt = null;
     ledger.length = 0;
+    requirementSignature = null;
+    requirementsPrimed = false;
+    store.dispatch({ type: 'reset' });
+    requirementSignature = null;
+    requirementsPrimed = false;
     view.renderCoverage(null);
     view.renderEstimate(null);
     view.renderLedger(ledger);
     view.showFieldError('');
     drawClaim([]);
+    drawRequirements();
+    view.announce('The synthetic incident was loaded again. The draft is back at revision '
+      + `${claimNow().revision}.`);
   }
 }
 
@@ -354,6 +654,10 @@ async function loadFixture() {
   } catch (error) {
     return { fixture: FALLBACK_FIXTURE, source: 'fallback' };
   }
+}
+
+function hasSchedule(policy) {
+  return Boolean(policy && Array.isArray(policy.coverages) && policy.coverages.length > 0);
 }
 
 function snapshotOf(claim) {

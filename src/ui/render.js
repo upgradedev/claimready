@@ -1,7 +1,9 @@
 /**
  * The view. Every DOM reference on the page is resolved here once, and every visual state is a
  * class toggle or a text node, never an inline style, so a strict Content Security Policy can stay
- * strict.
+ * strict. Nodes are built with createElement and filled with textContent. No HTML string is ever
+ * assigned into the document from this file and none ever may be: everything drawn here can carry
+ * claimant prose or third party text, and the only safe way to put that on a page is as a text node.
  *
  * Nothing in this file decides anything. It is handed values and it draws them.
  *
@@ -10,9 +12,13 @@
  * Nothing here re-states any of it, so the page cannot drift from the rules, and the panel and the
  * agent word an exclusion identically because both call the same function.
  *
- * Two details matter for the demonstration. A row that just changed gets a brief highlight, which
- * is how a viewer sees an agent tool call land on the page. And a control the person is currently
- * typing in is never overwritten by a redraw.
+ * Provenance and pinning are read straight off the claim, through provenanceOf and isLocked, so
+ * there is exactly one record of who wrote what and the page cannot hold a second opinion.
+ *
+ * Three details matter for the demonstration. A row that just changed gets a brief highlight, which
+ * is how a viewer sees an agent tool call land on the page. A requirement that has just appeared is
+ * highlighted with the reason it appeared, so the causal step is visible rather than inferred. And a
+ * control the person is currently typing in is never overwritten by a redraw.
  */
 
 import {
@@ -23,7 +29,9 @@ import {
   REQUIRED_FIELDS,
   OPTIONAL_FIELDS,
   PATCHABLE_FIELDS,
-  FIELD_LABELS
+  FIELD_LABELS,
+  isLocked,
+  provenanceOf
 } from '../core/claim.js';
 import { exclusionLabels } from '../core/coverage.js';
 
@@ -56,6 +64,19 @@ const FIELD_CONTROLS = {
   witness_name: 'text'
 };
 
+/** What each provenance value from core is called on the page, for a reader who is not a developer. */
+const BADGE_WORDS = {
+  human: 'you',
+  agent: 'agent',
+  policy: 'policy',
+  derived: 'derived'
+};
+
+const BADGE_CLASSES = ['badge-agent', 'badge-you', 'badge-policy', 'badge-derived', 'badge-none'];
+
+const PIN_HINT = 'Pinned by you. No patch can move this field, from an agent or from this page, '
+  + 'until you unpin it.';
+
 const ARGS_LIMIT = 140;
 const RESULT_LIMIT = 240;
 
@@ -70,13 +91,21 @@ export function createView(doc) {
     personaName: pick('persona-name'),
     personaPolicy: pick('persona-policy'),
     personaNote: pick('persona-note'),
+    revisionChip: pick('revision-chip'),
+    revision: pick('revision'),
     statusDot: pick('status-dot'),
     statusText: pick('status-text'),
     statusDetail: pick('status-detail'),
+    live: pick('live'),
+    insurerSelect: pick('insurer-select'),
+    packNote: pick('pack-note'),
     fields: pick('fields'),
     fieldsOptional: pick('fields-optional'),
     optionalDetails: pick('optional-details'),
+    claimNote: pick('claim-note'),
     fieldError: pick('field-error'),
+    requirements: pick('requirements'),
+    reqSummary: pick('req-summary'),
     coverageBody: pick('coverage-body'),
     estimateBody: pick('estimate-body'),
     ledger: pick('ledger'),
@@ -101,6 +130,8 @@ export function createView(doc) {
 
   const rows = new Map();
   const highlightTimers = new Map();
+  let lastRevision = null;
+  let revisionTimer = null;
 
   buildFieldRows(doc, els.fields, REQUIRED_FIELDS, rows);
   buildFieldRows(doc, els.fieldsOptional, OPTIONAL_FIELDS, rows);
@@ -114,6 +145,29 @@ export function createView(doc) {
       text(els.personaNote, persona.note);
     },
 
+    /**
+     * The revision counter in the header. It ticks on every accepted change from either side, and
+     * it is the one number a viewer can use to tell a real write from a hopeful sentence.
+     */
+    renderRevision(revision) {
+      const value = Number.isFinite(revision) ? revision : 0;
+      text(els.revision, String(value));
+      if (lastRevision !== null && value !== lastRevision) {
+        if (revisionTimer) clearTimeout(revisionTimer);
+        els.revisionChip.classList.add('is-bumped');
+        revisionTimer = setTimeout(() => {
+          els.revisionChip.classList.remove('is-bumped');
+          revisionTimer = null;
+        }, HIGHLIGHT_MS);
+      }
+      lastRevision = value;
+    },
+
+    /** The polite live region. Screen reader users hear what an agent just did. */
+    announce(message) {
+      text(els.live, message || '');
+    },
+
     renderStatus(status) {
       els.strip.classList.toggle('is-on', Boolean(status.available));
       els.strip.classList.toggle('is-off', !status.available);
@@ -124,7 +178,7 @@ export function createView(doc) {
         const count = status.registered.length;
         text(els.statusText, `Agent connected through ${status.api}. ${count} ${count === 1 ? 'tool' : 'tools'} registered.`);
       } else {
-        text(els.statusText, 'No agent detected in this browser.');
+        text(els.statusText, 'No agent detected in this browser, so nothing is driving the page but you.');
       }
 
       const detail = [];
@@ -135,7 +189,9 @@ export function createView(doc) {
         }
         detail.push('Filing and roadside assistance are not on that list. They are buttons only a person can press.');
       } else {
-        detail.push('The page still works. Fill the draft yourself, or open it in a browser whose agent supports WebMCP.');
+        detail.push('Everything on this page still works. Fill the draft yourself, pin what you want '
+          + 'left alone, and read the requirements panel. To watch an agent drive it, open the same '
+          + 'page in a browser whose agent speaks WebMCP.');
       }
       if (status.fixtureSource === 'fallback') {
         detail.push('The sample claim file did not load, so a built in sample is being used.');
@@ -146,9 +202,25 @@ export function createView(doc) {
       text(els.statusDetail, detail.join(' '));
     },
 
-    renderClaim(claim, provenance, changed) {
+    /** The insurer picker. The list comes from the sample file, never from this module. */
+    renderPackChoices(packs, activeId) {
+      const options = (packs || []).map((pack) => option(doc, pack.id, pack.label || pack.id));
+      els.insurerSelect.replaceChildren(...options);
+      if (activeId) els.insurerSelect.value = activeId;
+      els.insurerSelect.disabled = options.length < 2;
+    },
+
+    renderPackNote(message) {
+      text(els.packNote, message || '');
+    },
+
+    /**
+     * @param {object} claim the claim from the store
+     * @param {string[]} changed fields that moved since the last draw, for the highlight
+     */
+    renderClaim(claim, changed) {
       const justChanged = new Set(changed || []);
-      const filed = claim && claim.status === 'filed';
+      const filed = Boolean(claim && claim.status === 'filed');
       let openOptional = false;
 
       for (const field of PATCHABLE_FIELDS) {
@@ -157,15 +229,33 @@ export function createView(doc) {
 
         const value = claim ? claim[field] : undefined;
         const missing = isEmpty(value);
+        const pinned = isLocked(claim, field);
 
         row.root.classList.toggle('is-missing', missing);
+        row.root.classList.toggle('is-pinned', pinned);
         text(row.value, missing ? 'Missing' : displayValue(field, value));
 
-        applyBadge(row.badge, missing ? undefined : (provenance ? provenance.get(field) : undefined));
+        applyBadge(row.badge, missing ? null : provenanceOf(claim, field));
 
-        // Once a claim is filed the rules refuse every edit, so the controls say so rather than
-        // silently swallowing what the person types.
-        row.control.disabled = Boolean(filed);
+        // Pinning refuses a patch from either side, so the control has to close with it. A
+        // disabled control with no reason beside it is a dead end, so the reason is drawn too.
+        row.control.disabled = filed || pinned;
+        row.pin.disabled = filed;
+        row.pin.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+        text(row.pinWord, pinned ? 'Pinned' : 'Pin');
+        row.pinIcon.textContent = pinned ? '\u{1F512}' : '\u{1F513}';
+        row.pin.title = pinned ? PIN_HINT : `Pin ${ROW_LABELS[field] || field} so no patch can change it.`;
+        row.pin.setAttribute('aria-label', pinned
+          ? `Unpin ${ROW_LABELS[field] || field}. It is pinned, so no agent can change it.`
+          : `Pin ${ROW_LABELS[field] || field} so no agent can change it.`);
+
+        if (filed) {
+          text(row.hint, 'The claim is filed, so this field is closed.');
+        } else if (pinned) {
+          text(row.hint, PIN_HINT);
+        } else {
+          text(row.hint, '');
+        }
 
         // Never fight the person who is typing.
         if (doc.activeElement !== row.control) {
@@ -181,6 +271,32 @@ export function createView(doc) {
 
       // An agent write to an optional field must still be seen, so open the group it lives in.
       if (openOptional) els.optionalDetails.open = true;
+
+      text(els.claimNote, filed
+        ? `Filed at ${claim.filed_at}. The draft is closed, so every control above is read only.`
+        : '');
+    },
+
+    /**
+     * What the intake still asks for. The list is worked out by src/core from the insurer's rule
+     * pack, and this only draws it.
+     *
+     * @param {{entries: object[], summary: string, newIds: string[], blocked: (string|null)}} state
+     */
+    renderRequirements(state) {
+      const blocked = state && state.blocked;
+      if (blocked) {
+        text(els.reqSummary, blocked);
+        els.reqSummary.classList.add('is-blocked');
+        els.requirements.replaceChildren();
+        return;
+      }
+
+      els.reqSummary.classList.remove('is-blocked');
+      const entries = (state && state.entries) || [];
+      const fresh = new Set((state && state.newIds) || []);
+      text(els.reqSummary, (state && state.summary) || '');
+      els.requirements.replaceChildren(...entries.map((entry) => requirementItem(doc, entry, fresh.has(entry.id))));
     },
 
     renderCoverage(entry) {
@@ -221,7 +337,7 @@ export function createView(doc) {
       els.fileBtn.disabled = Boolean(state.filed) || !state.ready;
 
       if (state.filed) {
-        text(els.fileReason, 'This claim has been filed. Press Start over to run the demonstration again.');
+        text(els.fileReason, 'This claim has been filed. Load the synthetic incident again to run the demonstration from the start.');
         els.fileReason.classList.remove('is-blocked');
         text(els.fileResult, `Filed by you at ${state.filedAt}. An agent could not have pressed this button.`);
       } else {
@@ -273,7 +389,23 @@ function buildFieldRows(doc, host, fields, rows) {
     badge.className = 'badge badge-none';
     badge.textContent = 'not set';
 
-    head.append(label, badge);
+    const pin = doc.createElement('button');
+    pin.type = 'button';
+    pin.className = 'pin';
+    pin.setAttribute('data-pin', field);
+    pin.setAttribute('aria-pressed', 'false');
+
+    const pinIcon = doc.createElement('span');
+    pinIcon.className = 'pin-icon';
+    pinIcon.setAttribute('aria-hidden', 'true');
+    pinIcon.textContent = '\u{1F513}';
+
+    const pinWord = doc.createElement('span');
+    pinWord.className = 'pin-word';
+    pinWord.textContent = 'Pin';
+
+    pin.append(pinIcon, pinWord);
+    head.append(label, badge, pin);
 
     const control = buildControl(doc, field);
     control.id = `f-${field}`;
@@ -284,8 +416,11 @@ function buildFieldRows(doc, host, fields, rows) {
     value.className = 'field-value';
     value.textContent = 'Missing';
 
-    root.append(head, control, value);
-    rows.set(field, { root, control, value, badge });
+    const hint = doc.createElement('p');
+    hint.className = 'field-hint';
+
+    root.append(head, control, value, hint);
+    rows.set(field, { root, control, value, badge, pin, pinIcon, pinWord, hint });
     return root;
   });
 
@@ -344,6 +479,69 @@ function option(doc, value, label) {
 
 /* Panels */
 
+/**
+ * One requirement. The reason line is the sentence src/core composed, drawn word for word: it
+ * already carries the clause, the "asked for here because" clause when something on the claim
+ * triggered it, and the human step when no field can answer it. This module never rewrites it and
+ * never takes it apart, so the page and a tool result say the same thing.
+ *
+ * A requirement that has just appeared shows that whole sentence and is highlighted. The rest clamp
+ * to one line, or four causal sentences would sit on screen at once and the one that just arrived
+ * would be lost among them.
+ */
+function requirementItem(doc, entry, isNew) {
+  const item = doc.createElement('li');
+  const classes = ['req'];
+  classes.push(entry.satisfied ? 'is-answered' : 'is-open');
+  if (entry.humanOnly) classes.push('is-human');
+  if (isNew) classes.push('is-new');
+  item.className = classes.join(' ');
+
+  const head = doc.createElement('div');
+  head.className = 'req-head';
+
+  const mark = doc.createElement('span');
+  mark.className = 'req-mark';
+  mark.setAttribute('aria-hidden', 'true');
+  mark.textContent = entry.satisfied ? '✓' : '●';
+
+  const label = doc.createElement('span');
+  label.className = 'req-label';
+  label.textContent = entry.label;
+
+  const tag = doc.createElement('span');
+  tag.className = 'req-tag';
+  if (entry.satisfied) tag.textContent = 'answered';
+  else if (entry.humanOnly) tag.textContent = 'you only';
+  else tag.textContent = 'open';
+
+  head.append(mark, label, tag);
+  item.append(head);
+
+  if (isNew) {
+    const flag = doc.createElement('p');
+    flag.className = 'req-new';
+    flag.textContent = 'Just appeared';
+    item.append(flag);
+  }
+
+  const why = doc.createElement('p');
+  why.className = 'req-why';
+  why.textContent = entry.why;
+  item.append(why);
+
+  // A fact about something that happened on this page, handed in by the wiring. It is never a
+  // claim about the rules, which is why it is a separate line from the reason above.
+  if (entry.humanNote) {
+    const done = doc.createElement('p');
+    done.className = 'req-human-note';
+    done.textContent = entry.humanNote;
+    item.append(done);
+  }
+
+  return item;
+}
+
 function coverageBlock(doc, entry) {
   const decision = entry.decision || {};
   const wrap = doc.createElement('div');
@@ -355,6 +553,7 @@ function coverageBlock(doc, entry) {
 
   const list = doc.createElement('dl');
   list.className = 'kv';
+  addPair(doc, list, 'Insurer', entry.insurer);
   addPair(doc, list, 'Clause', decision.clause);
   addPair(doc, list, 'Reason', decision.reason);
   const applied = exclusionLabels(decision);
@@ -413,9 +612,17 @@ function estimateBlock(doc, entry) {
   return wrap;
 }
 
+/**
+ * One tool call. A refusal is drawn as loudly as a success and carries the code the rules gave it,
+ * because "the page said no and here is why" is the part of this demonstration worth watching.
+ */
 function ledgerItem(doc, entry) {
+  const refusals = Array.isArray(entry.refusals) ? entry.refusals : [];
   const item = doc.createElement('li');
-  item.className = entry.error ? 'ledger-item is-error' : 'ledger-item';
+  const classes = ['ledger-item'];
+  if (entry.error) classes.push('is-error');
+  if (refusals.length) classes.push('is-refused');
+  item.className = classes.join(' ');
 
   const top = doc.createElement('div');
   top.className = 'ledger-top';
@@ -429,12 +636,36 @@ function ledgerItem(doc, entry) {
   name.textContent = entry.name;
 
   top.append(time, name);
+
+  if (refusals.length) {
+    const flag = doc.createElement('span');
+    flag.className = 'ledger-flag';
+    flag.textContent = refusals.length === 1 ? 'refused' : `${refusals.length} refused`;
+    top.append(flag);
+  }
+
   item.append(top);
 
   const args = doc.createElement('p');
   args.className = 'ledger-args';
   args.textContent = clip(entry.args, ARGS_LIMIT);
   item.append(args);
+
+  for (const refusal of refusals) {
+    const line = doc.createElement('p');
+    line.className = 'ledger-refusal';
+
+    const code = doc.createElement('span');
+    code.className = 'ledger-code';
+    code.textContent = refusal.code || 'REFUSED';
+
+    const message = doc.createElement('span');
+    message.className = 'ledger-reason';
+    message.textContent = refusal.error || 'The rules refused this change.';
+
+    line.append(code, message);
+    item.append(line);
+  }
 
   const result = doc.createElement('p');
   result.className = 'ledger-result';
@@ -506,13 +737,11 @@ function controlValue(value) {
 }
 
 function applyBadge(badge, source) {
-  badge.classList.remove('badge-agent', 'badge-you', 'badge-none');
-  if (source === 'agent') {
-    badge.classList.add('badge-agent');
-    badge.textContent = 'agent';
-  } else if (source === 'you') {
-    badge.classList.add('badge-you');
-    badge.textContent = 'you';
+  badge.classList.remove(...BADGE_CLASSES);
+  const word = source ? BADGE_WORDS[source] : null;
+  if (word) {
+    badge.classList.add(`badge-${word === 'you' ? 'you' : source}`);
+    badge.textContent = word;
   } else {
     badge.classList.add('badge-none');
     badge.textContent = 'not set';

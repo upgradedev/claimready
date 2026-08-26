@@ -150,6 +150,58 @@ a { color: var(--accent); }
 .session-policy { font-family: var(--mono); font-size: .8rem; font-weight: 500; color: var(--ink-soft); }
 .session-note { margin: .2rem 0 0; font-size: .72rem; color: var(--ink-faint); }
 
+/* Revision counter. The one number that tells a real write from a hopeful sentence, so it is
+   deliberately the largest thing in the header. */
+
+.revision {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: .55rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: .4rem .75rem;
+  transition: background-color .5s ease, border-color .5s ease;
+}
+
+.revision-label {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.revision-number {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  font-family: var(--mono);
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.revision-note { font-size: .68rem; color: var(--ink-faint); max-inline-size: 22ch; }
+
+.revision.is-bumped { background: var(--flash); border-color: var(--warn); }
+
+/* The polite live region. Kept out of sight but never display none, or it stops being announced. */
+
+.live-region {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Lede, the one sentence */
 
 .lede {
@@ -196,6 +248,48 @@ a { color: var(--accent); }
 .strip-help { margin: .45rem 0 0 1.15rem; }
 .strip-help summary { font-size: .8rem; color: var(--accent); cursor: pointer; }
 .strip-help-body p { margin: .4rem 0; font-size: .82rem; color: var(--ink-soft); max-inline-size: 68ch; }
+
+/* Demonstration controls. Small, out of the way, and never confused with the claim itself. */
+
+.demo-bar {
+  max-width: 1400px;
+  margin: 0 auto 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: .5rem .9rem;
+}
+
+.demo-control { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+
+.demo-label {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.demo-select {
+  font: inherit;
+  font-size: .82rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .3rem .4rem;
+  max-width: 100%;
+}
+.demo-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.demo-note {
+  margin: 0;
+  font-size: .72rem;
+  color: var(--ink-faint);
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
 /* Layout */
 
@@ -268,7 +362,53 @@ main {
   margin-bottom: .3rem;
 }
 
-.field-label { font-size: .78rem; font-weight: 600; color: var(--ink-soft); }
+.field-label { font-size: .78rem; font-weight: 600; color: var(--ink-soft); flex: 1 1 auto; min-width: 0; }
+
+/* The pin. A human only control: there is no tool for it, which is exactly why it is here. */
+
+.pin {
+  font: inherit;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  flex: none;
+  padding: .12rem .45rem;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--surface);
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.pin:hover { color: var(--ink); }
+.pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pin-icon { font-size: .8rem; line-height: 1; }
+.pin[aria-pressed="true"] { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+.pin[disabled] { opacity: .5; cursor: not-allowed; }
+
+.field-row.is-pinned { border-color: var(--warn); }
+
+.field-hint {
+  margin: .3rem 0 0;
+  font-size: .72rem;
+  color: var(--warn);
+  overflow-wrap: anywhere;
+}
+.field-hint:empty { display: none; }
+
+.claim-note {
+  margin: 0 0 .6rem;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--ok);
+  background: var(--ok-bg);
+  border-radius: 6px;
+  padding: .45rem .6rem;
+}
+.claim-note:empty { display: none; }
 
 .field-value {
   margin: .35rem 0 0;
@@ -297,9 +437,8 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
 
 .field-row.is-changed { background: var(--flash); }
 
-@media (prefers-reduced-motion: reduce) {
-  .field-row { transition: none; }
-}
+/* The reduced motion rules for the whole page live at the very bottom of this file, because a
+   media query adds no specificity and only source order would settle a tie. */
 
 .badge {
   font-size: .66rem;
@@ -313,6 +452,8 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
 }
 .badge-agent { background: var(--agent-bg); color: var(--agent); }
 .badge-you { background: var(--you-bg); color: var(--you); }
+.badge-policy { background: var(--surface); color: var(--ink-soft); border: 1px solid var(--line); }
+.badge-derived { background: var(--surface); color: var(--ink-faint); border: 1px dashed var(--line); }
 .badge-none { background: var(--line-soft); color: var(--ink-faint); }
 
 .optional-block { margin-top: .75rem; }
@@ -335,6 +476,112 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
   padding: .45rem .6rem;
 }
 .field-error:empty { display: none; }
+
+/* Requirements. The deterministic half of the loop: an answer changes on the draft and this list
+   is worked out again, with the reason attached to whatever just arrived. */
+
+.req-summary {
+  margin: 0 0 .6rem;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.req-summary.is-blocked {
+  font-weight: 500;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-radius: 6px;
+  padding: .45rem .6rem;
+}
+
+.reqs { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+
+.req {
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: .45rem .6rem;
+  min-width: 0;
+}
+.req.is-open { border-left-color: var(--warn); }
+.req.is-answered { border-left-color: var(--ok); }
+.req.is-human { border-left-color: var(--you); }
+
+.req-head { display: flex; align-items: baseline; gap: .4rem; }
+
+.req-mark { font-size: .7rem; flex: none; color: var(--warn); }
+.req.is-answered .req-mark { color: var(--ok); }
+.req.is-human .req-mark { color: var(--you); }
+
+.req-label { font-size: .84rem; font-weight: 600; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+.req-tag {
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: .1rem .35rem;
+  border-radius: 99px;
+  flex: none;
+  white-space: nowrap;
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.req.is-answered .req-tag { background: var(--ok-bg); color: var(--ok); }
+.req.is-human .req-tag { background: var(--you-bg); color: var(--you); }
+
+/* Two lines normally, which is the whole clause for most rules. src/core appends the "asked for
+   here because" clause at the end, so a settled row shows what the insurer asks for and a row that
+   has just appeared runs on and shows why it appeared. Four causal sentences at full length on
+   screen at once and the one that just arrived is lost among them. */
+.req-why {
+  margin: .25rem 0 0;
+  font-size: .74rem;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.req-human-note {
+  margin: .25rem 0 0;
+  font-size: .74rem;
+  color: var(--you);
+  overflow-wrap: anywhere;
+}
+
+.req-new {
+  margin: .3rem 0 0;
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
+.req.is-new {
+  border-color: var(--warn);
+  border-left-color: var(--warn);
+  background: var(--flash);
+  animation: req-arrive .6s ease-out;
+}
+.req.is-new .req-why {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+  color: var(--ink);
+}
+
+@keyframes req-arrive {
+  from { opacity: .35; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* Verdict blocks, shared by cover and band */
 
@@ -384,6 +631,7 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
 
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn-plain { background: transparent; border-style: dashed; color: var(--ink-soft); font-weight: 500; }
+.btn-inline { width: auto; font-size: .8rem; padding: .32rem .7rem; }
 
 .btn[disabled] { opacity: .55; cursor: not-allowed; }
 
@@ -407,7 +655,44 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
 }
 .ledger-item.is-error { border-left-color: var(--stop); }
 
+/* A refusal is drawn as loudly as a success. It is the security beat of the demonstration, and a
+   quiet refusal would read as a change that landed. */
+.ledger-item.is-refused { border-left-color: var(--warn); background: var(--warn-bg); }
+
 .ledger-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: .45rem; }
+
+.ledger-flag {
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: .1rem .35rem;
+  border-radius: 99px;
+  background: var(--stop-bg);
+  color: var(--stop);
+  white-space: nowrap;
+  flex: none;
+}
+
+.ledger-refusal {
+  margin: .35rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  align-items: baseline;
+  font-size: .74rem;
+  min-width: 0;
+}
+
+.ledger-code {
+  font-family: var(--mono);
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--stop);
+  overflow-wrap: anywhere;
+}
+
+.ledger-reason { color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
 .ledger-time { font-family: var(--mono); font-size: .72rem; color: var(--ink-faint); }
 .ledger-name { font-family: var(--mono); font-size: .82rem; font-weight: 700; color: var(--agent); overflow-wrap: anywhere; }
 
@@ -432,3 +717,11 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
   color: var(--ink-faint);
 }
 .site-footer p { margin: 0; }
+
+/* Reduced motion. Last in the file on purpose: a media query adds no specificity, so these have to
+   come after every rule they turn off. Nothing here removes information, only movement. */
+
+@media (prefers-reduced-motion: reduce) {
+  .field-row, .revision { transition: none; }
+  .req.is-new { animation: none; }
+}

@@ -83,7 +83,7 @@ test('an excluded driver is refused, and that beats a section that would have pa
 test('the excluded driver is matched whatever the casing and spacing', () => {
   const base = claimFor('covered-collision');
   for (const spelling of ['Nikos P.', 'nikos p.', '  NIKOS P.  ']) {
-    const { claim, ok } = applyPatch(base, 'driver', spelling);
+    const { claim, ok } = applyPatch(base, { field: 'driver', value: spelling });
     assert.equal(ok, true);
     const result = checkCoverage(policy, claim);
     assert.equal(result.covered, false, `"${spelling}" should still be the excluded driver`);
@@ -113,7 +113,7 @@ test('an incident before cover started is refused on the date alone', () => {
 
 test('an excluded driver and a lapsed date both report, and the driver leads', () => {
   let claim = claimFor('outside-policy-period');
-  claim = applyPatch(claim, 'driver', 'Nikos P.').claim;
+  claim = applyPatch(claim, { field: 'driver', value: 'Nikos P.' }).claim;
 
   const result = checkCoverage(policy, claim);
   assert.equal(result.covered, false);
@@ -140,7 +140,7 @@ test('every incident type the model allows resolves to a section of this policy'
   // A type that matches nothing would be a silent hole in the policy table.
   const base = claimFor('covered-collision');
   for (const type of ['collision', 'theft', 'glass', 'weather', 'fire', 'vandalism']) {
-    const { claim } = applyPatch(base, 'incident_type', type);
+    const { claim } = applyPatch(base, { field: 'incident_type', value: type });
     const result = checkCoverage(policy, claim);
     assert.ok(result.clause, `${type} resolved to no clause at all`);
   }
