@@ -9,12 +9,15 @@ through WebMCP.
 
 ## Who this is for
 
-The first notice of loss intake desk at a regional motor insurer, and the driver standing at the
-roadside with a damaged car and a phone.
+The driver standing at the roadside with a damaged car and a phone, and behind them the first
+notice of loss handler at a regional motor insurer who opens the claim next morning.
 
-The desk gets claims that arrive complete, with the cover already checked against the policy that
-was actually sold. The driver gets an answer about their own cover while they are still describing
-what happened, instead of a form, a call queue and a letter three days later.
+The driver gets an answer about their own cover while they are still describing what happened,
+instead of a form, a call queue and a letter three days later. That is the half this demo shows.
+The handler's half, a claim that arrives with the cover already checked against the policy that was
+actually sold, is a consequence of the driver's half rather than something you can watch here.
+There is no desk side surface in this repo: no queue view, no arriving claim view, and nothing that
+measures whether claims arrive more complete.
 
 Today that conversation happens twice. The driver tells an assistant what happened, the assistant
 guesses at the cover from general knowledge, and then the driver retypes everything into the
@@ -29,6 +32,12 @@ so it is back to guessing the cover from general knowledge and retyping the answ
 That is the whole point. The rules live on the insurer's origin, where they belong. The agent does
 not scrape them, does not hold them in a system prompt and does not need an integration to be built
 for it in advance. It asks the page, and the page answers with a clause id.
+
+The dullest honest alternative is a REST endpoint with an OpenAPI file beside it, and it is worth
+naming rather than dodging. It loses on two counts. It needs an integration built for this insurer
+in advance, so it does nothing for an agent that has never met this origin before. And it cannot
+gain and lose a capability while the page is open, which is exactly what `get_assistance_options`
+does the moment the driver says the car cannot be driven.
 
 ## How it fits together
 
@@ -171,8 +180,11 @@ Two more, because they are part of the same promise:
 
 No account, no install, nothing to accept. The page is served over HTTPS, which WebMCP requires,
 and it carries its Content Security Policy in the document so the policy holds on any host. The
-Status table below is the honest state of everything else, and `node scripts/readiness.mjs` prints
-it on demand against that URL.
+Status table below is the honest state of everything else, and
+`CLAIMREADY_URL=https://upgradedev.github.io/claimready/ node scripts/readiness.mjs` prints it on
+demand against that URL. Set the variable. The gate's built in default still points at a Vercel
+domain that was never taken, and `curl -s -o /dev/null -w '%{http_code}' https://claimready.vercel.app/`
+returned `404` on 2026-08-27, so running the gate bare reports a live failure that is not one.
 
 WebMCP is new, so a judge needs one of two surfaces.
 
@@ -183,6 +195,11 @@ appear, switch models and reload before assuming the page is broken.
 **2. Chrome 149 or later, with the flag.** Go to `chrome://flags/#enable-webmcp-testing`, enable it,
 relaunch, then load the page. Install the WebMCP Model Context Tool Inspector extension to see the
 registered tools, their schemas and the result of each call.
+
+Chrome 149 is the first build with WebMCP, but 153 or later is the better one for this page. The
+imperative API documentation, read on 2026-08-27 at
+<https://developer.chrome.com/docs/ai/webmcp/imperative-api>, records that unregistering a tool
+stopped cancelling in-flight executions as of Chrome 153, and this page withdraws a tool live.
 
 The page tells you which API name it found, `document.modelContext` or `navigator.modelContext`, and
 shows a running ledger of the tool calls your agent makes, so nothing about the integration has to
@@ -248,7 +265,7 @@ go stale between commits.
 | Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
 | Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
 | Declarative form step, the HTML attribute API | not yet built | absent from `index.html` |
-| Evals against the tool surface | not yet built | absent from `tests` |
+| Tests over the WebMCP layer, and evals against the tool surface | not yet built. The unit tests cover the pure core only, so nothing in this repo has yet executed a registration | `grep -rl "modelContext" tests/` returns nothing |
 | Public video | not yet built | `node scripts/readiness.mjs` row `D4` |
 | Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
 
