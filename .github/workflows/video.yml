@@ -1,0 +1,170 @@
+name: Video
+
+# The demo video is built here and nowhere else.
+#
+# Two things live in this file that live nowhere else in CI: ffmpeg and a browser. Both are
+# installed inside this workflow only. The rest of the repository has no dependencies and no
+# install step, and that is not changed by anything below.
+#
+# The build spends money on narration, so it runs on demand. Every push runs the gate self test
+# instead, which needs no secret, no deployed page and no network, and which proves that each
+# assertion in video/sync_gate.py can still fail.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      beat:
+        description: "One beat id to re render, for example 05-reconcile. Leave empty to build every beat."
+        type: string
+        required: false
+        default: ""
+      skip_build:
+        description: "Run the gate self test only. No secret is read and nothing is rendered."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  # A range rather than an exact pin. The capture only needs a Chromium that runs the page, and an
+  # exact pin that turns out not to exist fails a job nobody can rerun into existence.
+  PLAYWRIGHT_VERSION: "^1.48.2"
+  # The hard cap on the finished cut, in seconds. The rules say the video must be less than three
+  # minutes. video/sync_gate.py holds the same number as MAX_TOTAL_SECONDS and check A of that gate
+  # fails when the two disagree, so this value cannot be changed on its own.
+  VIDEO_MAX_TOTAL_SECONDS: "170"
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Runs on every push. No secret, no browser, no deployed page. This is the path
+  # that exists so the gate is never trusted without having been seen to fail.
+  # ---------------------------------------------------------------------------
+  gate-selftest:
+    name: Sync gate self test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg, in CI only
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - name: Break every check on purpose and prove each one refuses the build
+        run: python3 video/sync_gate.py --selftest
+
+      - name: The cut plan, and which owner takes are still missing
+        run: python3 video/build_video.py --plan
+
+  # ---------------------------------------------------------------------------
+  # Renders and assembles. Manual only, because narration costs money per run.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build the cut
+    needs: gate-selftest
+    if: github.event_name == 'workflow_dispatch' && inputs.skip_build != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The narration secret must exist before anything is installed
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: |
+          if [ -z "${ELEVENLABS_API_KEY}" ]; then
+            echo "::error title=ELEVENLABS_API_KEY is not set::The repository secret ELEVENLABS_API_KEY does not exist, so there is no narration to render. This job stops here on purpose. It does not fall back to a silent track, because a voiceless cut looks finished and is not, and it would reach a judge as a broken deliverable. Add the secret under Settings, Secrets and variables, Actions, then run this workflow again. To exercise the gate with no secret at all, run this workflow with skip_build set to true, or push, which runs the Sync gate self test job."
+            exit 1
+          fi
+          echo "ELEVENLABS_API_KEY is present. Its value is never printed by this workflow."
+
+      - name: The deployed page must exist before the machine beats are filmed
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: |
+          if [ -z "${CLAIMREADY_URL}" ]; then
+            echo "::error title=CLAIMREADY_URL is not set::The machine beats film the real deployed page. Set the repository variable CLAIMREADY_URL to the live judge URL and run this again."
+            exit 1
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "${CLAIMREADY_URL}")
+          echo "${CLAIMREADY_URL} answered ${code}"
+          if [ "${code}" != "200" ]; then
+            echo "::error title=The judge URL is not serving::${CLAIMREADY_URL} answered ${code}. Filming a broken page is worse than not filming. Fix the deployment first."
+            exit 1
+          fi
+
+      - name: Every owner take must be on disk before a cent is spent on narration
+        run: python3 video/build_video.py --check-takes
+
+      - name: Install ffmpeg, in CI only
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Playwright, in CI only
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund \
+            "playwright@${PLAYWRIGHT_VERSION}"
+          npx playwright install --with-deps chromium
+
+      # Keyed on the beat inputs, so a run that changed one narration file re renders one beat and
+      # restores the other seven. This is what makes a one beat fix cost one beat in CI too.
+      - name: Restore the beat cache
+        uses: actions/cache@v4
+        with:
+          path: tmp/video
+          key: video-build-${{ hashFiles('video/beats/**', 'video/build_video.py', 'video/sync_gate.py') }}
+          restore-keys: |
+            video-build-
+
+      - name: Re render the one named beat
+        if: inputs.beat != ''
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: python3 video/build_video.py --beat "${{ inputs.beat }}" --force
+
+      - name: Build every beat and assemble the cut
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: python3 video/build_video.py
+
+      # Required. Nothing is uploaded until this passes, and it reads the encoded files rather
+      # than the manifest that claims what they are.
+      - name: Sync gate, read from the shipped pixels
+        run: python3 video/sync_gate.py
+
+      - name: Upload the cut, the captions and every beat
+        uses: actions/upload-artifact@v4
+        with:
+          name: claimready-video
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            tmp/video/cut.mp4
+            tmp/video/captions.vtt
+            tmp/video/manifest.json
+            tmp/video/beats/*/beat.mp4
+            tmp/video/beats/*/captions.vtt
+
+      - name: What happens next
+        run: |
+          echo "Download the claimready-video artifact, upload cut.mp4 to YouTube, set the"
+          echo "visibility to Public, and paste the watch link into docs/submission/video.md."
+          echo "The readiness gate row D4 stays red until that link is in the file."

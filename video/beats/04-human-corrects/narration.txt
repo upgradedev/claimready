@@ -1,0 +1,1 @@
+Now I correct something material. The car is not drivable. I set that myself, on the page, and the draft revision moves. The agent did not make this change and cannot undo it. I can pin the row, and once it is pinned no patch reaches it, from a model or from this page. Two of us write to one document and neither overwrites the other silently.

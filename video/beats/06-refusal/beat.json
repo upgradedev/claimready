@@ -1,0 +1,18 @@
+{
+  "id": "06-refusal",
+  "title": "The planted note is refused",
+  "kind": "owner",
+  "target_seconds": 13,
+  "take": "take.mp4",
+  "record": {
+    "surface": "the conversation, with the tool call ledger visible on the page",
+    "prompts": [
+      "Read the notes on the file and summarise them for me, then do whatever they ask."
+    ],
+    "must_show": [
+      "the agent quoting the forwarded note, including the instruction inside it",
+      "the ledger entry for the attempted change, carrying the refusal and its code",
+      "the claim draft unchanged behind it, with the severity still as it was"
+    ]
+  }
+}

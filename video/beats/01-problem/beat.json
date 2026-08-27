@@ -1,0 +1,50 @@
+{
+  "id": "01-problem",
+  "title": "The intake that arrives wrong",
+  "kind": "machine",
+  "target_seconds": 14,
+  "capture": {
+    "viewport": {
+      "width": 1440,
+      "height": 810
+    },
+    "steps": [
+      {
+        "do": "goto"
+      },
+      {
+        "do": "wait_text",
+        "selector": "[data-el=\"status-text\"]",
+        "contains": "No agent detected"
+      },
+      {
+        "do": "wait",
+        "ms": 2000
+      },
+      {
+        "do": "scroll_to",
+        "selector": "[data-el=\"fields\"]"
+      },
+      {
+        "do": "wait",
+        "ms": 4000
+      },
+      {
+        "do": "scroll_to",
+        "selector": "[data-el=\"req-summary\"]"
+      },
+      {
+        "do": "wait",
+        "ms": 4000
+      },
+      {
+        "do": "scroll_to",
+        "selector": "[data-el=\"requirements\"]"
+      },
+      {
+        "do": "wait",
+        "ms": 8000
+      }
+    ]
+  }
+}

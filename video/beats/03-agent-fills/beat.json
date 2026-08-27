@@ -1,0 +1,20 @@
+{
+  "id": "03-agent-fills",
+  "title": "The agent reads the policy and fills the draft",
+  "kind": "owner",
+  "target_seconds": 29,
+  "take": "take.mp4",
+  "record": {
+    "surface": "the deployed page open in the ChatGPT desktop built in browser, signed in to your own account, with the claim draft visible beside the conversation",
+    "prompts": [
+      "Read this claim page and tell me what it still needs from me.",
+      "A delivery van reversed into my left front wing while the car was parked in the car park on Harbour Road. It is a dent at the 10 o'clock position and the car still drives. Fill that in for me and write the description."
+    ],
+    "must_show": [
+      "the status strip reading 8 tools registered, and the API name it found",
+      "the tool call ledger filling with read_claim_state, get_requirements and apply_claim_patch",
+      "claim rows changing from not set to a value, each with the agent badge",
+      "the draft revision number in the header rising as the patches land"
+    ]
+  }
+}

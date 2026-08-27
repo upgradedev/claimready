@@ -1,0 +1,19 @@
+{
+  "id": "05-reconcile",
+  "title": "The tool surface follows the claim",
+  "kind": "owner",
+  "target_seconds": 21,
+  "take": "take.mp4",
+  "record": {
+    "surface": "back in the conversation, with the requirements panel and the status strip both visible on the page",
+    "prompts": [
+      "I have just corrected the drivable answer on the page myself. Read the claim again and tell me what changed and what it needs now."
+    ],
+    "must_show": [
+      "the requirements list changing, with the reason printed beside each entry",
+      "the status strip count moving from 8 to 9",
+      "the name get_assistance_options appearing in the list of tools available to the agent",
+      "the page announcement naming why the tool was published"
+    ]
+  }
+}

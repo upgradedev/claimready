@@ -1,0 +1,20 @@
+{
+  "id": "07-human-files",
+  "title": "Filing is a decision, not a tool",
+  "kind": "owner",
+  "target_seconds": 12,
+  "take": "take.mp4",
+  "record": {
+    "surface": "the page, full width if you can, with Your decisions in shot",
+    "prompts": [],
+    "actions": [
+      "unpin nothing and change nothing else",
+      "press File this claim with the pointer, slowly enough to see"
+    ],
+    "must_show": [
+      "the File this claim button being pressed by hand",
+      "the filed line that appears underneath it",
+      "the sentence on the panel saying these buttons are never registered as agent tools"
+    ]
+  }
+}

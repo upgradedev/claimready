@@ -1,0 +1,22 @@
+{
+  "id": "04-human-corrects",
+  "title": "A person corrects something material",
+  "kind": "owner",
+  "target_seconds": 25,
+  "take": "take.mp4",
+  "record": {
+    "surface": "the same page, the same session, the conversation left alone while you use the page directly",
+    "prompts": [],
+    "actions": [
+      "read the draft revision number in the header out of shot before you start, so the before and after are both on the take",
+      "set the Still drivable row to No, using the control on the page",
+      "press Pin on that same row, so the lock state is visible"
+    ],
+    "must_show": [
+      "the Still drivable row moving to No",
+      "the badge on that row changing to you",
+      "the draft revision number in the header stepping up",
+      "the pin control on that row reading as pinned"
+    ]
+  }
+}

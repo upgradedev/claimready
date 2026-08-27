@@ -1,0 +1,58 @@
+{
+  "id": "02-publishes",
+  "title": "The page publishes its tools",
+  "kind": "machine",
+  "target_seconds": 15,
+  "capture": {
+    "viewport": {
+      "width": 1440,
+      "height": 810
+    },
+    "steps": [
+      {
+        "do": "agent_host"
+      },
+      {
+        "do": "goto"
+      },
+      {
+        "do": "wait_text",
+        "selector": "[data-el=\"status-text\"]",
+        "contains": "8 tools registered"
+      },
+      {
+        "do": "expect_tool_count",
+        "count": 8
+      },
+      {
+        "do": "wait",
+        "ms": 2500
+      },
+      {
+        "do": "scroll_to",
+        "selector": "[data-el=\"status-detail\"]"
+      },
+      {
+        "do": "wait",
+        "ms": 4500
+      },
+      {
+        "do": "call_tool",
+        "name": "describe_claim",
+        "args": {}
+      },
+      {
+        "do": "wait",
+        "ms": 2000
+      },
+      {
+        "do": "scroll_to",
+        "selector": "[data-el=\"ledger\"]"
+      },
+      {
+        "do": "wait",
+        "ms": 8000
+      }
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "id": "08-close",
+  "title": "The one sentence",
+  "kind": "machine",
+  "target_seconds": 16,
+  "capture": {
+    "viewport": {
+      "width": 1440,
+      "height": 810
+    },
+    "steps": [
+      {
+        "do": "agent_host"
+      },
+      {
+        "do": "goto"
+      },
+      {
+        "do": "wait_text",
+        "selector": "[data-el=\"status-text\"]",
+        "contains": "8 tools registered"
+      },
+      {
+        "do": "call_tool",
+        "name": "read_claim_state",
+        "args": {}
+      },
+      {
+        "do": "call_tool",
+        "name": "get_requirements",
+        "args": {}
+      },
+      {
+        "do": "call_tool",
+        "name": "check_coverage",
+        "args": {}
+      },
+      {
+        "do": "wait",
+        "ms": 1500
+      },
+      {
+        "do": "scroll_to",
+        "selector": ".lede"
+      },
+      {
+        "do": "wait",
+        "ms": 6000
+      },
+      {
+        "do": "scroll_to",
+        "selector": "[data-el=\"ledger\"]"
+      },
+      {
+        "do": "wait",
+        "ms": 10000
+      }
+    ]
+  }
+}

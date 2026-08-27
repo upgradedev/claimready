@@ -1,0 +1,1 @@
+The insurer's page hands your own agent its policy rules as typed tools, so a claim is checked against your actual cover while you describe it, and only you can file it. No model runs on this page and no key lives here.
