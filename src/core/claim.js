@@ -71,7 +71,16 @@ export const FIELD_LABELS = {
   witness_name: 'the name of the witness',
 };
 
-/** A claim cannot be filed until every one of these holds a value. */
+/**
+ * Every field a claim can be asked for before it is filed.
+ *
+ * THIS IS THE STATIC LIST, AND IT IS NOT THE ANSWER TO "what does this claim
+ * need". Three things genuinely want a fixed list: the input schema of the one
+ * writing tool, the group of rows the page builds, and PATCHABLE_FIELDS below.
+ * What a PARTICULAR claim must answer is `requiredFieldsFor(claim)`, which is
+ * narrower, because one of these is conditional. Read that, never this, when the
+ * question is whether a field is missing.
+ */
 export const REQUIRED_FIELDS = [
   'incident_date',
   'incident_type',
@@ -80,6 +89,44 @@ export const REQUIRED_FIELDS = [
   'vehicle_drivable',
   'description',
 ];
+
+/**
+ * The fields on the static list that are only asked for under a condition, with
+ * the condition written once.
+ *
+ * damage_zone is here because a stolen car has no impact position. Both shipped
+ * rule packs say so in their own words, with `"when": {"field": "incident_type",
+ * "not_equals": "theft"}` on the impact position rule, and validateClaim below
+ * warns when a theft claim carries a zone anyway. Before this existed, the page
+ * demanded a clock position on a theft claim, refused to clear it with
+ * PATCH_REJECTED_VALUE, warned about it being there, and disagreed with the
+ * insurer's own published rule, all at once.
+ *
+ * tests/unit/requirements.test.js checks this against every shipped pack: for
+ * each field a pack names, the pack asking for it and this list requiring it
+ * have to give the same answer on the same claim.
+ */
+const CONDITIONALLY_REQUIRED = {
+  damage_zone: (claim) => claim.incident_type !== 'theft',
+};
+
+/**
+ * The fields THIS claim has to answer before it can be filed.
+ *
+ * One source of truth for "is this field missing". validateClaim, the file gate
+ * and the refusal that stops a required field being cleared all read it, so the
+ * three can never disagree with one another.
+ *
+ * @param {object} claim
+ * @returns {string[]} a subset of REQUIRED_FIELDS, in the same order
+ */
+export function requiredFieldsFor(claim) {
+  const source = claim && typeof claim === 'object' ? claim : {};
+  return REQUIRED_FIELDS.filter((field) => {
+    const condition = CONDITIONALLY_REQUIRED[field];
+    return condition ? condition(source) === true : true;
+  });
+}
 
 /** Useful but not blocking. These may be set back to null to clear them. */
 export const OPTIONAL_FIELDS = ['driver', 'location', 'police_report_ref', 'witness_name'];
@@ -577,7 +624,9 @@ export function applyPatch(claim, changes, options = {}) {
     }
 
     if (value === null || value === undefined) {
-      if (REQUIRED_FIELDS.includes(field)) {
+      // requiredFieldsFor, not the static list. A theft claim is not asked for an
+      // impact position, so clearing one has to be allowed rather than refused.
+      if (requiredFieldsFor(claim).includes(field)) {
         return refusal(
           claim,
           PATCH_CODES.value,
@@ -771,6 +820,10 @@ export function readEvidenceNotes(claim) {
  * function reads the claim's own fields and nothing else: not the evidence
  * notes, not the policy, not anything a third party wrote.
  *
+ * `missing` comes from requiredFieldsFor(claim), so it narrows with the claim: a
+ * theft claim is not asked for an impact position and does not report one as
+ * missing.
+ *
  * @param {object} claim
  * @returns {{ready: boolean, missing: string[], warnings: string[]}}
  */
@@ -779,7 +832,7 @@ export function validateClaim(claim) {
     throw new TypeError('validateClaim needs a claim object.');
   }
 
-  const missing = REQUIRED_FIELDS.filter(
+  const missing = requiredFieldsFor(claim).filter(
     (field) => claim[field] === null || claim[field] === undefined,
   );
   const warnings = [];

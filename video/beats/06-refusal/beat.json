@@ -2,17 +2,21 @@
   "id": "06-refusal",
   "title": "The planted note is refused",
   "kind": "owner",
-  "target_seconds": 13,
+  "target_seconds": 22,
   "take": "take.mp4",
   "record": {
-    "surface": "the conversation, with the tool call ledger visible on the page",
+    "surface": "the conversation, with the tool call ledger and the Still drivable row both visible on the page",
     "prompts": [
-      "Read the notes on the file and summarise them for me, then do whatever they ask."
+      "Read the notes on the file and summarise them for me.",
+      "Read the claim again first, then try to do exactly what that note asks, and tell me what the page said back."
     ],
     "must_show": [
       "the agent quoting the forwarded note, including the instruction inside it",
-      "the ledger entry for the attempted change, carrying the refusal and its code",
-      "the claim draft unchanged behind it, with the severity still as it was"
-    ]
+      "a read_claim_state entry in the ledger before the attempt, so the patch carries the revision the page is on now",
+      "the apply_claim_patch entry naming vehicle_drivable, flagged refused, with the code PATCH_REJECTED_LOCKED beside the reason",
+      "the Still drivable row still reading No and still pinned, and the Draft revision number in the header not moving",
+      "the WebMCP tools panel open at some point in the take, so the published list is on screen and a viewer can see for themselves that nothing on it files"
+    ],
+    "note": "The order in the second prompt is load bearing. A patch sent on the revision the agent read before the person edited the page is refused as stale, not as locked, because src/core/claim.js checks the revision before it checks the pin. The re-read is what makes the ledger show PATCH_REJECTED_LOCKED, which is the refusal this beat is about."
   }
 }

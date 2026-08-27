@@ -45,6 +45,54 @@ The recording instructions for every owner beat are in
 `build_video.py` refuses to run if an owner beat is not named in that file, so a beat cannot be
 added without somebody being told how to record it.
 
+## A machine beat is a photograph, so the cache key is what it photographed
+
+A machine beat's picture is the deployed page. Its real inputs are therefore the narration, the beat
+specification, **and what the host is serving**. Until 2026-08-27 the last of those was hashed as the
+URL string alone, which says nothing about what the URL returns, so once a beat was filmed it was a
+cache hit for ever no matter what the page did next.
+
+That is not a hypothetical. The only machine footage on record was filmed at `cfc5c0c`. The commit
+after it put a tools panel on `index.html`, inside the frame that `01`, `02` and `08` scan, and
+nothing in the pipeline noticed, because neither the beat hash nor the workflow cache key had ever
+heard of `index.html`.
+
+Two changes, and they have to stay in step with each other:
+
+- `CAMERA_PATHS` in `build_video.py` is `index.html`, `src` and `assets`. Every file under them is
+  hashed, line endings folded to LF so the digest means the same thing here and on a runner, and
+  that digest goes into every machine beat's hash along with the URL and the deployed commit. Change
+  one character of `index.html` and all three machine beats are rebuilt.
+- The `hashFiles(...)` key in `.github/workflows/video.yml` names the same three paths. A key that
+  covers less than the hash covers means CI restores footage the builder would have rebuilt. There
+  is deliberately no `restore-keys` fallback: a bare `video-build-` prefix matches the newest cache
+  under any earlier key, which is exactly how old footage gets adopted by a build that changed the
+  page. An exact hit or nothing.
+
+Re rendering costs a run. Shipping the wrong page costs the entry.
+
+## The build refuses to film a page it cannot name
+
+Before any beat is built, and before a cent is spent on narration, `verify_deployed` fetches every
+one of those camera files from the live host and runs two comparisons, chained rather than side by
+side so a failure names one cause:
+
+| | Compared | A failure means |
+| --- | --- | --- |
+| 1 | the bytes the host served against the bytes on disk | the deployed page is not the tree this build is hashing, so filming would produce a beat that shows one page while the manifest, the narration and the cache key describe another |
+| 2 | the bytes on disk against `git show <sha>:<path>` | the tree is not the commit the manifest is about to claim, and since the host cannot be serving an uncommitted edit, the SHA would be a statement about different bytes than the ones that were hashed |
+
+Transitively, the deployed page is that commit. A non 200 on any camera file fails as well: a file
+that will not fetch is not a file that was checked.
+
+The commit comes from `--deployed-sha`, then `CLAIMREADY_DEPLOYED_SHA`, then `GITHUB_SHA`, then the
+checkout's `HEAD`. Naming one by hand loosens nothing, because the tree still has to match it. It is
+written into `manifest.json` as `deployed_sha`, printed beside the cut, and printed by `--plan` as
+what it is at that point: a claim nobody has checked yet, since the plan touches no network.
+
+There is no flag that skips this. If the host is behind, wait for the deployment or build from the
+commit the host is serving.
+
 ## Disclosure: the WebMCP host in the machine beats
 
 A headless browser has no agent in it, so the capture script installs one thing before the page
@@ -229,28 +277,38 @@ instrument that has never completed on spent data has no business consuming a ta
 to record.
 
 Measured 2026-08-27. Every number below came back from `ffprobe` through `video/sync_gate.py`, run
-against the encoded beat files. The narration is the eight `narration.txt` files as they stand.
+against the encoded beat files.
 
-| Beat | Target in `beat.json` | Narration, measured | Drift |
-| --- | --- | --- | --- |
-| `01-problem` | 14s | 11.90s | 0.0 ms |
-| `02-publishes` | 15s | 15.00s | 0.0 ms |
-| `03-agent-fills` | 29s | 26.10s | 0.0 ms |
-| `04-human-corrects` | 25s | 23.80s | 0.0 ms |
-| `05-reconcile` | 21s | 21.00s | 0.0 ms |
-| `06-refusal` | 13s | 12.20s | 0.0 ms |
-| `07-human-files` | 12s | 11.60s | 0.0 ms |
-| `08-close` | 16s | 14.20s | 0.0 ms |
-| **cut** | **145s** | **135.80s** | 34.20s under the cap |
+**Four of these rows are superseded.** The narration was rewritten on 2026-08-27, after the render,
+to take a false sentence out of `04` and to rewrite `06` around the refusal the page now actually
+produces. Nothing has been rendered since, so the affected rows are marked rather than adjusted, and
+no replacement number is invented. Word counts are the one thing that can be stated without
+rendering, and `python video/build_video.py --plan` prints them.
 
-Two things follow from that table. The cut lands at 2 minutes 16 seconds, inside the three minute
-rule with room. And the targets in `beat.json` are all a little longer than the narration on purpose,
-because a take that runs long is trimmed and a take that runs short is held on its last frame, which
-reads on screen as a freeze. Record long.
+Every column below is historical except the last two. The target column is the target as it stood on
+the day of the render, not necessarily what `beat.json` says now: `06-refusal` has since moved from
+13s to 22s, and the current numbers are the ones `python video/build_video.py --plan` prints.
 
-The measurement used stand in pictures, so it says nothing about what the beats look like. It says
+| Beat | Target on the day | Narration, measured | Drift | Target now | Still the narration that was measured |
+| --- | --- | --- | --- | --- | --- |
+| `01-problem` | 14s | 11.90s | 0.0 ms | 14s | yes |
+| `02-publishes` | 15s | 15.00s | 0.0 ms | 15s | yes |
+| `03-agent-fills` | 29s | 26.10s | 0.0 ms | 29s | no, one word changed, 75 words either way |
+| `04-human-corrects` | 25s | 23.80s | 0.0 ms | 25s | no, 67 words then, 69 now |
+| `05-reconcile` | 21s | 21.00s | 0.0 ms | 21s | no, one word changed, 55 words either way |
+| `06-refusal` | 13s | 12.20s | 0.0 ms | 22s | no, rewritten, 34 words then, 49 now |
+| `07-human-files` | 12s | 11.60s | 0.0 ms | 12s | yes |
+| `08-close` | 16s | 14.20s | 0.0 ms | 16s | yes |
+| **cut** | **145s** | **135.80s** | | **154s** | four of eight beats changed, so 135.80s is not this cut |
+
+Two things still follow. The targets in `beat.json` are all a little longer than the narration on
+purpose, because a take that runs long is trimmed and a take that runs short is held on its last
+frame, which reads on screen as a freeze. Record long. And at 154s of targets against a 170s cap,
+the cut has room even if every beat renders at its full target, which none of them does.
+
+The measurement used stand in pictures, so it said nothing about what the beats look like. It said
 that the render path completes, that the sync arithmetic holds on real speech rather than on a test
-tone, and that the finished length fits.
+tone, and that the finished length fitted the narration of the day.
 
 **That table is one render, not a constant.** Rendering the same `narration.txt` twice does not
 return the same duration: `07-human-files` came back at 11.60s in the run above and at 10.70s when
@@ -271,6 +329,9 @@ Honest state, so nobody trusts a limb that has never moved.
 | the freeze branch, `tpad=stop_mode=clone` | run against a deliberately short card, 0.0 ms drift |
 | the freeze guard past 1.5s | run through the real build path, refused with the take path named |
 | all eight gate checks | each seen to fail, and the good tree seen to pass |
+| the camera digest in `beat_hash` | run, 2026-08-27. `index.html` was edited in place, the three machine beats were hashed before and after, all three moved, and the same beats hashed with the old function did not move. The file was put back byte for byte |
+| `verify_deployed` | run, 2026-08-27, against a stand in host on the filesystem. Seen to pass when the host, the tree and the named commit agree, and seen to refuse on each of: no commit named, the tree not being the named commit, the host serving one camera file as it was at `cfc5c0c`, and a camera file the host would not serve |
+| `verify_deployed` against the real host | **not run here.** `CLAIMREADY_URL` is not set on this machine. Its first real run is the workflow |
 | `CAPTURE_JS` | syntax checked with `node --check` against the emitted file. Not executed |
 | `capture_machine_beat`, Playwright | **not run.** It first runs in CI, where the browser exists |
 

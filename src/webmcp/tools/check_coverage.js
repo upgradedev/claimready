@@ -9,7 +9,7 @@
  * tool only asks the question and puts the answer on the page.
  */
 
-import { toResult } from '../register.js';
+import { toResult, packOf } from '../register.js';
 import { checkCoverage, exclusionLabels } from '../../core/coverage.js';
 
 export default (ctx) => ({
@@ -18,8 +18,9 @@ export default (ctx) => ({
   description:
     'Check the claim draft on this page against the policy it belongs to. Returns whether the '
     + 'incident is covered, the clause the decision rests on, the reason in plain language, any '
-    + 'exclusion that applies, and the deductible the claimant would pay. The answer can be no. '
-    + 'Set incident_type first. This is a cover check, not a settlement offer.',
+    + 'exclusion that applies, and the deductible the claimant would pay. The answer can be no, '
+    + 'and a yes can be provisional while the claim has not said who was driving. Set '
+    + 'incident_type first. This is a cover check, not a settlement offer.',
 
   inputSchema: {
     type: 'object',
@@ -55,10 +56,35 @@ export default (ctx) => ({
     // when it is driven from a harness that has no page to publish to.
     if (typeof ctx.publish === 'function') ctx.publish('coverage', { decision, source: 'agent' });
 
-    const lines = [`Cover decision on policy ${ctx.policyId}: ${decision.covered ? 'COVERED' : 'NOT COVERED'}.`];
+    // NAME THE SCHEDULE THAT DECIDED, NOT ONLY THE POLICY NUMBER. This line used to read "Cover
+    // decision on policy MTR-2026-0417" whichever rule pack was loaded, so switching insurer
+    // produced another insurer's clauses under this customer's policy number. The pack that
+    // answered is the fact the reader needs, and where the two belong to different insurers the
+    // tool says so in the next line rather than leaving it to be worked out.
+    const pack = packOf(ctx);
+    const source = pack ? `${pack.insurer} rules` : 'the policy schedule on this page';
+
+    let verdict = 'NOT COVERED';
+    if (decision.covered) verdict = decision.provisional ? 'COVERED, PROVISIONALLY' : 'COVERED';
+
+    const lines = [`Cover decision under ${source}, on the claim for policy ${ctx.policyId}: ${verdict}.`];
+
+    if (pack && ctx.packId && ctx.homePackId && ctx.packId !== ctx.homePackId) {
+      lines.push(
+        `These are ${pack.insurer}'s published rules, loaded on this page so the same claim can be `
+        + `read against them. Policy ${ctx.policyId} is not with ${pack.insurer}.`
+      );
+    }
 
     if (decision.clause) lines.push(`Clause: ${decision.clause}`);
     if (decision.reason) lines.push(`Reason: ${decision.reason}`);
+
+    if (decision.provisional) {
+      lines.push(
+        'Provisional, so do not tell the claimant they are covered yet. Ask who was driving and '
+        + 'send it with apply_claim_patch, then call check_coverage again.'
+      );
+    }
 
     // exclusions holds objects. exclusionLabels is the one place that turns them into words.
     const applied = exclusionLabels(decision);

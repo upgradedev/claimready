@@ -6,9 +6,18 @@ import {
   deriveRequirements,
   outstandingRequirements,
   summariseRequirements,
+  packFieldDemands,
 } from '../../src/core/requirements.js';
 import { loadPolicyPack } from '../../src/core/policy.js';
-import { applyPatch, createClaim, validateClaim } from '../../src/core/claim.js';
+import {
+  applyPatch,
+  createClaim,
+  validateClaim,
+  requiredFieldsFor,
+  REQUIRED_FIELDS,
+  INCIDENT_TYPES,
+  SEVERITIES,
+} from '../../src/core/claim.js';
 
 function readJson(relative) {
   return JSON.parse(readFileSync(new URL(relative, import.meta.url), 'utf8'));
@@ -112,20 +121,52 @@ test('answering the newly raised requirement satisfies it without changing the l
   assert.equal(byId(after, 'collection_address').satisfied, true);
 });
 
-// Roadside collection is arranged by a person pressing a button. No tool can do
-// it, so it stays open however much the agent fills in, and the text says so.
-test('the requirement only a person can satisfy never reports itself answered', () => {
+// Roadside collection is arranged by a person pressing a button on the page. No
+// tool on the page reaches that button, so no field an agent can send answers
+// it, and the text says so.
+function stranded() {
   let claim = patch(createClaim(fixture), 'vehicle_drivable', false);
   claim = patch(claim, 'location', 'Car park, Harbour Road');
   claim = patch(claim, 'damage_zone', 10);
   claim = patch(claim, 'severity', 'structural');
   claim = patch(claim, 'description', 'The wing is folded into the wheel and the car will not roll.');
   claim = patch(claim, 'police_report_ref', 'PR-2026-55810');
+  return claim;
+}
 
-  const roadside = byId(deriveRequirements(northwind, claim), 'roadside_collection');
+test('no field an agent can send answers the requirement a person has to act on', () => {
+  const roadside = byId(deriveRequirements(northwind, stranded()), 'roadside_collection');
   assert.equal(roadside.satisfied, false);
-  assert.match(roadside.why, /Nothing an agent can send satisfies this one/);
-  assert.match(roadside.why, /Request roadside assistance/);
+  assert.equal(roadside.field, null, 'no claim field answers this one');
+  assert.match(roadside.humanAction, /Request roadside assistance/);
+  assert.match(roadside.why, /no tool on this page reaches it/);
+});
+
+// The other half, and the one that was missing. A human action that HAS been
+// carried out has to be able to report itself answered, or the panel can never
+// reach "all requirements are answered" and three surfaces end up disagreeing.
+test('a human action the page reports as done is answered, and only that one', () => {
+  const claim = stranded();
+  const before = deriveRequirements(northwind, claim);
+  assert.equal(byId(before, 'roadside_collection').satisfied, false);
+
+  const after = deriveRequirements(northwind, claim, ['roadside_collection']);
+  assert.equal(byId(after, 'roadside_collection').satisfied, true);
+  assert.match(byId(after, 'roadside_collection').why, /The page reports that this has now been done/);
+  assert.deepEqual(ids(after), ids(before), 'reporting an action done must not add or remove a requirement');
+  assert.equal(outstandingRequirements(after).length, 0, 'the demo has to be able to reach all answered');
+  assert.equal(summariseRequirements(after), `All ${after.length} intake requirements are answered.`);
+});
+
+test('an unrelated id reported done satisfies nothing', () => {
+  const after = deriveRequirements(northwind, stranded(), ['collection_address', 'not_a_requirement']);
+  assert.equal(byId(after, 'roadside_collection').satisfied, false);
+});
+
+test('a Set and an array of completed actions are read the same way', () => {
+  const fromArray = deriveRequirements(northwind, stranded(), ['roadside_collection']);
+  const fromSet = deriveRequirements(northwind, stranded(), new Set(['roadside_collection']));
+  assert.deepEqual(fromSet, fromArray);
 });
 
 test('a theft claim is not asked where the impact landed', () => {
@@ -238,4 +279,96 @@ test('a claim that answers everything reports nothing outstanding', () => {
   const requirements = deriveRequirements(kestrel, claim);
   assert.deepEqual(outstandingRequirements(requirements), []);
   assert.match(summariseRequirements(requirements), /All \d+ intake requirements are answered/);
+});
+
+// ---------------------------------------------------------------------------
+// The file gate and the insurer's own rules must not drift apart
+//
+// The gate that decides whether a claim can be filed lives in claim.js, because
+// the store can reach it without a rule pack. What the intake asks for lives in
+// the packs. Those are two statements of the same thing for any field a pack
+// names, and they were contradicting each other: the gate demanded an impact
+// position on a theft claim, refused to let it be cleared, and warned that it
+// should not be there, while both packs said plainly that theft is not asked for
+// one. This is the check that fails when they drift again.
+// ---------------------------------------------------------------------------
+
+const PACKS = [['northwind', northwind], ['kestrel', kestrel]];
+
+/** Enough shapes to move every condition either pack writes. */
+function claimMatrix() {
+  const out = [];
+  for (const incidentType of [null, ...INCIDENT_TYPES]) {
+    for (const severity of [null, ...SEVERITIES]) {
+      for (const drivable of [null, true, false]) {
+        let claim = createClaim({});
+        if (incidentType) claim = patch(claim, 'incident_type', incidentType);
+        if (severity) claim = patch(claim, 'severity', severity);
+        if (drivable !== null) claim = patch(claim, 'vehicle_drivable', drivable);
+        out.push({ label: `${incidentType ?? 'no type'}/${severity ?? 'no severity'}/drivable ${drivable}`, claim });
+      }
+    }
+  }
+  return out;
+}
+
+test('for every field a pack names, the pack and the file gate agree on every claim shape', () => {
+  const disagreements = [];
+  const matrix = claimMatrix();
+  assert.ok(matrix.length >= 84, `the matrix collapsed to ${matrix.length} claims`);
+
+  for (const [name, pack] of PACKS) {
+    for (const { label, claim } of matrix) {
+      const { asked, named } = packFieldDemands(pack, claim);
+      const gate = requiredFieldsFor(claim);
+      for (const field of named) {
+        if (!REQUIRED_FIELDS.includes(field)) continue;
+        const packWantsIt = asked.includes(field);
+        const gateWantsIt = gate.includes(field);
+        if (packWantsIt !== gateWantsIt) {
+          disagreements.push(
+            `${name} on ${label}: pack asks for ${field}=${packWantsIt}, file gate requires it=${gateWantsIt}`,
+          );
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(disagreements, [], disagreements.join('\n'));
+});
+
+// The gap is real and deliberate, so it is written down rather than left to be
+// rediscovered. Neither pack mentions incident_type; the page requires it on its
+// own account because a cover check cannot run without one.
+test('incident_type is required by the page although no pack names it', () => {
+  for (const [name, pack] of PACKS) {
+    const { named } = packFieldDemands(pack, createClaim(fixture));
+    assert.ok(!named.includes('incident_type'), `${name} now names incident_type, revisit the gate`);
+  }
+  assert.ok(requiredFieldsFor(createClaim({})).includes('incident_type'));
+});
+
+test('a theft claim is not required to carry an impact position, and can clear one', () => {
+  const theft = patch(patch(createClaim(fixture), 'incident_type', 'theft'), 'damage_zone', 10);
+
+  assert.ok(!requiredFieldsFor(theft).includes('damage_zone'));
+  assert.ok(
+    !validateClaim(theft).missing.includes('damage_zone'),
+    'a field the claim already holds, and the pack does not ask for, cannot be missing',
+  );
+
+  const cleared = applyPatch(theft, { field: 'damage_zone', value: null });
+  assert.equal(cleared.ok, true, `clearing it was refused: ${cleared.error}`);
+  assert.equal(cleared.claim.damage_zone, null);
+
+  // And the same claim as a collision does have to answer it.
+  const collision = patch(theft, 'incident_type', 'collision');
+  assert.ok(requiredFieldsFor(collision).includes('damage_zone'));
+  const refused = applyPatch(collision, { field: 'damage_zone', value: null });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, 'PATCH_REJECTED_VALUE');
+});
+
+test('packFieldDemands insists on a pack', () => {
+  assert.throws(() => packFieldDemands(null, createClaim(fixture)), TypeError);
 });

@@ -7,6 +7,22 @@ ClaimReady is a first notice of loss page for a motor insurer. It is a static pa
 dependencies and no build step, and it publishes its own capabilities to the visitor's AI agent
 through WebMCP.
 
+## Contents
+
+- [Who this is for](#who-this-is-for)
+- [Why this needs WebMCP](#why-this-needs-webmcp)
+- [How it fits together](#how-it-fits-together)
+- [One journey, call by call](#one-journey-call-by-call)
+- [What is a tool here, and what is deliberately not](#what-is-a-tool-here-and-what-is-deliberately-not)
+  - [The registration call](#the-registration-call)
+  - [Never tools, by design](#never-tools-by-design)
+- [Security](#security)
+- [Open it yourself](#open-it-yourself)
+- [Quickstart, with nothing installed](#quickstart-with-nothing-installed)
+- [Status](#status)
+- [Repository layout](#repository-layout)
+- [Licence](#licence)
+
 ## Who this is for
 
 The driver standing at the roadside with a damaged car and a phone, and behind them the first
@@ -53,7 +69,7 @@ flowchart TB
     STORE["Store: one claim draft, subscribers notified on every change"]
     CORE["Core domain: claim rules, insurer rule packs, derived requirements, coverage table, repair bands. Pure, no DOM"]
     UI["Page: fields, evidence, live tool call ledger"]
-    HUMAN["Human only, no tool reaches these: File claim, Request roadside assistance"]
+    HUMAN["No tool reaches these: File claim, Request roadside assistance, Pin a field"]
   end
 
   AG -->|"registerTool and execute"| MCP
@@ -62,18 +78,20 @@ flowchart TB
   TOOLS -->|"read and compute"| CORE
   STORE -->|"subscribe"| UI
   CORE --> STORE
-  UI -.->|"a person clicks, no tool exists for this"| HUMAN
+  UI -.->|"a control on the page, no tool exists for it"| HUMAN
   HUMAN --> STORE
 
   classDef guarded fill:#fce8e6,stroke:#a50e0e,color:#a50e0e
   class HUMAN guarded
 ```
 
-Follow the arrows into the guarded box. The only one that arrives comes from a person clicking on
-the page. Nothing from the agent, the WebMCP layer or the tools reaches it.
+Follow the arrows into the guarded box. No arrow arrives from the agent, from the WebMCP layer or
+from the tools, because the guarded actions sit outside the tool surface. There is no tool that
+reaches them, so there is nothing for a prompt injected agent to call.
 
-The two guarded actions sit outside the tool surface. There is no tool that reaches them, so there
-is nothing for a prompt injected agent to call.
+That is a claim about the tool surface and it stops there. The page does not know who pressed a
+button, nothing here records it, and the section on
+[what is never a tool](#never-tools-by-design) says why we do not pretend otherwise.
 
 The layer map, the dependency rule and the reasoning behind each boundary are in
 [docs/architecture.md](docs/architecture.md).
@@ -142,17 +160,67 @@ to annotating.
 WebMCP defines exactly two annotations. Any other hint name comes from a different MCP dialect and
 is rejected by `node scripts/check_style.mjs` before it can reach a judge.
 
-**Never tools, by design:**
+### The registration call
 
-- **File claim.** A person presses it. There is no `file_claim`, no `submit_claim`, no alias.
-- **Request roadside assistance.** A person presses it. Dispatching help costs money and sends a
-  vehicle to a location.
-- **Override eligibility.** Nothing in this page lets a caller talk its way past the coverage table.
+Every tool on this page is registered through one call, and this is its shape:
 
-An agent that has been prompt injected can draft the whole claim, check the cover and get an
-estimate. It cannot file anything and it cannot send a tow truck. That boundary is checked on every
-push: `node scripts/readiness.mjs` scans the tool files for those names and fails the build if one
-appears.
+```js
+document.modelContext.registerTool({
+  name: 'check_coverage',
+  description: 'Check the claim draft on this page against the policy it belongs to.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  annotations: { readOnlyHint: true },
+  async execute(input, options) { /* returns { content: [{ type: 'text', text }] } */ }
+}, { signal: new AbortController().signal });
+```
+
+The shipped code makes exactly that call with the receiver resolved into a variable first, because
+`navigator.modelContext` is the older spelling and some builds still ship only that one. Two lines
+from `src/webmcp/register.js`, verbatim:
+
+```js
+// line 379. getModelContext() reads document.modelContext, then navigator.modelContext, else null
+const modelContext = getModelContext();
+
+// line 405. One AbortController per tool, so a single tool can be withdrawn while the page runs
+await modelContext.registerTool(descriptor, { signal: controller.signal });
+```
+
+Read `getModelContext` at `src/webmcp/register.js:179` to confirm the variable is
+`document.modelContext` whenever the browser has it.
+
+### Never tools, by design
+
+- **File claim.** A control on the page. No tool reaches it, and there is no `file_claim`, no
+  `submit_claim`, no alias.
+- **Request roadside assistance.** A control on the page. No tool reaches it. Dispatching help
+  costs money and sends a vehicle to a location.
+- **Pin and unpin a field.** A control on the page. No tool reaches it. Pinning is how the claimant
+  says they have checked an answer themselves, and `apply_claim_patch` then refuses that field with
+  `PATCH_REJECTED_LOCKED`.
+
+Overriding the coverage table is not on the list because it is not an action at all. Nobody can do
+it from either side: the answer is a table lookup in `src/core/coverage.js`, and no path in this
+repo edits it.
+
+Be exact about what this buys, because the loose version of the claim is false. An agent that
+drives a browser clicks ordinary DOM buttons, and the W3C security considerations and OpenAI's own
+WebMCP documentation both say so. Nothing on this page can tell a synthetic click from a human one
+and this page does not try, because an `isTrusted` or `userActivation` check blocks an honest probe
+while a remotely driven browser sails through it, which manufactures exactly the false certainty
+worth removing.
+
+What is true is narrower and more useful: **no tool on this page reaches those three actions**. An
+agent that has been prompt injected can draft the whole claim, check the cover, get an estimate,
+and write a wrong value into any field the claimant has not pinned. That last one is a real risk
+this page does not remove, and an earlier version of this section understated it by listing only
+what no tool reaches. What is absent from the tool surface is a tool for filing, for assistance
+and for unpinning, because none of the three is published. What the claimant holds against the
+rest is the pin, the revision protocol, and a ledger that shows every call as it happens.
+
+`node scripts/readiness.mjs` scans the tool files for those names on every push and fails the build
+if one appears. What that proves is precise: no tool file declares one. It is a name blocklist over
+the tool surface, not a runtime guard on the buttons.
 
 ## Security
 
@@ -161,12 +229,12 @@ Our choices, mapped to the Chrome WebMCP tool security guide at
 
 | Guidance | What ClaimReady does |
 |---|---|
-| Keep tools same origin | Every tool is registered on this origin. `exposedTo` is never passed, and the readiness gate fails if it appears. The `tools` Permissions Policy is left at its default of `self`, and `vercel.json` deliberately sets no entry for it. |
+| Keep tools same origin | Every tool is registered on this origin. `exposedTo` is never passed, and the readiness gate fails if it appears. The `tools` Permissions Policy is left at its default of `self` and nothing on the origin loosens it: no header sets it, and no meta tag sets it. `vercel.json`, which production does not use, deliberately sets no entry for it either, and the readiness `VRC` row fails if one appears there. |
 | Use the annotations that exist | `readOnlyHint` and `untrustedContentHint`, declared explicitly on every tool rather than left to a default. The style gate rejects annotation names from other dialects. |
 | Validate every input in code | JSON Schema tells the agent the shape. It is not the check. Three tools take input, `apply_claim_patch`, `get_repair_estimate` and `get_requirements`, and each re-validates in code against the enums in `src/core/claim.js` or the loaded rule pack, so an unknown field, an unknown requirement id or an out of range value comes back as a sentence the agent can correct itself from rather than being written. The other six declare an empty schema and take no input at all, which you can confirm with `grep -c "properties: {}" src/webmcp/tools/*.js`. |
 | Keep tool output small | Tool output is capped at 1500 characters, the budget from the guide. Tool names are capped at 30 characters, tool descriptions at 500, parameter descriptions at 150, all enforced by `node scripts/check_style.mjs`. |
 | Keep tool metadata descriptive | Descriptions say what a tool returns. None of them tells the model what to do, which is the line that keeps tool metadata from becoming an instruction channel. |
-| Do not treat origin restrictions as a security boundary | We do not. Same origin registration limits accidental exposure, it does not stop a hostile page or a compromised agent. The real boundary here is that the two actions with consequences are not in the tool surface at all, so no amount of persuasion reaches them. |
+| Do not treat origin restrictions as a security boundary | We do not. Same origin registration limits accidental exposure, it does not stop a hostile page or a compromised agent. What we rely on instead is narrower and is stated as such: the actions with consequences are not in the tool surface, so a persuaded agent has no tool to call for them. It can still click a button, and it can still write a wrong value into an unpinned field. |
 
 Two more, because they are part of the same promise:
 
@@ -179,12 +247,11 @@ Two more, because they are part of the same promise:
 **https://upgradedev.github.io/claimready/**
 
 No account, no install, nothing to accept. The page is served over HTTPS, which WebMCP requires,
-and it carries its Content Security Policy in the document so the policy holds on any host. The
-Status table below is the honest state of everything else, and
-`CLAIMREADY_URL=https://upgradedev.github.io/claimready/ node scripts/readiness.mjs` prints it on
-demand against that URL. Set the variable. The gate's built in default still points at a Vercel
-domain that was never taken, and `curl -s -o /dev/null -w '%{http_code}' https://claimready.vercel.app/`
-returned `404` on 2026-08-27, so running the gate bare reports a live failure that is not one.
+and it carries its Content Security Policy in the document, which is what makes the policy hold
+here: GitHub Pages sends no CSP header of its own. The Status table below is the honest state of
+everything else, and `node scripts/readiness.mjs` prints it on demand. The gate fetches this URL by
+default, so a red `LIVE` row means the live surface really is broken and is never a row to read
+past.
 
 WebMCP is new, so a judge needs one of two surfaces.
 
@@ -230,12 +297,18 @@ node --test tests/unit
 # the style gate: em dashes, annotations that do not exist, tool budgets
 node scripts/check_style.mjs
 
-# the readiness gate, one table, every row saying what it blocks
+# the readiness gate, one table, every row saying what it blocks. It fetches the live URL
+node scripts/readiness.mjs
+
+# offline, with no network. The LIVE row then proves nothing and prints NOT DEPLOYED
 node scripts/readiness.mjs --ci --allow-undeployed
 
-# prove the gate can fail, by breaking three inputs on purpose
+# prove the gate can fail, by breaking every row in turn and requiring each one to refuse
 node scripts/readiness.mjs --selftest
 ```
+
+Both readiness runs above exit non zero while the video row `D4` is red, and that is deliberate:
+a mandatory deliverable that is missing turns the build red in every mode, `--ci` included.
 
 Node 20 or later. `python -m http.server` does not send the production security headers, so a page
 that works locally can still break on the deployed origin. The readiness gate's `IDX` row catches
@@ -251,8 +324,10 @@ go stale between commits.
 | Piece | State | How to check |
 |---|---|---|
 | Style gate | built | `node scripts/check_style.mjs` |
-| Readiness gate, with a self test that proves it fails | built | `node scripts/readiness.mjs --selftest` |
-| Static hosting config, strict CSP, no build step | built | `cat vercel.json` |
+| Readiness gate, with a self test that breaks every row it prints | built | `node scripts/readiness.mjs --selftest` |
+| Content Security Policy, carried in the document so it holds on the host we actually use | built | `grep -n Content-Security-Policy index.html`. GitHub Pages serves no CSP header, so the meta tag is the policy |
+| `vercel.json`, a host config production does not use | built, unused | `cat vercel.json`. Production is GitHub Pages, which reads nothing from this file. It is kept because it is the config any host with header support would need, and the `VRC` row checks it as such |
+| No build step | built | there is no build script in `package.json`, and the deployed bytes are the files in this repo |
 | MIT licence | built | `cat LICENSE` |
 | Core domain: claim, coverage, estimate, store, insurer rule packs, derived requirements | built | `node --test tests/unit`, and row `PUR` |
 | WebMCP registration layer, one AbortController per tool | built | `cat src/webmcp/register.js` |
@@ -265,8 +340,9 @@ go stale between commits.
 | Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
 | Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
 | Declarative form step, the HTML attribute API | not yet built | absent from `index.html` |
-| Tests over the WebMCP layer, and evals against the tool surface | not yet built. The unit tests cover the pure core only, so nothing in this repo has yet executed a registration | `grep -rl "modelContext" tests/` returns nothing |
-| Public video | not yet built | `node scripts/readiness.mjs` row `D4` |
+| Tests over the WebMCP layer | not yet built. The unit tests cover the pure core only, so nothing in this repo has yet executed a registration | `grep -rl "modelContext" tests/` returns nothing |
+| Evals against the tool surface | built, never executed. Three journeys over the nine tools and a workflow that runs them exist and are tracked. No run has been observed, green or red, so nothing here is evidence yet. A green smoke run would be the first proof that the tools register in a real browser and answer in the authored order | `cat evals/evals.json`, `cat .github/workflows/evals.yml`, and the honesty section of [evals/README.md](evals/README.md) |
+| Public video | not yet built. This is the one thing between the entry and a green gate, and it turns CI red on every branch until a public link lands in `docs/submission/video.md` | `node scripts/readiness.mjs` row `D4` |
 | Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
 
 Every count in this README comes with the command that produces it, so no number here has to be

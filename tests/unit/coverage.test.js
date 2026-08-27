@@ -19,7 +19,10 @@ function claimFor(id) {
   return createClaim(scenario(id));
 }
 
-const RETURN_KEYS = ['covered', 'clause', 'deductible', 'currency', 'reason', 'exclusions'];
+// `provisional` joined this list deliberately. A yes that still depends on who
+// was driving is not the same answer as a yes, and a caller that cannot see the
+// difference prints a flat COVERED over an undecided question.
+const RETURN_KEYS = ['covered', 'clause', 'deductible', 'currency', 'reason', 'exclusions', 'provisional'];
 
 test('every answer has the same shape', () => {
   for (const s of fixture.scenarios) {
@@ -170,4 +173,74 @@ test('checkCoverage does not touch the policy or the claim', () => {
 test('checkCoverage refuses to guess when an argument is missing', () => {
   assert.throws(() => checkCoverage(null, claimFor('covered-collision')), TypeError);
   assert.throws(() => checkCoverage(policy, null), TypeError);
+});
+
+// ---------------------------------------------------------------------------
+// A yes that still depends on who was driving
+// ---------------------------------------------------------------------------
+
+const kestrel = JSON.parse(
+  readFileSync(new URL('../../fixtures/insurers/kestrel.json', import.meta.url), 'utf8'),
+);
+
+function driverless() {
+  const claim = createClaim({ policy, claim: {} });
+  const typed = applyPatch(claim, { field: 'incident_type', value: 'collision' });
+  assert.equal(typed.ok, true);
+  const dated = applyPatch(typed.claim, { field: 'incident_date', value: '2026-08-20' });
+  assert.equal(dated.ok, true);
+  return dated.claim;
+}
+
+test('a covered claim with nobody named as the driver is provisional, not a flat yes', () => {
+  const result = checkCoverage(policy, driverless());
+
+  assert.equal(result.covered, true, 'the schedule does cover a collision');
+  assert.equal(result.provisional, true, 'but naming one particular driver would turn it into a no');
+  assert.match(result.reason, /Nobody is named as the driver/);
+  assert.match(result.reason, /EX-9\.1/, 'the answer cites the exclusion it depends on');
+  assert.match(result.reason, /provisional/);
+});
+
+// The discriminating half. Same driverless claim, a schedule with nobody
+// excluded: there is nothing left to depend on, so the yes is a plain yes.
+test('the same driverless claim is not provisional on a policy that excludes nobody', () => {
+  assert.deepEqual(kestrel.excluded_drivers, [], 'this pack has to keep excluding nobody');
+  const result = checkCoverage(kestrel, driverless());
+
+  assert.equal(result.covered, true);
+  assert.equal(result.provisional, false);
+  assert.doesNotMatch(result.reason, /provisional/);
+});
+
+test('naming the driver settles it, either way', () => {
+  const named = applyPatch(driverless(), { field: 'driver', value: 'Maria K.' });
+  assert.equal(named.ok, true);
+  const safe = checkCoverage(policy, named.claim);
+  assert.equal(safe.covered, true);
+  assert.equal(safe.provisional, false, 'the question it depended on has been answered');
+
+  const excluded = applyPatch(driverless(), { field: 'driver', value: 'nikos p.' });
+  assert.equal(excluded.ok, true);
+  const refused = checkCoverage(policy, excluded.claim);
+  assert.equal(refused.covered, false);
+  assert.equal(refused.clause, 'EX-9.1');
+  assert.equal(refused.provisional, false);
+});
+
+// A no cannot be provisional. Nothing the driver field could say turns a rider
+// that was never bought, or a date outside the period, into cover.
+test('a refusal is never provisional, whoever was driving', () => {
+  for (const id of ['uncovered-theft', 'outside-policy-period', 'excluded-driver']) {
+    const result = checkCoverage(policy, claimFor(id));
+    assert.equal(result.covered, false, id);
+    assert.equal(result.provisional, false, `${id} must not be reported as provisional`);
+  }
+});
+
+test('a claim with no incident type yet is undecided rather than provisional', () => {
+  const result = checkCoverage(policy, createClaim({ policy, claim: {} }));
+  assert.equal(result.covered, false);
+  assert.equal(result.provisional, false);
+  assert.match(result.reason, /incident type is not recorded yet/i);
 });

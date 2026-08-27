@@ -164,10 +164,21 @@ export function createView(doc) {
   return {
     els,
 
+    /**
+     * Who is signed in, and whose rules are answering.
+     *
+     * The two are the same thing until the picker loads another insurer's pack against this
+     * claim, and then they are not. Naming both here is what stops a decision line reading as
+     * though this policy belonged to whichever insurer last answered.
+     */
     renderPersona(persona) {
       text(els.personaName, `Signed in as ${persona.holder}`);
-      text(els.personaPolicy, `Policy ${persona.policyId}`);
-      text(els.personaNote, persona.note);
+      text(els.personaPolicy, persona.borrowed && persona.insurer
+        ? `Policy ${persona.policyId}, read against ${persona.insurer} rules`
+        : `Policy ${persona.policyId}`);
+      text(els.personaNote, persona.borrowed && persona.insurer
+        ? `${persona.note} The rules loaded are ${persona.insurer}'s, not this policy's own insurer.`
+        : persona.note);
     },
 
     /**
@@ -212,7 +223,7 @@ export function createView(doc) {
         if (status.failed.length) {
           detail.push(`Could not register: ${status.failed.map((item) => `${item.name} (${item.reason})`).join(', ')}.`);
         }
-        detail.push('Filing and roadside assistance are not on that list. They are buttons only a person can press.');
+        detail.push('Filing and roadside assistance are not on that list. No tool this page publishes reaches either button.');
       } else {
         detail.push('Everything on this page still works. Fill the draft yourself, pin what you want '
           + 'left alone, and read the requirements panel. The tools it would publish to an agent are '
@@ -331,8 +342,8 @@ export function createView(doc) {
         row.pinIcon.textContent = pinned ? '\u{1F512}' : '\u{1F513}';
         row.pin.title = pinned ? PIN_HINT : `Pin ${ROW_LABELS[field] || field} so no patch can change it.`;
         row.pin.setAttribute('aria-label', pinned
-          ? `Unpin ${ROW_LABELS[field] || field}. It is pinned, so no agent can change it.`
-          : `Pin ${ROW_LABELS[field] || field} so no agent can change it.`);
+          ? `Unpin ${ROW_LABELS[field] || field}. It is pinned, so no patch can move it.`
+          : `Pin ${ROW_LABELS[field] || field} so no patch can move it.`);
 
         if (filed) {
           text(row.hint, 'The claim is filed, so this field is closed.');
@@ -424,7 +435,10 @@ export function createView(doc) {
       if (state.filed) {
         text(els.fileReason, 'This claim has been filed. Load the synthetic incident again to run the demonstration from the start.');
         els.fileReason.classList.remove('is-blocked');
-        text(els.fileResult, `Filed by you at ${state.filedAt}. An agent could not have pressed this button.`);
+        // What is true here is a fact about the tool surface, not about what a browser can click.
+        // This line is printed by the very click that filed the claim, so a sentence about who is
+        // able to press a button would be answered by its own existence.
+        text(els.fileResult, `Filed by you at ${state.filedAt}. No tool on this page reaches this button.`);
       } else {
         text(els.fileResult, '');
         if (state.ready) {
@@ -439,11 +453,19 @@ export function createView(doc) {
         }
       }
 
+      // Three states, and every one of them draws a reason. A control that is closed with nothing
+      // beside it reads as a control that is broken, and this one used to be open from the first
+      // paint on a draft that had not said whether the car could still be driven.
       if (state.assistanceAt) {
         text(els.assistanceState, `Roadside assistance requested by you at ${state.assistanceAt}. In a live deployment the insurer's dispatch desk would pick this up.`);
         els.assistanceBtn.disabled = true;
+      } else if (!state.assistanceAvailable) {
+        text(els.assistanceState, state.filed
+          ? 'The claim is filed, so a collection is arranged with the handler rather than here.'
+          : 'Collection is for a vehicle that cannot be driven. Answer "Still drivable" with no on the draft and this opens.');
+        els.assistanceBtn.disabled = true;
       } else {
-        text(els.assistanceState, 'Not requested. A person on this page asks for it, an agent cannot.');
+        text(els.assistanceState, 'The draft says the car cannot be driven, so this is yours to press. No tool on this page reaches it.');
         els.assistanceBtn.disabled = false;
       }
     },
@@ -704,13 +726,23 @@ function toolTag(doc, label, className, title) {
   return node;
 }
 
+/**
+ * A cover decision, with the two things that stop it being read as more than it is.
+ *
+ * A yes that still depends on who was driving is drawn as provisional rather than as a yes, and
+ * the revision it was worked out at is on the panel, so a reader can see for themselves that the
+ * answer belongs to the draft in front of them.
+ */
 function coverageBlock(doc, entry) {
   const decision = entry.decision || {};
+  const provisional = decision.covered && decision.provisional === true;
   const wrap = doc.createElement('div');
 
   const verdict = doc.createElement('p');
-  verdict.className = `verdict ${decision.covered ? 'verdict-yes' : 'verdict-no'}`;
-  verdict.textContent = decision.covered ? 'Covered' : 'Not covered';
+  verdict.className = `verdict ${decision.covered ? 'verdict-yes' : 'verdict-no'}${provisional ? ' is-provisional' : ''}`;
+  verdict.textContent = decision.covered
+    ? (provisional ? 'Covered, provisionally' : 'Covered')
+    : 'Not covered';
   wrap.append(verdict);
 
   const list = doc.createElement('dl');
@@ -725,6 +757,7 @@ function coverageBlock(doc, entry) {
   if (decision.covered && decision.deductible !== undefined && decision.deductible !== null) {
     addPair(doc, list, 'Your excess', `${decision.deductible} ${decision.currency || ''}`.trim(), true);
   }
+  addPair(doc, list, 'Worked out at', revisionText(entry));
   wrap.append(list);
 
   wrap.append(note(doc, 'Checked against the sample policy on this page. Not a settlement decision.'));
@@ -748,6 +781,7 @@ function estimateBlock(doc, entry) {
   addPair(doc, list, 'Band', `${band.low} to ${band.high} ${band.currency || ''}`.trim(), true);
   addPair(doc, list, 'Damage', clockLabel(entry.zone));
   addPair(doc, list, 'Severity', sentence(String(entry.severity || '')));
+  addPair(doc, list, 'Worked out at', revisionText(entry));
   wrap.append(list);
 
   if (Array.isArray(band.lines) && band.lines.length) {
@@ -854,6 +888,27 @@ function note(doc, message) {
   node.className = 'note';
   node.textContent = message;
   return node;
+}
+
+/**
+ * The revision a published answer was worked out at, and the one it is still current at.
+ *
+ * Drawn on the panel rather than kept in memory, because it is the tie between the answer and the
+ * draft. When the two stop matching the wiring replaces the panel with a sentence saying so, and a
+ * reader who wants to check that for themselves needs the number in front of them.
+ *
+ * The two numbers separate because filing a claim and pinning a field both move the revision
+ * without moving a field, and an answer none of whose inputs changed is still that answer. Naming
+ * only the newer number would put a revision on the panel at which nothing was ever worked out.
+ * Naming only the older one leaves a reader wondering why it does not match the header.
+ */
+function revisionText(entry) {
+  const workedOutAt = entry && entry.revision;
+  if (!Number.isFinite(workedOutAt)) return '';
+  const validAt = entry.validAt;
+  return Number.isFinite(validAt) && validAt !== workedOutAt
+    ? `draft revision ${workedOutAt}, still current at ${validAt}`
+    : `draft revision ${workedOutAt}`;
 }
 
 function sourceTag(doc, entry) {

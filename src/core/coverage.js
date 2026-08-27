@@ -25,7 +25,34 @@ function undecided(reason, currency) {
     currency,
     reason,
     exclusions: [],
+    provisional: false,
   };
+}
+
+/**
+ * Whether a yes on this policy still depends on a name nobody has given.
+ *
+ * findExcludedDriver answers null on an empty driver, which is correct as far as
+ * it goes and used to be the whole story: a policy that excludes a named driver
+ * printed a flat COVERED with a clause and an excess while nobody had said who
+ * was at the wheel, and naming that one person turned the same claim into NOT
+ * COVERED. The schedule cannot decide the question yet, so the answer says so
+ * rather than picking the friendlier half of it.
+ *
+ * Only a yes can be provisional here. An exclusion that has already fired, a
+ * section that was never bought and a date outside the period are all answers
+ * the driver cannot change.
+ */
+function driverStillOpen(policy, claim) {
+  if (normaliseName(claim.driver)) return null;
+  const list = Array.isArray(policy.excluded_drivers) ? policy.excluded_drivers : [];
+  if (list.length === 0) return null;
+  const clauses = [...new Set(list.map((entry) => entry?.clause).filter(Boolean))];
+  const under = clauses.length ? ` under ${clauses.length === 1 ? 'clause' : 'clauses'} ${clauses.join(', ')}` : '';
+  return (
+    ` Nobody is named as the driver yet, and this policy excludes ${list.length} named ` +
+    `driver${list.length === 1 ? '' : 's'}${under}, so this answer is provisional until the claim says who was driving.`
+  );
 }
 
 function findExcludedDriver(policy, claim) {
@@ -94,7 +121,7 @@ export function exclusionLabels(decision) {
 /**
  * Decide whether this claim is covered.
  *
- * Return shape, always these six keys:
+ * Return shape, always these seven keys:
  *   covered     boolean
  *   clause      string clause id such as "OD-4.1", or null when no clause decided it
  *   deductible  number of `currency` units the policyholder pays, or null when
@@ -104,6 +131,11 @@ export function exclusionLabels(decision) {
  *   reason      one or two plain sentences a policyholder can read
  *   exclusions  the exclusion objects that actually fired, each {code, clause, reason}.
  *               Empty when the claim is covered.
+ *   provisional true when the answer is a yes that still depends on something the
+ *               claim has not said yet. Today that is only the driver, on a policy
+ *               that names an excluded one. A no is never provisional. A caller
+ *               that prints a bare "COVERED" over a provisional answer is telling
+ *               the claimant something the schedule has not decided.
  *
  * @param {object} policy the `policy` block of the fixture
  * @param {object} claim a claim from claim.js
@@ -138,6 +170,7 @@ export function checkCoverage(policy, claim) {
       currency,
       reason: `${headline.reason} That is clause ${headline.clause}.${liabilityNote(policy)}`,
       exclusions: triggered,
+      provisional: false,
     };
   }
 
@@ -167,6 +200,7 @@ export function checkCoverage(policy, claim) {
           reason,
         },
       ],
+      provisional: false,
     };
   }
 
@@ -176,12 +210,17 @@ export function checkCoverage(policy, claim) {
       ? 'This section carries no excess, so there is nothing for you to pay towards it.'
       : `You pay the first ${deductible} ${currency} as the excess.`;
 
+  const openDriver = driverStillOpen(policy, claim);
+
   return {
     covered: true,
     clause: coverage.clause ?? null,
     deductible,
     currency,
-    reason: `A ${claim.incident_type} claim is covered under ${coverage.label}, clause ${coverage.clause}. ${excessText}`,
+    reason:
+      `A ${claim.incident_type} claim is covered under ${coverage.label}, clause ${coverage.clause}. ` +
+      `${excessText}${openDriver ?? ''}`,
     exclusions: [],
+    provisional: Boolean(openDriver),
   };
 }

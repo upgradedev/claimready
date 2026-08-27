@@ -4,11 +4,11 @@
  * Read only. It returns rule text the insurer published and field names, never the claimant's
  * wording, so it carries no untrusted content hint.
  *
- * THIS IS THE TOOL AN AGENT CANNOT REPLACE. It can guess a form's fields. It cannot guess that
+ * THIS IS THE TOOL NOTHING ELSE REPLACES. An agent can guess a form's fields. It cannot guess that
  * answering "the car will not start" has just added two more things to the list, that one of them
- * is a field it may send, and that the other is something only a person can do. The page derives
- * that from the insurer's rule pack and the current claim, deterministically, and says which
- * answer brought each one into existence.
+ * is a field it may send, and that no tool on this page reaches the other. The page derives that
+ * from the insurer's rule pack and the current claim, deterministically, and says which answer
+ * brought each one into existence.
  *
  * Nothing here is predicted and nothing is decided. The rules are a table, the claim is data, and
  * the result is a lookup any reader can repeat by hand.
@@ -60,7 +60,10 @@ export default (ctx) => ({
     if (!pack) return toResult(NO_PACK_REASON);
 
     const claim = ctx.store.getState().claim;
-    const requirements = deriveRequirements(pack, claim);
+    // ctx.humanActions carries the ids of the human actions the page reports as carried out. It
+    // goes to src/core rather than being interpreted here, so this tool, read_claim_state and the
+    // panel on the page can only ever give one answer about what is still open.
+    const requirements = deriveRequirements(pack, claim, ctx.humanActions);
     const open = outstandingRequirements(requirements);
     const answered = requirements.filter((entry) => entry.satisfied === true);
 
@@ -124,7 +127,7 @@ function detail(pack, entry, room) {
   const target = satisfiedByOf(pack, entry.id);
   const how = target.field
     ? `Answered by sending ${target.field} with apply_claim_patch.`
-    : 'No field answers this one. Ask the person on the page to do it.';
+    : 'No field answers this one and no tool on this page reaches it. Ask the person on the page.';
   const trigger = entry.triggeredBy ? ` Brought in by ${entry.triggeredBy}.` : '';
   return `${how}${trigger} ${clip(entry.why, room)}`;
 }

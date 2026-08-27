@@ -13,19 +13,25 @@
  * The options are read out of the insurer's rule pack, not composed here. Swap the pack and this
  * answer changes with no code edited.
  *
- * ONE FACT COMES FROM THE PAGE, AND ONLY AS A YES OR NO. Whether the person has already pressed
- * the assistance button is page state, not claim state, so src/core cannot know it and this tool
- * would otherwise keep telling an agent to ask for something the claimant did a minute ago. The
- * page offers it through ctx.getRequirements. This file reads presence and nothing else, and
- * writes its own sentence about it, so every character returned here is still either insurer rule
- * text or wording from this file. See pageDecoration at the foot of the file.
+ * ONE FACT COMES FROM THE PAGE, AND THIS FILE DOES NOT INTERPRET IT. Whether the person has
+ * already pressed the assistance button is page state, not claim state, so src/core cannot know
+ * it and this tool would otherwise keep telling an agent to ask for something the claimant did a
+ * minute ago. The page reports the completed actions as ids on ctx.humanActions, and those go
+ * straight into deriveRequirements, which is the only thing in the tree that decides whether a
+ * requirement is answered.
+ *
+ * THIS FILE USED TO DECIDE IT ITSELF, AND THAT WAS THE DEFECT. It inferred "done on the page"
+ * from the presence of a note the page had attached, while get_requirements and read_claim_state
+ * asked src/core and were told the same requirement was still open. Two tools, one claim, one
+ * moment, two answers. Reading the same derivation as everybody else is the fix, and no tool may
+ * infer completion from a decoration again.
  *
  * NOTHING HERE BOOKS ANYTHING. Arranging the collection is a button a person presses on the page.
- * There is no tool for it and there must never be one, because a recovery truck arriving at
+ * No tool on this page reaches it and none ever should, because a recovery truck arriving at
  * somebody's house is exactly the sort of thing an agent should not be able to cause on its own.
  */
 
-import { toResult, budgetedBlock, clip, packOf, satisfiedByOf, NO_PACK_REASON } from '../register.js';
+import { toResult, budgetedBlock, clip, packOf, NO_PACK_REASON } from '../register.js';
 import { deriveRequirements } from '../../core/requirements.js';
 
 const TRIGGER_FIELD = 'vehicle_drivable';
@@ -70,7 +76,8 @@ export default (ctx) => ({
     const pack = packOf(ctx);
     if (!pack) return toResult(NO_PACK_REASON);
 
-    const triggered = deriveRequirements(pack, claim).filter((entry) => entry.triggeredBy === TRIGGER_FIELD);
+    const triggered = deriveRequirements(pack, claim, ctx.humanActions)
+      .filter((entry) => entry.triggeredBy === TRIGGER_FIELD);
 
     if (triggered.length === 0) {
       return toResult(
@@ -79,27 +86,21 @@ export default (ctx) => ({
       );
     }
 
-    // What the page knows and src/core cannot: whether the person has already pressed the button.
-    // That fact is page state, not claim state, so it never reaches deriveRequirements. Without it
-    // this tool goes on telling an agent to ask for something the claimant did ten seconds ago,
-    // which is the one thing that would make the whole exchange read as scripted.
-    const handled = pageDecoration(ctx);
-
     const body = [];
     let index = 0;
 
     for (const entry of triggered) {
       index += 1;
-      const target = satisfiedByOf(pack, entry.id);
-      const done = handled.has(entry.id);
-      const how = target.field
-        ? `You can answer this one: send ${target.field} with apply_claim_patch.`
-        : done
-          ? 'The person on the page has already pressed this button, so there is nothing to ask '
-            + 'them for. It was never available to you as a tool.'
-          : 'Only a person can do this one, using the button on the page. There is no tool for it.';
-      const state = entry.satisfied ? 'already answered' : done ? 'done on the page' : 'still open';
-      body.push(`${index}. ${clip(entry.label, 110)} (${state})`);
+      let how;
+      if (entry.field) {
+        how = `You can answer this one: send ${entry.field} with apply_claim_patch.`;
+      } else if (entry.satisfied) {
+        how = 'The person on the page has already done this one, so there is nothing to ask them '
+          + 'for. No tool on this page reaches it.';
+      } else {
+        how = 'No tool on this page reaches this one. Ask the person on the page to press the button.';
+      }
+      body.push(`${index}. ${clip(entry.label, 110)} (${entry.satisfied ? 'answered' : 'still open'})`);
       body.push(`   ${how} ${clip(entry.why, 420)}`);
     }
 
@@ -117,40 +118,3 @@ export default (ctx) => ({
     }));
   }
 });
-
-/**
- * The ids of requirements the page reports a person has already dealt with by hand.
- *
- * PRESENCE ONLY, AND THAT IS DELIBERATE. The page's decorated entry carries a humanNote sentence,
- * and the obvious thing would be to quote it. This reads only whether one exists, and the sentence
- * below is composed here from the pack. That keeps a true statement true: everything this tool
- * returns is insurer rule text or wording from this file, so the result stays free of anything a
- * claimant or a third party wrote and needs no untrusted content hint. Quoting the page's string
- * would have made that contract depend on src/ui/app.js never interpolating a field value into it,
- * which is not a promise this file can keep on another file's behalf.
- *
- * The decoration is optional on purpose. This tool is also driven from harnesses with no page at
- * all, so a missing, malformed or throwing getRequirements degrades to "still open" rather than
- * failing the call. The satisfied flag is never read from the page: only the insurer's own rules
- * decide whether an intake requirement is answered.
- *
- * @param {object} ctx
- * @returns {Set<string>}
- */
-function pageDecoration(ctx) {
-  const done = new Set();
-  if (!ctx || typeof ctx.getRequirements !== 'function') return done;
-  let decorated;
-  try {
-    decorated = ctx.getRequirements();
-  } catch (error) {
-    return done;
-  }
-  if (!Array.isArray(decorated)) return done;
-  for (const entry of decorated) {
-    if (entry && typeof entry.id === 'string' && typeof entry.humanNote === 'string' && entry.humanNote) {
-      done.add(entry.id);
-    }
-  }
-  return done;
-}

@@ -122,6 +122,207 @@ def read_text(path):
         return handle.read()
 
 
+# --------------------------------------------------------- what is on camera
+
+# A machine beat is a photograph of the deployed page, so the sources below are the beat's real
+# input, exactly as the narration is. This used to be hashed as the URL string alone, which said
+# nothing about what the URL was serving, so a beat filmed against an older page was a cache hit
+# for ever.
+#
+# That is not hypothetical. The only machine footage on record was filmed at cfc5c0c. The commit
+# after it, d054311, put a tools panel on index.html, inside the frame that beats 01, 02 and 08
+# scan. Nothing in the pipeline noticed, because neither the beat hash nor the workflow cache key
+# had ever heard of index.html.
+CAMERA_PATHS = ["index.html", "src", "assets"]
+
+CAMERA_SKIP_DIRECTORIES = {"__pycache__", ".git"}
+
+
+def camera_files():
+    """Every on camera source, as repository relative posix paths, sorted for a stable digest."""
+    found = []
+    for entry in CAMERA_PATHS:
+        full = os.path.join(REPO, entry)
+        if os.path.isfile(full):
+            found.append(entry)
+            continue
+        if not os.path.isdir(full):
+            raise BuildError(
+                f"{full} is on the camera list and does not exist. The list is CAMERA_PATHS in "
+                f"{os.path.relpath(__file__, REPO)}, and a path that is not there means the beat "
+                f"hash is covering less of the page than it claims."
+            )
+        for base, directories, names in os.walk(full):
+            directories[:] = sorted(d for d in directories if d not in CAMERA_SKIP_DIRECTORIES)
+            for name in sorted(names):
+                path = os.path.join(base, name)
+                found.append(os.path.relpath(path, REPO).replace("\\", "/"))
+    return sorted(found)
+
+
+def normalised(data):
+    """
+    Line endings folded to LF before anything is hashed or compared.
+
+    The digest is part of a cache key that has to mean the same thing on this machine and on a
+    runner, and the host serves the committed bytes while a Windows checkout with autocrlf may hold
+    the same file with CRLF. Without this, the same page would hash two ways and the deployed page
+    would read as stale on one of the two platforms.
+    """
+    return data.replace(b"\r\n", b"\n")
+
+
+def camera_digest(files=None):
+    """
+    One hash over the bytes of every on camera source, as they stand in the working tree.
+
+    The file list can be passed in so one walk serves the hash, the verification and the manifest.
+    Walking it again later would let two of those three describe different sets of files, which is
+    the drift this is here to remove.
+    """
+    digest = hashlib.sha256()
+    for relative in (camera_files() if files is None else files):
+        with open(os.path.join(REPO, relative), "rb") as handle:
+            body = normalised(handle.read())
+        digest.update(f"{relative}:{hashlib.sha256(body).hexdigest()}\n".encode("utf-8"))
+    return digest.hexdigest()
+
+
+def deployed_sha(explicit=None):
+    """
+    The commit the machine beats are being filmed against, as it was told to us.
+
+    Told, not discovered: nothing here proves it yet. verify_deployed is what turns it into a
+    measurement, and until that has run the value is a label on an unchecked claim.
+    """
+    for value in (explicit,
+                  os.environ.get("CLAIMREADY_DEPLOYED_SHA"),
+                  os.environ.get("GITHUB_SHA")):
+        if value and value.strip():
+            return value.strip()
+    result = subprocess.run(["git", "-C", REPO, "rev-parse", "HEAD"],
+                            capture_output=True, text=True)
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return None
+
+
+def site_base(url):
+    """The directory the deployed page's own relative links resolve against."""
+    base = (url or "").split("#")[0].split("?")[0]
+    if not base:
+        return None
+    if base.lower().endswith((".html", ".htm")):
+        base = base.rsplit("/", 1)[0] + "/"
+    if not base.endswith("/"):
+        base += "/"
+    return base
+
+
+def fetch_bytes(url, timeout=30):
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "claimready-video-builder",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    })
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        # urlopen already raises on an HTTP error status, so this only has to catch the odd
+        # success that is not a 200. A scheme with no status, which is what a file URL is in the
+        # self test below, reports None and is read on its own terms.
+        status = getattr(response, "status", None)
+        if status is not None and status != 200:
+            raise BuildError(f"{url} answered {status}.")
+        return response.read()
+
+
+def git_blob(sha, relative):
+    result = subprocess.run(["git", "-C", REPO, "show", f"{sha}:{relative}"], capture_output=True)
+    if result.returncode != 0:
+        tail = (result.stderr or b"").decode("utf-8", "replace").strip()[-400:]
+        raise BuildError(
+            f"git could not read {relative} at {sha}. Either that commit is not in this checkout, "
+            f"or the file did not exist in it.\n\n{tail}"
+        )
+    return result.stdout
+
+
+def verify_deployed(url, sha, files=None):
+    """
+    Prove the deployed page is the tree that is about to be hashed, and that the tree is the SHA
+    the manifest is about to claim.
+
+    Two comparisons, chained rather than run side by side, so a failure names one cause:
+
+      deployed bytes  ==  working tree bytes     the beat hash records the tree, so this is the
+                                                 comparison that decides whether footage is current
+      working tree    ==  git blob at <sha>      which is what makes the SHA in the manifest a
+                                                 statement about the thing that was filmed
+
+    Transitively the deployed page is that SHA. A non 200 on any camera source fails: a file that
+    will not fetch is not a file that was checked.
+    """
+    base = site_base(url)
+    if not base:
+        raise BuildError(
+            "the machine beats film a deployed page and no URL was given. Set CLAIMREADY_URL, or "
+            "pass --url."
+        )
+    if not sha:
+        raise BuildError(
+            "no deployed SHA. Pass --deployed-sha, or set CLAIMREADY_DEPLOYED_SHA, or run this "
+            "inside the git checkout the page was deployed from. The manifest records what was "
+            "filmed, so an unnamed commit is not a build this pipeline will assemble."
+        )
+
+    files = camera_files() if files is None else files
+    print(f"checking {len(files)} on camera source(s) at {base} against {sha[:12]}")
+
+    for relative in files:
+        target = base + relative
+        try:
+            served = normalised(fetch_bytes(target))
+        except BuildError:
+            raise
+        except (urllib.error.URLError, OSError) as error:
+            raise BuildError(
+                f"could not read {target}, which is on camera in the machine beats: {error}. "
+                f"Nothing is filmed against a page that cannot be read whole."
+            )
+
+        with open(os.path.join(REPO, relative), "rb") as handle:
+            local = normalised(handle.read())
+
+        if hashlib.sha256(served).hexdigest() != hashlib.sha256(local).hexdigest():
+            raise BuildError(
+                f"the deployed page is not what is on disk. {target} does not match {relative} in "
+                f"this checkout.\n\n"
+                f"  deployed  {hashlib.sha256(served).hexdigest()[:16]}  {len(served)} bytes\n"
+                f"  on disk   {hashlib.sha256(local).hexdigest()[:16]}  {len(local)} bytes\n\n"
+                f"Filming would produce a beat that shows one page while the manifest, the "
+                f"narration and the cache key all describe another.\n\n"
+                f"The likeliest cause is not a broken deployment. It is that this build is running "
+                f"from a commit the host has never served: a branch that is ahead of whatever the "
+                f"live site is built from, or a commit whose deployment has not finished. Check "
+                f"which branch this run checked out before you go looking at the host. Then either "
+                f"wait for the deployment, or build from the commit the host is serving. Do not "
+                f"film through it."
+            )
+
+        expected = normalised(git_blob(sha, relative))
+        if hashlib.sha256(local).hexdigest() != hashlib.sha256(expected).hexdigest():
+            raise BuildError(
+                f"what is on disk is not the SHA you named. {relative} in this checkout does not "
+                f"match {relative} at {sha}.\n\n"
+                f"The deployed page cannot be showing an uncommitted edit, so the SHA this build "
+                f"would write into the manifest would be a claim about a different set of bytes "
+                f"than the ones it hashed. Commit the change and deploy it, or name the SHA the "
+                f"tree actually is."
+            )
+
+    print(f"the deployed page is {sha[:12]}, on every one of those files")
+    return sha
+
+
 # --------------------------------------------------------------- beat loading
 
 def load_beats():
@@ -178,6 +379,8 @@ def describe_take(spec):
         lines.append(f"    do: {action}")
     for item in record.get("must_show") or []:
         lines.append(f"    must be visible: {item}")
+    if record.get("note"):
+        lines.append(f"    note: {record['note']}")
     lines.append(f"    the full runbook, with the order to record in, is {RUNBOOK}")
     return "\n".join(lines)
 
@@ -566,7 +769,19 @@ def mux(picture, narration, destination):
 
 # --------------------------------------------------------------------- cache
 
-def beat_hash(spec, url):
+def beat_hash(spec, url, sha=None, sources=None):
+    """
+    Everything a beat is made of, in one hash.
+
+    For an owner beat the picture is a file, so the file is hashed. For a machine beat the picture
+    is a photograph of the deployed page, so what the page is made of is hashed: the URL, the
+    commit it is serving, and the bytes of every on camera source. Hashing the URL alone, which is
+    what this did until d054311 made it matter, meant the cache could not tell one page from
+    another and stale footage was adopted for ever.
+
+    `sources` is passed in so a caller that has already computed the digest does not walk the tree
+    once per beat, and so a test can hash a hypothetical tree without touching this one.
+    """
     digest = hashlib.sha256()
     digest.update(PIPELINE_VERSION.encode("utf-8"))
     digest.update(f"|{FPS}|{WIDTH}|{HEIGHT}|{SAMPLE_RATE}|".encode("utf-8"))
@@ -581,6 +796,8 @@ def beat_hash(spec, url):
         digest.update(sha256_file(take_path(spec)).encode("utf-8"))
     else:
         digest.update((url or "").encode("utf-8"))
+        digest.update(f"|{sha or ''}|".encode("utf-8"))
+        digest.update((sources if sources is not None else camera_digest()).encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -615,12 +832,12 @@ def remember(out_root, spec, want_hash, entry):
 
 # ------------------------------------------------------------------- the build
 
-def build_beat(spec, out_root, url, force):
+def build_beat(spec, out_root, url, force, sha=None, sources=None):
     beat_id = spec["id"]
     out_beat_dir = os.path.join(out_root, "beats", beat_id)
     os.makedirs(out_beat_dir, exist_ok=True)
 
-    want = beat_hash(spec, url)
+    want = beat_hash(spec, url, sha, sources)
     hit = None if force else cached(out_root, spec, want)
     if hit:
         print(f"  {beat_id:<20} cache hit, nothing re rendered")
@@ -703,7 +920,7 @@ def build_beat(spec, out_root, url, force):
     return entry
 
 
-def assemble(entries, out_root):
+def assemble(entries, out_root, url=None, sha=None, sources=None, camera=None):
     concat = os.path.join(out_root, "concat.txt")
     with open(concat, "w", encoding="utf-8", newline="\n") as handle:
         for entry in entries:
@@ -735,6 +952,16 @@ def assemble(entries, out_root):
         "height": HEIGHT,
         "cap_seconds": MAX_TOTAL_SECONDS,
         "total_seconds": running,
+        # What the machine beats were filmed against, so a reader of the finished cut can tell
+        # which page they are looking at. Both values were verified against the live host before
+        # any beat was built: see verify_deployed.
+        "filmed_url": url,
+        "deployed_sha": sha,
+        "camera_digest": sources,
+        # The list the digest was taken over, passed in rather than walked again here. Walking it
+        # a second time at assembly would let the manifest name a file set that no longer matches
+        # its own digest, which is the exact class of drift this pipeline is trying to remove.
+        "camera_files": camera,
         "beats": [
             {
                 "id": e["id"], "kind": e["kind"], "title": e["title"],
@@ -761,6 +988,10 @@ def main(argv=None):
     parser.add_argument("--out", default=DEFAULT_OUT, help="build directory. Default <repo>/tmp/video")
     parser.add_argument("--url", default=os.environ.get("CLAIMREADY_URL", "").strip() or None,
                         help="the deployed page the machine beats are filmed against")
+    parser.add_argument("--deployed-sha", default=None,
+                        help="the commit the deployed page is serving. Defaults to "
+                             "CLAIMREADY_DEPLOYED_SHA, then GITHUB_SHA, then the checkout's HEAD. "
+                             "The build refuses to film when the live page is not this commit")
     parser.add_argument("--force", action="store_true", help="ignore the cache")
     parser.add_argument("--plan", action="store_true", help="say what would happen and spend nothing")
     parser.add_argument("--check-takes", action="store_true",
@@ -774,6 +1005,7 @@ def main(argv=None):
 
     beats = load_beats()
     check_runbook_names_every_owner_beat(beats)
+    sha = deployed_sha(args.deployed_sha)
 
     if args.check_takes:
         gaps = missing_takes(beats)
@@ -793,6 +1025,16 @@ def main(argv=None):
         for spec in beats:
             words = len(spec["_narration"].split())
             print(f"  {spec['id']:<20}{spec['kind']:<9}{spec.get('target_seconds', 0):>7}s  {words}")
+
+        # The plan spends nothing and touches no network, so these two are printed as the claim
+        # they are. The build fetches every one of those files from the host and refuses to film
+        # when the answer differs.
+        camera = camera_files()
+        sources = camera_digest(camera)
+        print(f"\n  machine beats would be filmed against: {args.url or 'no URL set'}")
+        print(f"  deployed sha, told and not yet verified: {sha or 'unknown'}")
+        print(f"  on camera sources, {len(camera)} files, digest {sources[:16]}")
+
         gaps = missing_takes(beats)
         if gaps:
             print(f"\n{len(gaps)} owner take(s) missing: " + ", ".join(s["id"] for s in gaps))
@@ -809,7 +1051,8 @@ def main(argv=None):
         if not machine:
             print("no machine beats to film.")
             return 0
-        print(f"filming {len(machine)} machine beat(s) against {args.url}\n")
+        verify_deployed(args.url, sha, camera_files())
+        print(f"\nfilming {len(machine)} machine beat(s) against {args.url}\n")
         failures = []
         for spec in machine:
             out_beat_dir = os.path.join(args.out, "beats", spec["id"])
@@ -855,9 +1098,18 @@ def main(argv=None):
 
     os.makedirs(args.out, exist_ok=True)
 
+    # Before a cent is spent and before anything is assembled: the page that is about to be filmed
+    # has to be the commit this build says it filmed. Only the beats in scope decide whether this
+    # runs, so rebuilding one owner beat needs no deployment at all.
+    camera = camera_files()
+    sources = camera_digest(camera)
+    if any(s["kind"] == "machine" for s in scope):
+        verify_deployed(args.url, sha, camera)
+        print()
+
     if single:
         print(f"building one beat into {args.out}\n")
-        build_beat(single, args.out, args.url, args.force)
+        build_beat(single, args.out, args.url, args.force, sha, sources)
         print(
             f"\nOne beat rebuilt. The cut was not assembled and the manifest was not touched, so "
             f"run the whole build before gating:\n"
@@ -867,9 +1119,9 @@ def main(argv=None):
         return 0
 
     print(f"building {len(beats)} beats into {args.out}\n")
-    entries = [build_beat(spec, args.out, args.url, args.force) for spec in beats]
+    entries = [build_beat(spec, args.out, args.url, args.force, sha, sources) for spec in beats]
 
-    cut, total = assemble(entries, args.out)
+    cut, total = assemble(entries, args.out, args.url, sha, sources, camera)
 
     print(f"\n  {'beat':<20}{'kind':<9}{'target':>8}{'actual':>9}{'start':>9}")
     for entry in entries:
@@ -879,6 +1131,7 @@ def main(argv=None):
             f"{entry['start_seconds']:>8.2f}s"
         )
     print(f"\ncut: {cut}")
+    print(f"filmed against {args.url} at {sha}")
     print(f"total {total:.2f}s of a {MAX_TOTAL_SECONDS:g}s cap")
 
     if total >= MAX_TOTAL_SECONDS:

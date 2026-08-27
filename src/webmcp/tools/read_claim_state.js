@@ -18,7 +18,13 @@
  */
 
 import { toResult, budgetedBlock, clip, packOf, satisfiedByOf, NO_PACK_REASON } from '../register.js';
-import { REQUIRED_FIELDS, OPTIONAL_FIELDS, ZONE_LABELS, validateClaim } from '../../core/claim.js';
+import {
+  REQUIRED_FIELDS,
+  OPTIONAL_FIELDS,
+  ZONE_LABELS,
+  validateClaim,
+  requiredFieldsFor,
+} from '../../core/claim.js';
 import { deriveRequirements, outstandingRequirements } from '../../core/requirements.js';
 
 const FREE_TEXT_LIMIT = 160;
@@ -62,7 +68,8 @@ export default (ctx) => ({
     const pinned = Array.isArray(claim && claim.locked) ? claim.locked : [];
 
     const pack = packOf(ctx);
-    const requirements = pack && claim ? deriveRequirements(pack, claim) : [];
+    // Same derivation, same completed human actions, as every other surface. See get_requirements.
+    const requirements = pack && claim ? deriveRequirements(pack, claim, ctx.humanActions) : [];
     const open = outstandingRequirements(requirements);
 
     // An optional field is usually not worth the budget while it is empty. One that an open
@@ -78,8 +85,12 @@ export default (ctx) => ({
       `Claim draft on policy ${ctx.policyId}, revision ${claim ? claim.revision : 'unknown'}, status ${claim ? claim.status : 'unknown'}.`,
     ];
 
+    // Every field on the static list is listed, and only the ones this claim actually has to
+    // answer are marked required. A theft claim is not asked for an impact position, so saying
+    // "required" beside it would send an agent looking for a value nothing wants.
+    const required = requiredFieldsFor(claim);
     for (const field of REQUIRED_FIELDS) {
-      head.push(fieldLine(field, claim, provenance, pinned, true));
+      head.push(fieldLine(field, claim, provenance, pinned, required.includes(field)));
     }
     for (const field of OPTIONAL_FIELDS) {
       const shown = !isEmpty(claim ? claim[field] : undefined) || wantedEmpty.includes(field);
@@ -141,7 +152,7 @@ function requirementLine(pack, entry) {
   const target = satisfiedByOf(pack, entry.id);
   const how = target.field
     ? `send ${target.field}`
-    : 'no field answers this one, a person on the page has to act';
+    : 'no tool on this page reaches this one, a person has to act on it';
   const trigger = entry.triggeredBy ? `, from ${entry.triggeredBy}` : '';
   return `- ${entry.id}, ${how}${trigger}: ${clip(entry.label, 90)}`;
 }

@@ -2,26 +2,34 @@
 /**
  * ClaimReady readiness gate. Zero dependencies, Node 20.
  *
- * One ruler, printed in full every run. Rows are either engineering rows, which
- * the build owns and CI can turn red, or submission rows, which are the four
- * things a judge actually needs to exist. Owner gated rows are printed in their
- * own block with the manual step and are never counted as passes.
+ * One ruler, printed in full every run. Rows are engineering rows, which the
+ * build owns and CI can turn red, or deliverable rows, which are the things a
+ * judge needs to exist. A deliverable row blocks the exit code in EVERY mode,
+ * --ci included. A missing mandatory deliverable that leaves a green exit is
+ * the exact failure this gate exists to prevent, so there is no mode in which
+ * it is survivable.
+ *
+ * Owner gated rows are printed in their own block with the manual step. No
+ * script can prove any of them, so they are not passes. They ARE counted in
+ * the second tally, because "is this ready to submit" is a question that
+ * includes pressing Submit, and a percentage that leaves that out answers a
+ * smaller question than a reader will assume it does.
  *
  * The live check fetches the judge URL and requires HTTP 200 plus the flagship
  * sentence in the body. A network failure is a FAIL. It is never a skip, and it
  * is never reduced to a file existence check.
  *
  * Usage:
- *   node scripts/readiness.mjs                    full gate, exits non zero below 95 percent
- *   node scripts/readiness.mjs --ci               CI mode, exits non zero on engineering rows only
+ *   node scripts/readiness.mjs                    full gate, fetches the judge URL
+ *   node scripts/readiness.mjs --ci               CI mode: engineering and deliverable rows block
  *   node scripts/readiness.mjs --allow-undeployed permits an absent CLAIMREADY_URL, prints NOT DEPLOYED
- *   node scripts/readiness.mjs --selftest         breaks inputs on purpose to prove the gate can fail
+ *   node scripts/readiness.mjs --selftest         breaks every row on purpose to prove each can fail
  *
  * --allow-undeployed is ignored when CLAIMREADY_URL is set. Once the variable
  * exists, the live check always runs and always blocks.
  */
 
-import { existsSync, readFileSync, readdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdtempSync, writeFileSync, cpSync, rmSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -38,8 +46,15 @@ const FLAGSHIP =
 /** Short enough to survive punctuation edits, long enough that nothing else matches it. */
 const FLAGSHIP_FRAGMENT = 'hands your own agent its policy rules as typed tools';
 
-/** Used when CLAIMREADY_URL is not set. The environment variable always wins. */
-const DEFAULT_JUDGE_URL = 'https://claimready.vercel.app/';
+/**
+ * Used when CLAIMREADY_URL is not set. The environment variable always wins.
+ *
+ * This is production. It has to be, because a default that points somewhere else turns the LIVE
+ * row into a row a reader is taught to ignore, and a row a reader is taught to ignore is worse
+ * than no row: it is the one that will be red on the day the site is genuinely down. The previous
+ * default pointed at a Vercel domain that was never taken and answered 404.
+ */
+const DEFAULT_JUDGE_URL = 'https://upgradedev.github.io/claimready/';
 
 const FETCH_TIMEOUT_MS = 15000;
 
@@ -55,6 +70,13 @@ const HUMAN_ONLY_ACTIONS = [
   'dispatch',
   'override_eligibility',
   'override',
+  // Pinning is the third human only control on the page and the README names it as one, so the
+  // blocklist has to cover it or that sentence is unbacked. Nothing can be talked into unpinning
+  // a field a claimant checked, because no tool exists to try.
+  'pin_field',
+  'unpin_field',
+  'lock_field',
+  'unlock_field',
 ];
 
 const PASS = 'PASS';
@@ -62,7 +84,7 @@ const FAIL = 'FAIL';
 const NOT_DEPLOYED = 'NOT DEPLOYED';
 
 const ENGINEERING = 'engineering';
-const SUBMISSION = 'submission';
+const DELIVERABLE = 'deliverable';
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -99,8 +121,15 @@ function runNode(args, cwd) {
   return spawnSync(process.execPath, args, { cwd, encoding: 'utf8' });
 }
 
-function row(id, label, status, detail, blocking, counted = true) {
-  return { id, label, status, detail, blocking, counted };
+/**
+ * `mandatory` marks a row the hackathon rules require to exist before the entry can be judged.
+ * Those rows block the exit code in every mode. There used to be a `counted` parameter here that
+ * defaulted to true and that no call site ever passed, so it looked like a way to keep a row out
+ * of the score while being no such thing. Dead configuration in a gate is worse than none: it
+ * reads as a lever somebody pulled. It is gone, and every row in the table is counted.
+ */
+function row(id, label, status, detail, blocking, mandatory = false) {
+  return { id, label, status, detail, blocking, mandatory };
 }
 
 /**
@@ -130,14 +159,14 @@ async function checkLiveUrl(root, options) {
   const fromEnv = process.env.CLAIMREADY_URL;
   const url = fromEnv || DEFAULT_JUDGE_URL;
   const explicit = Boolean(fromEnv);
-  const blocking = explicit || !options.allowUndeployed ? ENGINEERING : SUBMISSION;
+  const blocking = explicit || !options.allowUndeployed ? ENGINEERING : DELIVERABLE;
 
   if (!explicit && options.allowUndeployed) {
     return row(
       'LIVE',
       'judge URL returns 200 and serves the flagship sentence',
       NOT_DEPLOYED,
-      `CLAIMREADY_URL is not set. Nothing was fetched, so nothing is proven. Set the repo variable once ${DEFAULT_JUDGE_URL} is live.`,
+      `CLAIMREADY_URL is not set and --allow-undeployed was passed, so nothing was fetched and nothing is proven. Drop --allow-undeployed, or set CLAIMREADY_URL, to fetch ${DEFAULT_JUDGE_URL}.`,
       blocking,
     );
   }
@@ -323,7 +352,7 @@ function checkToolFiles(root) {
 function checkHumanOnlyBoundary(root) {
   const dir = resolveToolDir(root);
   if (!dir) {
-    return row('HUM', 'filing and assistance are never tools', FAIL, 'no tool modules to inspect yet', ENGINEERING);
+    return row('HUM', 'filing, assistance and pinning are never tools', FAIL, 'no tool modules to inspect yet', ENGINEERING);
   }
   const files = listFiles(dir.full, '.js');
   const offenders = [];
@@ -336,7 +365,7 @@ function checkHumanOnlyBoundary(root) {
   }
   return row(
     'HUM',
-    'filing and assistance are never tools',
+    'filing, assistance and pinning are never tools',
     offenders.length === 0 ? PASS : FAIL,
     offenders.length === 0 ? 'no human only action appears in the tool surface' : offenders.join(', '),
     ENGINEERING,
@@ -463,12 +492,12 @@ function checkSingleToolSurface(root) {
 
 function checkVercelConfig(root) {
   const raw = read(join(root, 'vercel.json'));
-  if (!raw) return row('VRC', 'vercel.json with security headers', FAIL, 'no vercel.json', ENGINEERING);
+  if (!raw) return row('VRC', 'vercel.json, a fallback host config, carries a strict CSP', FAIL, 'no vercel.json', ENGINEERING);
   let config;
   try {
     config = JSON.parse(raw);
   } catch (error) {
-    return row('VRC', 'vercel.json with security headers', FAIL, `invalid JSON: ${error.message}`, ENGINEERING);
+    return row('VRC', 'vercel.json, a fallback host config, carries a strict CSP', FAIL, `invalid JSON: ${error.message}`, ENGINEERING);
   }
   const headers = (config.headers || []).flatMap((entry) => entry.headers || []);
   const byKey = new Map(headers.map((h) => [String(h.key).toLowerCase(), String(h.value)]));
@@ -496,7 +525,7 @@ function checkVercelConfig(root) {
   }
   return row(
     'VRC',
-    'vercel.json with a strict Content Security Policy',
+    'vercel.json, a fallback host config, carries a strict CSP. Production does not read it',
     problems.length === 0 ? PASS : FAIL,
     problems.length === 0 ? 'CSP, nosniff and Referrer-Policy all present' : problems.join(' | '),
     ENGINEERING,
@@ -512,7 +541,8 @@ function checkPublicRepo(root) {
     'deliverable: public repo with the licence visible',
     ok ? PASS : FAIL,
     ok ? url : 'no git remote named origin yet',
-    SUBMISSION,
+    DELIVERABLE,
+    true,
   );
 }
 
@@ -520,7 +550,7 @@ function checkDescription(root) {
   const path = join(root, 'docs', 'submission', 'description.md');
   const text = read(path);
   if (!text) {
-    return row('D3', 'deliverable: written description', FAIL, 'docs/submission/description.md does not exist', SUBMISSION);
+    return row('D3', 'deliverable: written description', FAIL, 'docs/submission/description.md does not exist', DELIVERABLE, true);
   }
   // The four elements the challenge rules require the description to cover, in the organizer's
   // own words: "Why your use case is a strong fit for WebMCP", "How it creates a better user
@@ -537,7 +567,8 @@ function checkDescription(root) {
     'deliverable: written description, four mandatory elements',
     missing.length === 0 ? PASS : FAIL,
     missing.length === 0 ? 'all four elements addressed' : `not yet addressed: ${missing.join(', ')}`,
-    SUBMISSION,
+    DELIVERABLE,
+    true,
   );
 }
 
@@ -545,7 +576,7 @@ function checkVideo(root) {
   const path = join(root, 'docs', 'submission', 'video.md');
   const text = read(path);
   if (!text) {
-    return row('D4', 'deliverable: public video under three minutes', FAIL, 'docs/submission/video.md does not exist', SUBMISSION);
+    return row('D4', 'deliverable: public video under three minutes', FAIL, 'docs/submission/video.md does not exist', DELIVERABLE, true);
   }
   const link = text.match(/https:\/\/(www\.)?(youtube\.com|youtu\.be)\/\S+/);
   return row(
@@ -553,7 +584,8 @@ function checkVideo(root) {
     'deliverable: public video under three minutes',
     link ? PASS : FAIL,
     link ? link[0] : 'no public video link recorded yet',
-    SUBMISSION,
+    DELIVERABLE,
+    true,
   );
 }
 
@@ -608,45 +640,295 @@ function printTable(rows) {
 /* --------------------------------------------------------------- selftest */
 
 /**
- * Break three inputs on purpose and require each check to report FAIL.
- * A gate that has never been seen to fail is not evidence of anything.
+ * Break every row this gate prints and require each one to refuse.
+ *
+ * The old version broke three of fifteen. Twelve checks had therefore never been observed to fail
+ * at all, which is the same evidence as no check: a regex that matches nothing reports PASS by
+ * looking at nothing, and a directory walk over an empty tree reports PASS the same way.
+ *
+ * Two rules make each result attributable rather than merely red.
+ *
+ *  1. Every case starts from a COPY OF THE REAL REPOSITORY and breaks exactly one thing in it.
+ *     A sandbox holding three hand written files fails most checks for being nearly empty, and a
+ *     check that fails for "nothing is here" has told you nothing about the thing you broke.
+ *  2. Both halves are run and both are printed. The intact copy must PASS and the broken copy
+ *     must FAIL. A check wired to a constant passes half of that and is caught by the other half.
+ *
+ * The detail line the broken check produced is printed next to each result, so a row that failed
+ * for the wrong reason is visible instead of being counted as a success.
  */
-async function selftest() {
-  const results = [];
-  const sandbox = mkdtempSync(join(tmpdir(), 'claimready-selftest-'));
 
-  writeFileSync(join(sandbox, 'README.md'), '# ClaimReady\n\nA page about claims.\n', 'utf8');
-  const readmeRow = checkReadme(sandbox);
-  results.push({ name: 'README missing the flagship sentence', expected: FAIL, actual: readmeRow.status });
+const UNREACHABLE_HOST = 'https://claimready-selftest-host-that-does-not-exist.invalid/';
 
-  writeFileSync(join(sandbox, 'note.md'), `a ${String.fromCodePoint(0x2014)} b\n`, 'utf8');
-  const styleResult = runNode([join(ROOT, 'scripts', 'check_style.mjs'), '--root', sandbox, '--quiet'], ROOT);
-  results.push({
-    name: 'style gate against a file holding an em dash',
-    expected: FAIL,
-    actual: styleResult.status === 0 ? PASS : FAIL,
+/** Directories a sandbox copy does not need. Nothing here is read by any check. */
+const SANDBOX_SKIP = new Set(['.git', 'node_modules', '.vercel', 'tmp', 'video']);
+
+function makeSandbox(dest) {
+  cpSync(ROOT, dest, {
+    recursive: true,
+    filter: (source) => {
+      const rel = relative(ROOT, source).split('\\').join('/');
+      if (rel === '') return true;
+      return !SANDBOX_SKIP.has(rel.split('/')[0]);
+    },
   });
+  return dest;
+}
 
-  const savedUrl = process.env.CLAIMREADY_URL;
-  process.env.CLAIMREADY_URL = 'https://claimready-selftest-host-that-does-not-exist.invalid/';
-  const liveRow = await checkLiveUrl(ROOT, { allowUndeployed: true, timeoutMs: 5000 });
-  if (savedUrl === undefined) delete process.env.CLAIMREADY_URL;
-  else process.env.CLAIMREADY_URL = savedUrl;
-  results.push({ name: 'live check against an unreachable host', expected: FAIL, actual: liveRow.status });
+function editFile(sandbox, relPath, transform) {
+  const full = join(sandbox, relPath);
+  writeFileSync(full, transform(readFileSync(full, 'utf8')), 'utf8');
+}
 
-  console.log('readiness selftest: each broken input must produce FAIL\n');
+/** Rewrite one string across every module under src, since checkApiDetection reads all of them. */
+function replaceAcrossSrc(sandbox, from, to) {
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.js')) {
+        const source = readFileSync(full, 'utf8');
+        if (source.includes(from)) writeFileSync(full, source.split(from).join(to), 'utf8');
+      }
+    }
+  };
+  walk(join(sandbox, 'src'));
+}
+
+function git(sandbox, args) {
+  return spawnSync('git', ['-C', sandbox, ...args], { encoding: 'utf8' });
+}
+
+function styleGateRow(sandbox) {
+  const result = runNode([join(ROOT, 'scripts', 'check_style.mjs'), '--root', sandbox, '--quiet'], ROOT);
+  const detail = (result.stderr || result.stdout || '').trim().split(/\r?\n/).slice(0, 2).join(' | ');
+  return { status: result.status === 0 ? PASS : FAIL, detail: detail || 'no findings' };
+}
+
+async function liveRowAgainst(url) {
+  const saved = process.env.CLAIMREADY_URL;
+  process.env.CLAIMREADY_URL = url;
+  try {
+    return await checkLiveUrl(ROOT, { allowUndeployed: false, timeoutMs: 5000 });
+  } finally {
+    if (saved === undefined) delete process.env.CLAIMREADY_URL;
+    else process.env.CLAIMREADY_URL = saved;
+  }
+}
+
+/**
+ * One case per row. `intact` runs the check against the untouched copy, `break` damages exactly
+ * one input, and `run` reports the row afterwards. `intactSkipped` names the reason a case cannot
+ * run its intact half, so the reason is printed rather than the case quietly counting for less.
+ */
+const SELFTEST_CASES = [
+  {
+    id: 'LIVE',
+    name: 'the judge URL does not resolve',
+    intactSkipped:
+      'the intact half needs the network and would make an offline run red for the wrong reason. '
+      + 'The live fetch is exercised for real by the readiness table itself.',
+    run: () => liveRowAgainst(UNREACHABLE_HOST),
+  },
+  {
+    id: 'IDX',
+    name: 'index.html grows an inline style block, which our CSP forbids',
+    break: (s) => editFile(s, 'index.html', (t) => t.replace('</head>', '<style>body{color:red}</style>\n</head>')),
+    run: (s) => checkIndexHtml(s),
+  },
+  {
+    id: 'IDX',
+    name: 'the flagship sentence drifts by one word in the page',
+    break: (s) => editFile(s, 'index.html', (t) => t.replace('typed tools', 'typed tool')),
+    run: (s) => checkIndexHtml(s),
+  },
+  {
+    id: 'API',
+    name: 'the navigator.modelContext fallback is dropped, so one judge path registers nothing',
+    break: (s) => replaceAcrossSrc(s, 'navigator.modelContext', 'navigator.notTheApiName'),
+    run: (s) => checkApiDetection(s),
+  },
+  {
+    id: 'ONE',
+    name: 'a second page that registers tools is left in the deploy',
+    break: (s) => writeFileSync(join(s, 'scratch.html'), '<p>scratch</p><script src="x.js"></script><!-- navigator.modelContext registerTool -->', 'utf8'),
+    run: (s) => checkSingleToolSurface(s),
+  },
+  {
+    id: 'RDM',
+    name: 'the README stops opening with the flagship sentence',
+    break: (s) => writeFileSync(join(s, 'README.md'), '# ClaimReady\n\nA page about claims.\n', 'utf8'),
+    run: (s) => checkReadme(s),
+  },
+  {
+    id: 'LIC',
+    name: 'the LICENCE file is deleted',
+    break: (s) => rmSync(join(s, 'LICENSE')),
+    run: (s) => checkLicense(s),
+  },
+  {
+    id: 'VRC',
+    name: 'the Content Security Policy header is removed from the host config',
+    break: (s) => editFile(s, 'vercel.json', (t) => t.split('Content-Security-Policy').join('X-Not-A-Policy')),
+    run: (s) => checkVercelConfig(s),
+  },
+  {
+    id: 'STY',
+    name: 'a file grows an em dash',
+    break: (s) => writeFileSync(join(s, 'note.md'), `a ${String.fromCodePoint(0x2014)} b\n`, 'utf8'),
+    run: (s) => styleGateRow(s),
+  },
+  {
+    id: 'TST',
+    name: 'a unit test starts failing',
+    break: (s) => writeFileSync(
+      join(s, 'tests', 'unit', 'zz_selftest_break.test.js'),
+      "import test from 'node:test';\nimport assert from 'node:assert/strict';\ntest('deliberately broken by the readiness selftest', () => { assert.equal(1, 2); });\n",
+      'utf8',
+    ),
+    run: (s) => checkUnitTests(s),
+  },
+  {
+    id: 'PUR',
+    name: 'a core module reaches for the browser',
+    break: (s) => writeFileSync(
+      join(s, 'src', 'core', 'zz_selftest_break.js'),
+      'export const where = window.location.href;\n',
+      'utf8',
+    ),
+    run: (s) => checkCorePurity(s),
+  },
+  {
+    id: 'TOL',
+    name: 'a tool file ships with no annotations',
+    break: (s) => writeFileSync(
+      join(s, 'src', 'webmcp', 'tools', 'zz_selftest_break.js'),
+      "export default () => ({\n  name: 'zz_unannotated',\n  inputSchema: { type: 'object', properties: {} },\n  async execute() { return null; },\n});\n",
+      'utf8',
+    ),
+    run: (s) => checkToolFiles(s),
+  },
+  {
+    id: 'HUM',
+    name: 'filing appears as a tool',
+    break: (s) => writeFileSync(
+      join(s, 'src', 'webmcp', 'tools', 'zz_selftest_break.js'),
+      "export default () => ({\n  name: 'file_claim',\n  annotations: { readOnlyHint: false },\n  inputSchema: { type: 'object', properties: {} },\n  async execute() { return null; },\n});\n",
+      'utf8',
+    ),
+    run: (s) => checkHumanOnlyBoundary(s),
+  },
+  {
+    id: 'HUM',
+    name: 'unpinning a field appears as a tool, the third human only action',
+    break: (s) => writeFileSync(
+      join(s, 'src', 'webmcp', 'tools', 'zz_selftest_break.js'),
+      "export default () => ({\n  name: 'unpin_field',\n  annotations: { readOnlyHint: false },\n  inputSchema: { type: 'object', properties: {} },\n  async execute() { return null; },\n});\n",
+      'utf8',
+    ),
+    run: (s) => checkHumanOnlyBoundary(s),
+  },
+  {
+    id: 'D1',
+    name: 'the public repository has no remote',
+    // The copy carries no .git, so the intact half has to build one. No network is touched.
+    prepare: (s) => {
+      git(s, ['init', '--quiet']);
+      git(s, ['remote', 'add', 'origin', 'https://github.example.invalid/selftest/claimready.git']);
+    },
+    break: (s) => git(s, ['remote', 'remove', 'origin']),
+    run: (s) => checkPublicRepo(s),
+  },
+  {
+    id: 'D3',
+    name: 'the description stops answering one of the four mandatory elements',
+    break: (s) => editFile(s, join('docs', 'submission', 'description.md'), (t) => t.split('impossible').join('hard')),
+    run: (s) => checkDescription(s),
+  },
+  {
+    id: 'D4',
+    name: 'the public video link is removed',
+    // D4 is red in the real repository today, so the intact half is written here rather than
+    // copied. That is stated in the output instead of being hidden by skipping the case.
+    prepare: (s) => writeFileSync(
+      join(s, 'docs', 'submission', 'video.md'),
+      '# Video\n\nhttps://www.youtube.com/watch?v=selftestPlaceholder\n',
+      'utf8',
+    ),
+    break: (s) => editFile(s, join('docs', 'submission', 'video.md'), (t) => t.replace(/https:\/\/\S+/, 'not recorded yet')),
+    run: (s) => checkVideo(s),
+  },
+];
+
+async function selftest() {
+  const home = mkdtempSync(join(tmpdir(), 'claimready-selftest-'));
+  const results = [];
+
+  console.log('readiness selftest');
+  console.log('every row is broken on purpose in its own copy of this repository.');
+  console.log('the intact copy must PASS and the broken copy must FAIL. Both are printed.\n');
+
+  for (let i = 0; i < SELFTEST_CASES.length; i += 1) {
+    const testCase = SELFTEST_CASES[i];
+    const sandbox = join(home, `${String(i).padStart(2, '0')}-${testCase.id}`);
+    let intact = null;
+    let broken = null;
+    let crash = null;
+
+    try {
+      if (testCase.break) makeSandbox(sandbox);
+      if (testCase.prepare) testCase.prepare(sandbox);
+      if (!testCase.intactSkipped) intact = await testCase.run(sandbox);
+      if (testCase.break) testCase.break(sandbox);
+      broken = await testCase.run(sandbox);
+    } catch (error) {
+      crash = error.message;
+    }
+
+    const intactOk = testCase.intactSkipped ? true : Boolean(intact) && intact.status === PASS;
+    const brokenOk = Boolean(broken) && broken.status === FAIL;
+    results.push({
+      id: testCase.id,
+      name: testCase.name,
+      sandbox,
+      crash,
+      intact: testCase.intactSkipped ? 'not run' : (intact ? intact.status : 'crashed'),
+      intactSkipped: testCase.intactSkipped,
+      broken: broken ? broken.status : 'crashed',
+      detail: broken && broken.detail ? broken.detail : '',
+      ok: !crash && intactOk && brokenOk,
+    });
+
+    // A copy of the repository per case adds up, and this machine has very little disk. The
+    // sandbox of a case that behaved is worth nothing; the sandbox of one that did not is the
+    // evidence, so that one is kept and its path is printed.
+    if (results[results.length - 1].ok) {
+      try { rmSync(sandbox, { recursive: true, force: true }); } catch { /* leave it, it is temp */ }
+    }
+  }
+
   let bad = 0;
   for (const r of results) {
-    const ok = r.actual === r.expected;
-    if (!ok) bad += 1;
-    console.log(`  ${ok ? 'ok  ' : 'BAD '} ${pad(r.actual, 14)} ${r.name}`);
+    if (!r.ok) bad += 1;
+    console.log(
+      `  ${r.ok ? 'ok  ' : 'BAD '} ${pad(r.id, 6)}intact ${pad(r.intact, 9)}broken ${pad(r.broken, 9)}${r.name}`,
+    );
+    if (r.intactSkipped) console.log(`${' '.repeat(8)}intact half not run: ${r.intactSkipped}`);
+    if (r.detail) console.log(`${' '.repeat(8)}refusal said: ${r.detail.slice(0, 150)}`);
+    if (r.crash) console.log(`${' '.repeat(8)}CRASHED: ${r.crash}`);
+    if (!r.ok) console.log(`${' '.repeat(8)}sandbox kept at ${r.sandbox}`);
   }
-  console.log(`\nsandbox: ${sandbox}`);
+
+  const ids = [...new Set(SELFTEST_CASES.map((c) => c.id))];
+  console.log(`\n${results.length} breaks over ${ids.length} rows: ${ids.join(', ')}`);
+  console.log('no row is skipped. Every row this gate prints is broken above and refuses.');
+  console.log(`sandboxes: ${home}`);
+
   if (bad > 0) {
-    console.error(`\nselftest FAILED. ${bad} check(s) stayed green on deliberately broken input.`);
+    console.error(`\nselftest FAILED. ${bad} case(s) did not behave: a check stayed green on broken input, or refused good input, or crashed.`);
     process.exit(1);
   }
-  console.log('\nselftest passed. The gate has teeth.');
+  console.log('\nselftest passed. Every row has been watched to fail, and to pass, for its own reason.');
   process.exit(0);
 }
 
@@ -686,43 +968,64 @@ async function main() {
   console.log(`run:  node ${relative(ROOT, fileURLToPath(import.meta.url)).split('\\').join('/')}${argv.length ? ' ' + argv.join(' ') : ''}\n`);
   printTable(rows);
 
-  const counted = rows.filter((r) => r.counted);
-  const passed = counted.filter((r) => r.status === PASS);
-  const percent = counted.length === 0 ? 0 : Math.round((passed.length / counted.length) * 1000) / 10;
+  const passed = rows.filter((r) => r.status === PASS);
+  const percent = rows.length === 0 ? 0 : Math.round((passed.length / rows.length) * 1000) / 10;
 
-  console.log('\nowner gated, never counted as passes');
+  const owner = ownerGatedRows();
+  console.log('\nowner gated. No script can prove any of these, so none of them is ever a PASS');
   console.log('-'.repeat(96));
-  for (const o of ownerGatedRows()) {
+  for (const o of owner) {
     console.log(`${pad(o.id, 6)}${pad('OWNER GATED', 14)}${pad('manual', 13)}${o.label}`);
     console.log(`${' '.repeat(33)}${o.step}`);
   }
 
   const undeployed = rows.some((r) => r.status === NOT_DEPLOYED);
   const engineeringFailures = rows.filter((r) => r.blocking === ENGINEERING && r.status !== PASS);
-  const submissionFailures = rows.filter((r) => r.blocking === SUBMISSION && r.status !== PASS);
+  const deliverableFailures = rows.filter((r) => r.blocking === DELIVERABLE && r.status !== PASS);
+  const mandatoryFailures = rows.filter((r) => r.mandatory && r.status !== PASS);
+
+  // Two tallies, because one would be read as the answer to the wrong question. The first is
+  // what a script proved. The second adds the five owner gated rows, one of which is whether
+  // the form reads Submitted, so it is the one that answers "is this ready to submit". Printing
+  // only the first is how a build reports 93 percent while nothing has been submitted at all.
+  const overallTotal = rows.length + owner.length;
+  const overallPercent = Math.round((passed.length / overallTotal) * 1000) / 10;
 
   console.log('\n' + '='.repeat(96));
-  console.log(`score: ${passed.length} of ${counted.length} required rows, ${percent} percent${undeployed ? ' (provisional, the live row proved nothing)' : ''}`);
+  console.log(`automated rows:   ${passed.length} of ${rows.length} PASS, ${percent} percent${undeployed ? ' (provisional, the live row proved nothing)' : ''}`);
+  console.log(`READY TO SUBMIT:  ${passed.length} of ${overallTotal} proven, ${overallPercent} percent. This is the number that answers the question.`);
+  console.log(`  it adds the ${owner.length} owner gated rows, none of which any script can prove, and one of which is whether the form reads Submitted.`);
   console.log(`engineering rows outstanding: ${engineeringFailures.length}`);
-  console.log(`submission rows outstanding:  ${submissionFailures.length}`);
+  console.log(`deliverable rows outstanding: ${deliverableFailures.length}`);
+  if (mandatoryFailures.length > 0) {
+    console.log(`MANDATORY DELIVERABLES MISSING: ${mandatoryFailures.map((r) => r.id).join(', ')}. These block the exit code in every mode.`);
+  }
   if (undeployed) {
-    console.log('SUBMISSION BLOCKING: the judge URL was not fetched. Set CLAIMREADY_URL and run again.');
+    console.log('DELIVERABLE BLOCKING: the judge URL was not fetched. Drop --allow-undeployed and run again.');
   }
 
   if (options.ci) {
-    if (engineeringFailures.length > 0) {
-      console.error(`\nCI: FAIL. ${engineeringFailures.map((r) => r.id).join(', ')}`);
+    // A mandatory deliverable is never survivable, not even in CI mode. --ci narrows what turns
+    // the build red among the engineering rows. It has never been a licence to ship without a
+    // video, and the row that used to FAIL here while the process exited zero was D4.
+    const blocking = [...new Set([...engineeringFailures, ...mandatoryFailures])];
+    if (blocking.length > 0) {
+      console.error(`\nCI: FAIL. ${blocking.map((r) => r.id).join(', ')}`);
       process.exit(1);
     }
-    console.log('\nCI: engineering rows green. Submission rows are still outstanding and are printed above.');
+    console.log('\nCI: engineering rows green and every mandatory deliverable exists.');
     process.exit(0);
   }
 
+  if (mandatoryFailures.length > 0) {
+    console.error(`\nNOT READY. A mandatory deliverable is missing: ${mandatoryFailures.map((r) => r.id).join(', ')}.`);
+    process.exit(1);
+  }
   if (percent < 95) {
     console.error(`\nNOT READY. ${percent} percent is below the 95 percent gate.`);
     process.exit(1);
   }
-  console.log('\nREADY.');
+  console.log('\nREADY. The owner gated rows above are still owed by a person.');
   process.exit(0);
 }
 

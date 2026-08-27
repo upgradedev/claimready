@@ -29,6 +29,11 @@ on:
         description: "Film the machine beats against the deployed page and stop. Proves the browser capture works before any take is recorded or any narration credit is spent. Needs no secret."
         type: boolean
         default: false
+      deployed_sha:
+        description: "The commit the live page is serving. Leave empty to use the commit this run checked out. The build fetches every on camera file from the host and refuses to film when they are not this commit, so naming one here loosens nothing."
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -119,6 +124,7 @@ jobs:
       - name: Film every machine beat
         env:
           CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          CLAIMREADY_DEPLOYED_SHA: ${{ inputs.deployed_sha }}
         run: python3 video/build_video.py --capture-only
 
       # Playwright writes the recording under each beat's raw directory and the builder reports the
@@ -190,25 +196,39 @@ jobs:
 
       # Keyed on the beat inputs, so a run that changed one narration file re renders one beat and
       # restores the other seven. This is what makes a one beat fix cost one beat in CI too.
+      #
+      # index.html, src and assets are in the key because the machine beats are photographs of
+      # them. They are the same set the beat hash calls CAMERA_PATHS, and the two have to agree:
+      # a key covering less than the hash covers means CI restores footage the builder would have
+      # rebuilt. That is not hypothetical, it is what put a page filmed at cfc5c0c into a cut built
+      # after d054311 had added a tools panel to index.html.
+      #
+      # There is deliberately no restore-keys fallback. A bare video-build- prefix matches the
+      # newest cache from ANY earlier key, which is precisely how footage of an older page gets
+      # adopted by a build that changed the page. An exact hit or nothing: re rendering costs a run,
+      # and shipping the wrong page costs the entry.
       - name: Restore the beat cache
         uses: actions/cache@v4
         with:
           path: tmp/video
-          key: video-build-${{ hashFiles('video/beats/**', 'video/build_video.py', 'video/sync_gate.py') }}
-          restore-keys: |
-            video-build-
+          key: video-build-${{ hashFiles('video/beats/**', 'video/build_video.py', 'video/sync_gate.py', 'index.html', 'src/**', 'assets/**') }}
 
       - name: Re render the one named beat
         if: inputs.beat != ''
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          CLAIMREADY_DEPLOYED_SHA: ${{ inputs.deployed_sha }}
         run: python3 video/build_video.py --beat "${{ inputs.beat }}" --force
 
+      # The builder fetches every on camera file from the live host first and stops the build if
+      # the page is not the commit it is about to write into the manifest. The SHA it settled on is
+      # printed with the cut.
       - name: Build every beat and assemble the cut
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          CLAIMREADY_DEPLOYED_SHA: ${{ inputs.deployed_sha }}
         run: python3 video/build_video.py
 
       # Required. Nothing is uploaded until this passes, and it reads the encoded files rather

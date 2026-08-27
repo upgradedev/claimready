@@ -637,7 +637,7 @@ test('clearing an optional field drops its provenance with it', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pinning: the one thing on the page an agent cannot argue with
+// Pinning: the one thing on the page no patch can argue with
 // ---------------------------------------------------------------------------
 
 test('a pinned field refuses every patch until a person unpins it', () => {

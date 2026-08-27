@@ -5,9 +5,10 @@
  * dispatch, so a tool call is visible on the page the moment it lands, field by field, and both
  * sides read the same revision number. That mirroring is the whole demonstration.
  *
- * What an agent cannot do is filing. Filing, roadside assistance and pinning a field are buttons,
- * never tools, so an agent that has been talked into something by a poisoned web page can draft and
- * check all it likes and can commit nothing.
+ * Filing, roadside assistance and pinning a field are buttons, and no tool this page publishes
+ * reaches any of them. That is the boundary, and it is a fact about the tool surface rather than a
+ * claim about what a browser is able to click: an agent that has been talked into something by a
+ * poisoned web page finds nothing in this page's tool list that commits anything.
  *
  * Who set each field lives on the claim, in src/core, not here. This file used to keep its own
  * parallel record and guess the writer from a depth counter. It no longer does: it reads
@@ -108,8 +109,15 @@ async function boot() {
     note: 'Demonstration session. The claimant, the vehicle and the policy are invented for this demo.'
   };
 
-  /* Page state that is not claim state. The store contract has no action for any of it. */
-  const ui = { coverage: null, estimate: null, assistanceAt: null };
+  /**
+   * Page state that is not claim state. The store contract has no action for any of it.
+   *
+   * `humanActions` holds the ids of intake requirements whose human action the person has
+   * actually carried out on this page. It is the one fact src/core cannot work out for itself,
+   * and it is handed to deriveRequirements rather than interpreted here, so the panel, the four
+   * tools that read requirements and this file all get their answer from the same place.
+   */
+  const ui = { coverage: null, estimate: null, assistanceAt: null, humanActions: [] };
   const ledger = [];
 
   /**
@@ -141,18 +149,32 @@ async function boot() {
   let requirementSignature = null;
   let requirementsPrimed = false;
 
+  /* Which pack this customer is actually with, as the sample file states it. The picker can load
+     another insurer's published rules against the same claim, and where it has, every surface that
+     names a policy has to say whose rules answered. */
+  const homePackId = typeof fixture.insurer_pack === 'string' ? fixture.insurer_pack : null;
+
   const context = {
     store,
     pack: null,
+    packId: null,
+    homePackId,
     policy: embeddedPolicy,
     policyId: persona.policyId,
     currency: persona.currency,
     vehicleClass: persona.vehicleClass,
     hasPolicySchedule: hasSchedule(embeddedPolicy),
     noScheduleReason,
-    getRequirements,
+    humanActions: [],
     publish
   };
+
+  // getRequirements is deliberately NOT on the context. It used to be, and the one tool that read
+  // it worked out for itself, from a decoration on the page's own copy, whether a requirement had
+  // been dealt with. That is how two tools came to give two answers about one claim. What a tool
+  // needs is the completed actions, which is what humanActions carries, and it hands them to
+  // src/core rather than deciding anything with them. Nothing under src/webmcp reads this
+  // function now, and putting it back would put the inference back within reach.
 
   view.renderPersona(persona);
   refreshStatus();
@@ -187,6 +209,13 @@ async function boot() {
     view.renderRevision(next.revision);
     drawClaim(changed);
     drawRequirements();
+
+    // A revision that moved no field cannot have moved an answer. Filing, pinning and unpinning
+    // all advance the counter without touching a value, so those re-stamp the panels instead of
+    // clearing them: clearing a cover decision the instant the claim is filed would tell a viewer
+    // the answer had changed when nothing it reads had.
+    if (changed.length === 0) restampPanels(next.revision);
+    else expirePanels(next.revision);
   });
 
   wireControls();
@@ -253,39 +282,64 @@ async function boot() {
     if (entry && entry.pack) {
       activePackId = entry.id;
       context.pack = entry.pack;
+      context.packId = entry.id;
       context.policy = entry.pack;
       context.currency = entry.pack.currency;
       context.hasPolicySchedule = hasSchedule(entry.pack);
-      view.renderPackNote(describePack(entry.pack));
+
+      // Say whose rules are loaded and whose policy the claim is on, whenever they differ. The
+      // picker changes the schedule, not the customer: policy MTR-2026-0417 does not become a
+      // policy with the other insurer because their rule pack was loaded against it, and the page
+      // used to leave a reader to work that out from a policy number in a decision line.
+      const borrowed = homePackId && entry.id !== homePackId;
+      view.renderPackNote(borrowed
+        ? `${describePack(entry.pack)} These are ${entry.pack.insurer}'s published rules, read `
+          + `against the same claim. Policy ${persona.policyId} itself is not with ${entry.pack.insurer}.`
+        : describePack(entry.pack));
+      view.renderPersona({ ...persona, insurer: entry.pack.insurer, borrowed: Boolean(borrowed) });
       return;
     }
 
     context.pack = null;
+    context.packId = null;
     context.policy = embeddedPolicy;
     context.currency = persona.currency;
     context.hasPolicySchedule = hasSchedule(embeddedPolicy);
+    view.renderPersona({ ...persona, insurer: null, borrowed: false });
     view.renderPackNote(entry && entry.error
       ? `The ${entry.id} rule pack did not load: ${entry.error}. The cover check falls back to the schedule stored with this policy.`
       : NO_PACK_REASON);
   }
 
   /**
-   * The requirements this insurer's intake raises right now, with the one page fact src/core cannot
-   * know: whether the person has already pressed the button that no tool can press.
+   * The requirements this insurer's intake raises right now.
+   *
+   * The one page fact src/core cannot know, which human actions the person has carried out, goes
+   * IN as ui.humanActions rather than being applied to the result afterwards. Whether a
+   * requirement is answered is decided in one place, by deriveRequirements, and this function only
+   * adds the timestamp line the page prints beside the row. The tools never see that line and no
+   * tool infers anything from it.
    */
   function getRequirements() {
     const pack = context.pack;
     if (!pack) return [];
-    return deriveRequirements(pack, claimNow()).map((entry) => {
-      const rule = pack.requirements.find((item) => item.id === entry.id);
-      const humanOnly = Boolean(rule && rule.satisfied_by && rule.satisfied_by.human_action);
+    return deriveRequirements(pack, claimNow(), ui.humanActions).map((entry) => {
+      const humanOnly = Boolean(entry.humanAction);
       const shown = { ...entry, humanOnly, humanNote: null };
-      if (humanOnly && ui.assistanceAt) {
+      if (humanOnly && entry.satisfied && ui.assistanceAt) {
         shown.humanNote = `You pressed Request roadside assistance at ${ui.assistanceAt}. `
-          + 'There is no tool for that button, so an agent could not have done it for you.';
+          + 'There is no tool for that button, so your agent had to ask you.';
       }
       return shown;
     });
+  }
+
+  /** Record that a human action has been carried out, and tell the tools. */
+  function recordHumanActions(ids) {
+    const merged = new Set(ui.humanActions);
+    for (const id of ids) merged.add(id);
+    ui.humanActions = [...merged];
+    context.humanActions = ui.humanActions;
   }
 
   /* Drawing */
@@ -299,7 +353,8 @@ async function boot() {
       missing: verdict.missing || [],
       filed: claim.status === 'filed',
       filedAt: claim.filed_at,
-      assistanceAt: ui.assistanceAt
+      assistanceAt: ui.assistanceAt,
+      assistanceAvailable: assistanceApplies(claim)
     });
   }
 
@@ -336,13 +391,99 @@ async function boot() {
     }
   }
 
+  /**
+   * Put a worked out answer on the page, stamped with what it was worked out against.
+   *
+   * THE STAMP IS THE WHOLE POINT OF THIS FUNCTION. A cover decision and a repair band are answers
+   * to a question asked at one moment, about one draft, under one insurer's schedule. Without the
+   * stamp nothing downstream could tell that the draft had moved underneath them, and it showed:
+   * a claim could be changed from collision to theft and the panel went on reading COVERED under
+   * clause OD-4.1 with a 250 excess, next to a draft that now said theft.
+   *
+   * The revision is stamped on both panels because both are answers about the draft. The pack id
+   * is stamped on both and compared only for the cover decision, which is the one that reads the
+   * insurer's schedule. The repair band comes from a fixed parts table and does not move with the
+   * pack, which is also why switchPack leaves it alone.
+   *
+   * TWO NUMBERS, NOT ONE, AND THEY ARE DIFFERENT FACTS. `revision` is where this answer was worked
+   * out and is never written again. `validAt` is the latest revision it is still an answer about,
+   * and it moves when the draft advances without a field changing. Collapsing them into one number
+   * would put a revision on the panel at which nothing was ever worked out, which is a smaller
+   * version of the lie this whole panel now exists to prevent.
+   */
   function publish(kind, payload) {
     const at = clockNow();
+    const revision = claimNow().revision;
     if (kind === 'coverage') {
-      ui.coverage = { ...payload, at, insurer: context.pack ? context.pack.insurer : null };
+      ui.coverage = {
+        ...payload,
+        at,
+        revision,
+        validAt: revision,
+        packId: activePackId,
+        insurer: context.pack ? context.pack.insurer : null
+      };
       view.renderCoverage(ui.coverage);
     } else if (kind === 'estimate') {
-      ui.estimate = { ...payload, at };
+      ui.estimate = { ...payload, at, revision, validAt: revision, packId: activePackId };
+      view.renderEstimate(ui.estimate);
+    }
+  }
+
+  /**
+   * Whether a panel is still an answer about the draft in front of the reader.
+   *
+   * @param {object|null} entry a published result, or null when the panel holds a message
+   * @param {number} revision the revision the claim is at now
+   * @param {boolean} readsThePack true for an answer taken from the insurer's schedule
+   */
+  function panelIsStale(entry, revision, readsThePack) {
+    if (!entry || entry.blocked) return false;
+    if (entry.validAt !== revision) return true;
+    return readsThePack && entry.packId !== activePackId;
+  }
+
+  /**
+   * Replace an answer that no longer describes this draft with a plain sentence saying so.
+   *
+   * NOTHING IS RECOMPUTED HERE, DELIBERATELY. A person pressed a button and got an answer. Quietly
+   * working out a new one and swapping it in would change what the page says without anyone asking
+   * and without anyone being told, which is the failure this whole page is arguing against. So the
+   * panel says the draft has moved, names both revisions, and waits to be asked again.
+   */
+  function expirePanels(revision) {
+    if (panelIsStale(ui.coverage, revision, true)) {
+      const workedOutAt = ui.coverage.revision;
+      ui.coverage = null;
+      view.renderCoverage({
+        blocked: `The draft has moved since this cover check was worked out at revision ${workedOutAt}. `
+          + `It is at revision ${revision} now, so press Check cover again to see what this schedule says about it.`
+      });
+    }
+    if (panelIsStale(ui.estimate, revision, false)) {
+      const workedOutAt = ui.estimate.revision;
+      ui.estimate = null;
+      view.renderEstimate({
+        blocked: `The draft has moved since this band was worked out at revision ${workedOutAt}. `
+          + `It is at revision ${revision} now, so press Show the band again.`
+      });
+    }
+  }
+
+  /**
+   * Carry a still valid answer forward.
+   *
+   * Only `validAt` moves. Where the answer was worked out is a fact about the past and stays put,
+   * so the panel goes on naming the revision that produced it and adds the revision it is still
+   * current at. Filing and pinning both land here.
+   */
+  function restampPanels(revision) {
+    if (ui.coverage && ui.coverage.validAt !== revision) {
+      ui.coverage = { ...ui.coverage, validAt: revision };
+      view.renderCoverage(ui.coverage);
+    }
+    if (ui.estimate && ui.estimate.validAt !== revision) {
+      ui.estimate = { ...ui.estimate, validAt: revision };
       view.renderEstimate(ui.estimate);
     }
   }
@@ -538,8 +679,8 @@ async function boot() {
     }
     view.showFieldError('');
     view.announce(pinned
-      ? `You unpinned ${field}. An agent can change it again.`
-      : `You pinned ${field}. No agent patch can move it now.`);
+      ? `You unpinned ${field}. A patch can change it again.`
+      : `You pinned ${field}. No patch can move it now.`);
   }
 
   function switchPack(id) {
@@ -602,12 +743,41 @@ async function boot() {
     view.announce('You filed the claim. The draft is closed to every writer, yours and your agent\'s.');
   }
 
+  /**
+   * Whether asking for a roadside collection is something this claim can ask for at all.
+   *
+   * Read from the claim, never from the button. A collection is what this insurer arranges for a
+   * vehicle that cannot be driven, so the control is closed until the draft says that, with the
+   * reason drawn beside it. It was open from the first paint before, on a draft that had not said
+   * whether the car still drove, and pressing it recorded a recovery request against a claim that
+   * had never asked for one.
+   */
+  function assistanceApplies(claim) {
+    return Boolean(claim) && claim.vehicle_drivable === false && claim.status !== 'filed';
+  }
+
   function requestAssistance() {
     if (ui.assistanceAt) return;
+
+    // The control is disabled while this is false, so reaching here means the draft moved between
+    // the paint and the press. Refusing is cheaper than trusting the button.
+    const claim = claimNow();
+    if (!assistanceApplies(claim)) {
+      view.showFieldError('Roadside collection is for a vehicle that cannot be driven, and this '
+        + 'draft does not say that. Answer whether the car still drives first.');
+      drawClaim([]);
+      return;
+    }
+
     ui.assistanceAt = clockNow();
+    // What the person just did, named by the requirements it answers, so src/core and every tool
+    // read one answer rather than four surfaces guessing from a note on the page.
+    recordHumanActions(getRequirements().filter((entry) => entry.humanOnly).map((entry) => entry.id));
+
+    view.showFieldError('');
     drawClaim([]);
     drawRequirements();
-    view.announce('You requested roadside assistance. There is no tool for that button.');
+    view.announce('You requested roadside assistance. No tool on this page reaches that button.');
     // Pressing this changes nothing about the tool surface. The tool that reads out the assistance
     // options exists while the claim says the vehicle cannot be driven, which is a fact about the
     // claim, and register.js is what watches it.
@@ -619,6 +789,8 @@ async function boot() {
     ui.coverage = null;
     ui.estimate = null;
     ui.assistanceAt = null;
+    ui.humanActions = [];
+    context.humanActions = ui.humanActions;
     ledger.length = 0;
     requirementSignature = null;
     requirementsPrimed = false;

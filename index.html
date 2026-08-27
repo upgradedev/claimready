@@ -80,7 +80,7 @@
     <p class="tools-note" data-el="tools-note"></p>
     <ul class="tools-list" data-el="tools-list"></ul>
     <p class="tools-foot">Filing the claim, pinning a field and asking for roadside assistance are
-      not on this list, in either state. They are buttons only a person can press.</p>
+      not on this list, in either state. No tool this page publishes reaches any of them.</p>
   </div>
 </details>
 
@@ -109,7 +109,7 @@
     <div class="panel-head">
       <h2 id="h-claim">Claim draft</h2>
       <p class="panel-sub">Your agent and you write to the same draft. Every row shows who set it
-        last, and you can pin a row so an agent cannot change it.</p>
+        last, and you can pin a row so no patch can move it.</p>
     </div>
     <p class="claim-note" data-el="claim-note"></p>
     <ul class="fields" data-el="fields"></ul>
@@ -165,8 +165,8 @@
     <section class="panel panel-actions" aria-labelledby="h-you">
       <div class="panel-head">
         <h2 id="h-you">Your decisions</h2>
-        <p class="panel-sub">These buttons are human only. They are never registered as agent tools,
-          so an agent can draft and check a claim and can file nothing.</p>
+        <p class="panel-sub">These buttons are yours. They are never registered as agent tools, so
+          an agent can draft and check a claim, and nothing in this page's tool list reaches them.</p>
       </div>
 
       <div class="panel-body">
@@ -174,8 +174,8 @@
         <p class="reason" data-el="file-reason">Waiting for the draft to be complete.</p>
         <p class="filed" data-el="file-result" role="status"></p>
 
-        <button type="button" class="btn btn-quiet" data-el="assistance-btn">Request roadside assistance</button>
-        <p class="reason" data-el="assistance-state">Not requested. A person on this page asks for it, an agent cannot.</p>
+        <button type="button" class="btn btn-quiet" data-el="assistance-btn" disabled>Request roadside assistance</button>
+        <p class="reason" data-el="assistance-state">Collection is for a vehicle that cannot be driven. Answer "Still drivable" with no on the draft and this opens.</p>
       </div>
     </section>
 

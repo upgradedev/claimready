@@ -16,13 +16,25 @@
  *   label        what to ask the claimant for, in their words
  *   why          the clause or the field that makes it required
  *   satisfied    whether the claim already answers it
+ *   field        the claim field that answers it, or null when none does
+ *   humanAction  what a person has to do when no field answers it, or null
  *   triggeredBy  the claim field whose value brought it into existence, or null
  *                for a requirement this insurer always asks for
  *
  * A requirement that no field can satisfy is honest about it: roadside
- * collection is arranged by a person pressing a button on the page, so it stays
- * unsatisfied until they do, and `why` says so. An agent reading that should ask
- * the person, not look for a tool to call.
+ * collection is arranged by a person pressing a button on the page, and no tool
+ * on this page reaches that button, so `why` says so and an agent reading it
+ * should ask the person rather than look for a tool to call.
+ *
+ * THE THIRD ARGUMENT IS WHY THIS FILE IS THE ONLY ANSWER TO "is it satisfied".
+ * Whether the person has pressed such a button is a fact about the page, not
+ * about the claim, so it has to be handed in. Before it was, a human_action
+ * requirement returned satisfied false for ever: the page said "1 of 7 still
+ * open" on the same row that said "you pressed it at 10:31", get_requirements
+ * and read_claim_state agreed it was open, and get_assistance_options quietly
+ * disagreed by inferring completion from the presence of a page note. Passing
+ * the completed actions in means every surface reads one answer, and no caller
+ * has to infer anything.
  */
 
 import { FIELD_LABELS } from './claim.js';
@@ -89,12 +101,31 @@ function evaluate(when, claim) {
   return { matched: !isEmptyValue(value), by: field };
 }
 
-function satisfiedBy(rule, claim) {
+/**
+ * Whether this rule is answered, and by what.
+ *
+ * A rule answered by a field reads the claim. A rule answered by a human action
+ * reads `done`, which is the set of actions the caller reports as carried out.
+ * Nothing here guesses: an action nobody reported is not done.
+ */
+function satisfiedBy(rule, claim, done) {
   const target = rule.satisfied_by || {};
   if (typeof target.field === 'string') {
-    return { satisfied: !isEmptyValue(claim ? claim[target.field] : undefined), field: target.field };
+    return {
+      satisfied: !isEmptyValue(claim ? claim[target.field] : undefined),
+      field: target.field,
+      humanAction: null,
+    };
   }
-  return { satisfied: false, field: null };
+  const humanAction = typeof target.human_action === 'string' ? target.human_action : null;
+  return { satisfied: done.has(rule.id), field: null, humanAction };
+}
+
+/** Accept an array, a Set, or nothing at all, and answer with a Set either way. */
+function asDoneSet(completedHumanActions) {
+  if (completedHumanActions instanceof Set) return completedHumanActions;
+  if (Array.isArray(completedHumanActions)) return new Set(completedHumanActions);
+  return new Set();
 }
 
 function because(field, claim) {
@@ -110,10 +141,14 @@ function because(field, claim) {
  *
  * @param {object} policy a pack from policy.js, or anything carrying `requirements`
  * @param {object} claim a claim from claim.js
- * @returns {Array<{id: string, label: string, why: string, satisfied: boolean, triggeredBy: (string|null)}>}
- * @throws {TypeError} when either argument is missing
+ * @param {(string[]|Set<string>)} [completedHumanActions] ids of the requirements
+ *        whose human action the caller reports as already carried out. Omit it
+ *        and no human action counts as done.
+ * @returns {Array<{id: string, label: string, why: string, satisfied: boolean,
+ *                  field: (string|null), humanAction: (string|null), triggeredBy: (string|null)}>}
+ * @throws {TypeError} when either of the first two arguments is missing
  */
-export function deriveRequirements(policy, claim) {
+export function deriveRequirements(policy, claim, completedHumanActions) {
   if (!policy || typeof policy !== 'object') {
     throw new TypeError('deriveRequirements needs a policy pack.');
   }
@@ -121,6 +156,7 @@ export function deriveRequirements(policy, claim) {
     throw new TypeError('deriveRequirements needs a claim object.');
   }
 
+  const done = asDoneSet(completedHumanActions);
   const rules = Array.isArray(policy.requirements) ? policy.requirements : [];
   const out = [];
 
@@ -129,12 +165,13 @@ export function deriveRequirements(policy, claim) {
     if (!hit.matched) continue;
 
     const triggeredBy = rule.triggered_by ?? hit.by ?? null;
-    const answer = satisfiedBy(rule, claim);
+    const answer = satisfiedBy(rule, claim, done);
 
     let why = rule.why;
     if (triggeredBy) why += because(triggeredBy, claim);
     if (!answer.field) {
-      why += ` Nothing an agent can send satisfies this one: ${rule.satisfied_by.human_action}`;
+      why += ` No field answers this one and no tool on this page reaches it: ${answer.humanAction}`;
+      if (answer.satisfied) why += ' The page reports that this has now been done.';
     }
 
     out.push({
@@ -142,11 +179,49 @@ export function deriveRequirements(policy, claim) {
       label: rule.label,
       why,
       satisfied: answer.satisfied,
+      field: answer.field,
+      humanAction: answer.humanAction,
       triggeredBy,
     });
   }
 
   return out;
+}
+
+/**
+ * The fields on the file gate's static list that THIS pack asks for right now.
+ *
+ * The page's own gate lives in claim.js, because the store can reach it without
+ * a pack. This is the same question asked of the insurer's published rules, and
+ * tests/unit/requirements.test.js requires the two to give the same answer for
+ * every field a pack names. That check is the forcing function: a pack rule and
+ * the gate cannot drift apart without a test going red.
+ *
+ * A field no rule names is not in either answer here. Both shipped packs are
+ * silent about incident_type, which the page requires on its own account because
+ * a cover check cannot run without it.
+ *
+ * @param {object} policy a pack from policy.js
+ * @param {object} claim a claim from claim.js
+ * @returns {{asked: string[], named: string[]}} `asked` is what the pack wants on
+ *          this claim, `named` is every field any rule in the pack mentions
+ */
+export function packFieldDemands(policy, claim) {
+  if (!policy || typeof policy !== 'object') {
+    throw new TypeError('packFieldDemands needs a policy pack.');
+  }
+  const rules = Array.isArray(policy.requirements) ? policy.requirements : [];
+  const named = new Set();
+  const asked = new Set();
+  for (const rule of rules) {
+    const field = rule.satisfied_by && typeof rule.satisfied_by.field === 'string'
+      ? rule.satisfied_by.field
+      : null;
+    if (!field) continue;
+    named.add(field);
+    if (evaluate(rule.when, claim).matched) asked.add(field);
+  }
+  return { asked: [...asked], named: [...named] };
 }
 
 /**

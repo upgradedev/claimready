@@ -58,8 +58,8 @@ export default (ctx) => ({
     + 'revision. Call read_claim_state first and send the revision it reported as baseRevision: if '
     + 'the person on the page has corrected something since you read, the patch is refused and '
     + 'nothing changes, so read again. Dates are YYYY-MM-DD, damage_zone is a clock position 1 to '
-    + '12, vehicle_drivable is true or false. Filing the finished claim is a button only the '
-    + 'person on the page can press.',
+    + '12, vehicle_drivable is true or false. Filing the finished claim is a button on the page, '
+    + 'and is deliberately not available as a tool.',
 
   inputSchema: {
     type: 'object',
@@ -153,7 +153,7 @@ export default (ctx) => ({
 
     const pack = packOf(ctx);
     if (pack) {
-      body.push(summariseRequirements(deriveRequirements(pack, claim)));
+      body.push(summariseRequirements(deriveRequirements(pack, claim, ctx.humanActions)));
       body.push('Call get_requirements if that list has changed since you last looked.');
     }
 

@@ -52,18 +52,18 @@ export default (ctx) => ({
 
     // Two different questions, and conflating them would be the tool overstating itself. The
     // required fields can all be filled while the insurer's intake is still waiting on something,
-    // for instance a collection only a person can arrange.
+    // for instance a collection that no tool on this page reaches.
     const pack = packOf(ctx);
     if (pack) {
-      const open = outstandingRequirements(deriveRequirements(pack, claim));
+      const open = outstandingRequirements(deriveRequirements(pack, claim, ctx.humanActions));
       lines.push(open.length === 0
         ? "This insurer's intake requirements are all answered as well."
         : `Separately, ${open.length} of this insurer's intake requirements are still open: ${open.map((entry) => entry.id).join(', ')}. Call get_requirements for why.`);
     }
 
     lines.push(verdict.ready
-      ? 'Tell the person on the page that they can press File this claim. You cannot press it.'
-      : 'Filing is a human button on the page. It is not available as a tool.');
+      ? 'Tell the person on the page that they can press File this claim. No tool here reaches it.'
+      : 'Filing is a button on the page. It is deliberately not available as a tool.');
 
     return toResult(lines.join('\n'));
   }

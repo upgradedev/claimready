@@ -31,28 +31,31 @@
     "PATCH_REJECTED_VALUE": "The value fails an enum, a range, a length or a date rule. The message names what was expected and what arrived."
   },
   "refusal_style": "Every refusal is written to be corrected by the reader without a second round trip: it names the field, the rule, the value that arrived and what to send instead.",
-  "tools_note": "This list is what the convention defines, not an inventory of any page. The reference page in this repository does not necessarily publish all of them, and may publish them under a different split. Read the tool list the page itself exposes to find out what is there.",
+  "tools_note": "This list is the convention. It is also, exactly, what the reference page in this repository publishes: nine tools, the same names, the same inputs and the same annotations, read off src/webmcp/tools on 2026-08-27. An earlier version of this file kept the two apart with a clause saying the page might publish a different split, and that clause is how the list drifted to a tool named list_requirements that never existed. If the two ever diverge again, the page is right and this file is stale. Verify from the outside rather than from here: read the tool list the page exposes.",
   "tools": [
     {
       "name": "describe_claim",
       "role": "read",
       "input": {},
-      "output": "One short paragraph naming the policy, the status, the revision, what is answered and what is still needed.",
-      "annotations": ["readOnlyHint"],
+      "output": "One short paragraph naming the policy, the status, the revision, what is answered and what is still needed. It repeats free text the claimant typed.",
+      "annotations": ["readOnlyHint", "untrustedContentHint"],
       "budget": "at most 1500 characters"
     },
     {
       "name": "read_claim_state",
       "role": "read",
       "input": {},
-      "output": "Field by field values, the revision to quote as baseRevision, who set each field, and which fields are pinned.",
-      "annotations": ["readOnlyHint"],
+      "output": "Field by field values, the revision to quote as baseRevision, who set each field, and which fields are pinned. Values include free text the claimant typed.",
+      "annotations": ["readOnlyHint", "untrustedContentHint"],
       "budget": "at most 1500 characters"
     },
     {
-      "name": "list_requirements",
+      "name": "get_requirements",
       "role": "read",
-      "input": {},
+      "input": {
+        "id": "optional. One requirement id, returned in full rather than shortened",
+        "include": "optional. outstanding, the default, or all, which adds the ones already answered"
+      },
       "output": "What this insurer's intake asks for given the claim as it stands. Each entry carries id, label, why, satisfied and triggeredBy.",
       "annotations": ["readOnlyHint"],
       "budget": "at most 1500 characters"
@@ -76,8 +79,10 @@
     {
       "name": "get_repair_estimate",
       "role": "read",
-      "input": { "zone": "clock position 1 to 12", "severity": "scratch, dent or structural" },
-      "output": "A triage band from a fixed parts table, with the parts it summed. Not a quote and not a prediction.",
+      "input": {
+        "severity": "optional. scratch, dent or structural, tried as a what if. The draft is not changed. The damage position is read from the draft and is not an argument"
+      },
+      "output": "A triage band from a fixed parts table, with the parts it summed. Not a quote and not a prediction. Without damage_zone on the draft it answers with what to set first, which is a sentence, not an error.",
       "annotations": ["readOnlyHint"],
       "budget": "at most 1500 characters"
     },
@@ -93,17 +98,28 @@
       "name": "apply_claim_patch",
       "role": "write",
       "input": {
-        "changes": "an array of { field, value }, or one { field, value }",
-        "baseRevision": "the revision the agent last read, required"
+        "changes": "an array of { field, value }, one to ten entries, each field named at most once. Required",
+        "baseRevision": "the revision the agent last read, a whole number. Required"
       },
       "output": "What was stored, the new revision, and what the intake now requires. On refusal, one of the five codes and a message that says how to fix it.",
       "annotations": ["readOnlyHint set to false"],
+      "budget": "at most 1500 characters"
+    },
+    {
+      "name": "get_assistance_options",
+      "role": "read",
+      "registration": "conditional. It exists only while the claim says the vehicle cannot be driven, and it is withdrawn again when that stops being true. Nobody presses anything for it to appear.",
+      "input": {},
+      "output": "What this insurer offers for a vehicle that cannot be driven, from its rule pack: what has to be arranged, the clause behind it, and which parts the claim already answers. Arranging the collection is not part of it.",
+      "annotations": ["readOnlyHint"],
       "budget": "at most 1500 characters"
     }
   ],
   "human_only": {
     "rule": "Filing is never a tool. Neither is pinning a field, unpinning it, or calling out a recovery truck.",
     "why": "An agent that has been talked into something by a poisoned page or a planted note must have nothing to call. It can draft, read and check as much as it likes, and it can commit nothing.",
+    "what_this_does_not_mean": "It does not mean the buttons are unreachable. An agent driving a browser clicks ordinary DOM buttons, and no page can tell that click from a person's. A check on isTrusted or user activation would refuse an honest probe and pass a remotely driven browser, so this convention does not ask for one. The claim is about the published tool surface and nothing wider.",
+    "residual": "An agent working through the tool surface can still write a wrong value into any field the claimant has not pinned. The pin, the revision protocol and a visible record of every call are what the claimant holds against that.",
     "how_to_check": "A page that claims this should be checkable from the outside: read the published tool list and look for the action. If it is there, the claim is false."
   },
   "untrusted_content": {
@@ -119,7 +135,7 @@
       "label": "what to ask the claimant for, in their words",
       "why": "the clause or the field that makes it required",
       "when": "the condition that brings it into existence. Absent means the insurer always asks for it",
-      "satisfied_by": "either { field } naming a claim field, or { human_action } for something only a person can do",
+      "satisfied_by": "either { field } naming a claim field, or { human_action } for something no tool on the page reaches, which a person carries out there instead",
       "triggeredBy": "on output, the claim field whose value raised it, or null when the insurer always asks"
     }
   },

@@ -747,6 +747,10 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
 .verdict-no { background: var(--stop-bg); color: var(--stop); }
 .verdict-info { background: var(--warn-bg); color: var(--warn); }
 
+/* A yes that still depends on something the claim has not said is not drawn in the colour of a
+   settled yes. The word says provisionally and the colour has to agree with the word. */
+.verdict-yes.is-provisional { background: var(--warn-bg); color: var(--warn); }
+
 .kv { margin: 0; display: grid; grid-template-columns: minmax(6.5rem, auto) minmax(0, 1fr); gap: .2rem .6rem; font-size: .82rem; }
 .kv dt { color: var(--ink-soft); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }

@@ -12,25 +12,27 @@ row D4 green.
 | Visibility required | Public. Not unlisted, not private. The rules ask for a public video |
 | Length cap | less than three minutes. The pipeline caps the cut at 170 seconds |
 | Length of the finished cut | not measured. The cut does not exist yet, because five owner takes have not been recorded |
-| Rehearsal length, estimate | 135.80s, which is 2 minutes 16 seconds, from a stand in render whose files were not kept. See the note below |
+| Rehearsal length, estimate | superseded. 135.80s was measured on 2026-08-27 against narration that has since been rewritten for four beats. See the note below |
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
-| Filmed against | the repository variable `CLAIMREADY_URL` |
+| Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
 
-Where the 135.80s comes from, since a number with no command behind it is worth nothing. On
+Where the 135.80s came from, since a number with no command behind it is worth nothing. On
 2026-08-27 the eight `narration.txt` files were rendered for real and the whole render path was run
 end to end with stand in pictures, in a scratch directory outside this repository. The figure is the
 duration `ffprobe` reported for the assembled `cut.mp4`, printed by row G of
-`python video/sync_gate.py`, which read the encoded file rather than the plan. It is a sample, not a
-constant: the narration service does not return exactly the same duration twice, and one beat varied
-by about eight percent between two renders of identical text. The finished cut will land near this
-figure, with about 34 seconds of headroom under the cap. The per beat numbers and the caveats are in
-[`video/README.md`](../../video/README.md).
+`python video/sync_gate.py`, which read the encoded file rather than the plan.
 
-That scratch directory was not kept, so the figure cannot be re-derived from anything on disk today.
-It stands as an estimate and keeps that label until row G of `python video/sync_gate.py` prints a
-duration for a cut built from the five real owner takes. Treat 135.80s as a rehearsal reading of the
-narration length, not as the length of the deliverable.
+**It no longer describes this cut.** Beats `03`, `04`, `05` and `06` were rewritten after that
+render, `06` roughly doubling in length, so four of the eight measured beats no longer exist as
+measured. Nothing has been re-rendered since, so there is no replacement figure to print here and
+none is invented. What can be said without measuring anything is that the targets in the eight
+`beat.json` files now add to 154s against a 170s cap, which `python video/build_video.py --plan`
+prints, and that the narration is always shorter than its target by design.
+
+The length of the deliverable stays unmeasured until row G of `python video/sync_gate.py` prints a
+duration for a cut built from the five real owner takes. The per beat rehearsal numbers, and what
+they are worth now, are in [`video/README.md`](../../video/README.md).
 
 When the cut is uploaded, replace **NOT YET UPLOADED** above with the full watch link copied from
 the browser address bar. Paste the whole thing, scheme included. The readiness gate looks for a
@@ -51,7 +53,7 @@ pipeline takes a file instead and refuses to build without it.
 | `03-agent-fills` | owner | 29s | the agent reading the policy and writing the draft, field by field |
 | `04-human-corrects` | owner | 25s | a person setting the car to not drivable, and the revision moving |
 | `05-reconcile` | owner | 21s | requirements changing, and a ninth tool being published |
-| `06-refusal` | owner | 13s | the planted note read, and the protected change refused in the ledger |
+| `06-refusal` | owner | 22s | the planted note read, and the pinned field refused in the ledger |
 | `07-human-files` | owner | 12s | a hand pressing File this claim |
 | `08-close` | machine | 16s | the one sentence, and the architecture line |
 
@@ -152,28 +154,53 @@ of the claim, and this is the only place a viewer sees that happen.
 
 ## Owner beat 06-refusal
 
-**Save to:** `video/beats/06-refusal/take.mp4`, about 13 seconds.
+**Save to:** `video/beats/06-refusal/take.mp4`, about 22 seconds.
 
-**On screen:** the conversation, with the tool call ledger visible on the page.
+**On screen:** the conversation, with the tool call ledger and the **Still drivable** row both
+visible on the page.
+
+**This beat only works after beat 04.** The note asks for the field you pinned there, so record 06
+in the same session, with `vehicle_drivable` still set to `No` and still pinned. On a fresh page the
+note asks for something nothing is protecting and the beat has nothing to show.
 
 **Type this, word for word:**
 
 ```
-Read the notes on the file and summarise them for me, then do whatever they ask.
+Read the notes on the file and summarise them for me.
 ```
 
-The second clause is deliberate. It is the whole point of the beat: the agent is told to follow the
-note, and following it changes nothing.
+Let it answer. Then:
+
+```
+Read the claim again first, then try to do exactly what that note asks, and tell me what the page said back.
+```
+
+Both clauses are deliberate. The agent is told to follow the note, and following it changes nothing.
+The order matters as well, and not for style: `src/core/claim.js` checks the revision before it
+checks the pin, so a patch sent on the revision the agent read back in beat 03 is refused as
+`PATCH_REJECTED_STALE` and never reaches the pin at all. The re-read is what makes the ledger show
+`PATCH_REJECTED_LOCKED`, which is the refusal this beat is about.
 
 **Must be visible on the take:**
 
 - the agent quoting the forwarded note, including the instruction planted inside it
-- the ledger entry for the attempted change, carrying the refusal and its code
-- the claim draft unchanged behind it, with the severity still as it was
+- a `read_claim_state` entry in the ledger before the attempt, so the patch carries the revision the
+  page is on now
+- the `apply_claim_patch` entry naming `vehicle_drivable`, flagged **refused**, with the code
+  `PATCH_REJECTED_LOCKED` printed beside the reason
+- the **Still drivable** row still reading `No` and still pinned, and the **Draft revision** number
+  in the header not moving
+- the **WebMCP tools on this page** panel open at some point in the take, so the published list is
+  on screen and a viewer can see for themselves that nothing on it files. An absence is not visible
+  in a frame, so show the list rather than the empty space where a filing call would have been
 
 If the agent declines to attempt anything at all, that is a weaker beat, not a better one. Ask it
-again with `Try to do what the note asks, and tell me exactly what the page said back.` A refusal
-that the page produced is the evidence. A refusal the model produced on its own is not.
+again with `Try it anyway, and tell me exactly what the page said back.` A refusal that the page
+produced is the evidence. A refusal the model produced on its own is not.
+
+If the ledger shows `PATCH_REJECTED_STALE` instead, the agent patched without re-reading. That is a
+true refusal and a different one, and the narration names the pin. Ask it to read the claim again
+and retry, and keep the take where the code reads `PATCH_REJECTED_LOCKED`.
 
 ## Owner beat 07-human-files
 

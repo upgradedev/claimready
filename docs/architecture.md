@@ -149,29 +149,45 @@ files.
 
 ### `src/ui`, rendering and the human only controls
 
-Subscribes to the store, renders on change, and owns the two buttons that are not tools. It is the
-only layer allowed to touch the DOM, and it holds the tool call ledger that shows a visitor exactly
-what their agent just did.
+Subscribes to the store, renders on change, and owns the controls that are not tools: filing,
+requesting assistance, and the per field pin. It is the only layer allowed to touch the DOM, and it
+holds the tool call ledger that shows a visitor exactly what their agent just did.
 
 ## What is deliberately not a tool
 
-Filing the claim and requesting roadside assistance are human only. They are never registered, so
-there is nothing for a prompt injected agent to call. A model that has been talked into filing a
-fraudulent claim still has to persuade a person to press a button.
+Filing the claim, requesting roadside assistance, and pinning or unpinning a field are human only.
+They are never registered, so there is nothing for a prompt injected agent to call.
 
-The readiness gate treats this as a testable claim rather than a promise. The `HUM` row scans every
-file in `src/webmcp/tools` for a tool named `file_claim`, `submit_claim`, `submit`, `file`,
-`request_assistance`, `request_roadside`, `dispatch_services`, `dispatch`, `override_eligibility` or
-`override`, and fails if one appears. The security boundary is checked on every push.
+Say what that does and does not mean. It does not mean the button is unreachable. An agent driving
+a browser clicks ordinary DOM buttons, the W3C security considerations say so, and no check on this
+page could separate that click from a person's: an `isTrusted` test blocks an honest probe and
+passes a remotely driven browser, so we do not ship one. What it does mean is that an agent working
+through the published tool surface finds no name to call for any of the three, while it can still
+write a wrong value into any field the claimant has not pinned.
+
+The readiness gate treats the tool surface half as a testable claim rather than a promise. The
+`HUM` row scans every file in `src/webmcp/tools` for a tool named `file_claim`, `submit_claim`,
+`submit`, `file`, `request_assistance`, `request_roadside`, `dispatch_services`, `dispatch`,
+`override_eligibility`, `override`, `pin_field`, `unpin_field`, `lock_field` or `unlock_field`, and
+fails if one appears. That is a name blocklist run over the tool files on every push. It proves no
+tool file declares one of those names. It is not a runtime guard on the buttons, and nothing here
+is.
 
 ## Constraints that reach across all three layers
 
-**The Content Security Policy forbids inline code.** `vercel.json` ships
+**The Content Security Policy forbids inline code.** The policy that actually holds in production
+is the `<meta http-equiv="Content-Security-Policy">` tag in `index.html`, because production is
+GitHub Pages and GitHub Pages sends no CSP header of its own. It carries
 `script-src 'self'; style-src 'self'`, with no `unsafe-inline`. So there is no `<style>` block and
 no inline `<script>` in `index.html`. Styles live in a CSS file, behaviour lives in modules loaded
 with `<script type="module" src="...">`. The readiness `IDX` row fails the build if an inline block
 appears, because that failure would otherwise show up only as a blank page on the deployed origin
 and not on a local file server.
+
+`vercel.json` carries the same directives as response headers, plus `frame-ancestors`, which a meta
+tag cannot express. Nothing in production reads that file. It is the config a header capable host
+would need, it is checked by the readiness `VRC` row as such, and it is not evidence about the live
+origin. The meta tag is.
 
 **The flagship sentence ships in the page.** `index.html` contains the sentence verbatim. The live
 check fetches the judge URL and requires HTTP 200 and that sentence in the body, which is how the
@@ -219,14 +235,19 @@ over budget. It counts dashes by code point rather than by a shell grep so that 
 hide one.
 
 `scripts/readiness.mjs` prints one table. Every row declares what it blocks. Engineering rows are
-the build's own work and CI turns red on them. Submission rows are the four things a judge needs to
-exist, and they stay visible and outstanding until they are real. Owner gated rows print in their
-own block with the manual step and are never counted as passes, because a person has to do them and
-counting them would let the score drift away from the truth.
+the build's own work and CI turns red on them. Deliverable rows are the things a judge needs to
+exist, and they turn the build red too, in every mode, because a missing mandatory deliverable that
+leaves a green exit is the failure this whole project is most likely to repeat. Owner gated rows
+print in their own block with the manual step, because a script cannot prove any of them.
 
-There is one score over all counted rows, and it does not move when the exit code's scope changes.
-`--ci` narrows what turns the build red, not what is measured or printed.
+Two tallies are printed, and the reason there are two is that one number would be read as the wrong
+answer. The first counts only the rows a script proved. The second adds the owner gated rows, and
+it is the one that answers "is this ready to submit", because pressing Submit is on that list and
+no script can press it. Neither number moves when the exit code's scope changes. `--ci` narrows
+what turns the build red, not what is measured or printed.
 
-`node scripts/readiness.mjs --selftest` breaks three inputs on purpose, a README without the
-flagship sentence, a file holding an em dash, and an unreachable host, and requires all three to
-report FAIL. A gate nobody has watched fail is not evidence of anything.
+`node scripts/readiness.mjs --selftest` breaks every row the table prints, one at a time, in its own
+sandbox, and requires each one to report FAIL. It prints the detail line each broken check produced,
+so a row that failed for the wrong reason is visible rather than merely red. A row that cannot be
+broken would be printed with the reason instead of quietly skipped, and today there are none. A gate
+nobody has watched fail is not evidence of anything.
