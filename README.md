@@ -167,8 +167,12 @@ Two more, because they are part of the same promise:
 
 ## Open it yourself
 
-The live URL is not deployed yet. The Status table below is the honest state, and
-`node scripts/readiness.mjs` prints it on demand.
+**https://upgradedev.github.io/claimready/**
+
+No account, no install, nothing to accept. The page is served over HTTPS, which WebMCP requires,
+and it carries its Content Security Policy in the document so the policy holds on any host. The
+Status table below is the honest state of everything else, and `node scripts/readiness.mjs` prints
+it on demand against that URL.
 
 WebMCP is new, so a judge needs one of two surfaces.
 
@@ -238,14 +242,15 @@ go stale between commits.
 | Tools | built | count them with `ls src/webmcp/tools/*.js`, and row `TOL` |
 | Page and tool call ledger | built | open `index.html`, and row `IDX` |
 | Unit tests | built | `node --test tests/unit` prints the pass and fail counts |
-| Live URL a judge can open | not yet deployed | `node scripts/readiness.mjs` row `LIVE` |
+| Live URL a judge can open | deployed | `node scripts/readiness.mjs` row `LIVE`, which fetches it and fails on anything but a 200 carrying the first sentence of this file |
+| Content Security Policy actually exercised against the page | yes, on the deployed origin | open the live URL with the console open: the policy ships in the document, and the page loads with no console output at all |
 | Damage sketch module, agent draws and human corrects | not yet built | absent from `src/webmcp/tools` |
 | Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
 | Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
 | Declarative form step, the HTML attribute API | not yet built | absent from `index.html` |
 | Evals against the tool surface | not yet built | absent from `tests` |
 | Public video | not yet built | `node scripts/readiness.mjs` row `D4` |
-| Written description | started, not yet complete | `node scripts/readiness.mjs` row `D3` names the elements still missing |
+| Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
 
 Every count in this README comes with the command that produces it, so no number here has to be
 believed. The readiness gate is the live version of this table, and it is the one to trust when the
