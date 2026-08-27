@@ -25,6 +25,10 @@ on:
         description: "Run the gate self test only. No secret is read and nothing is rendered."
         type: boolean
         default: false
+      capture_only:
+        description: "Film the machine beats against the deployed page and stop. Proves the browser capture works before any take is recorded or any narration credit is spent. Needs no secret."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -69,12 +73,74 @@ jobs:
         run: python3 video/build_video.py --plan
 
   # ---------------------------------------------------------------------------
+  # Films the machine beats and stops. No secret, nothing assembled, no owner
+  # take required. This is the one limb no test can stand in for, a real browser
+  # driving the real deployed page on a runner, so it gets a path where failing
+  # costs a rerun instead of failing on the day the takes are already recorded
+  # and the narration is already paid for.
+  # ---------------------------------------------------------------------------
+  capture-only:
+    name: Film the machine beats only
+    if: github.event_name == 'workflow_dispatch' && inputs.capture_only == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The deployed page must exist before anything is filmed
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: |
+          if [ -z "${CLAIMREADY_URL}" ]; then
+            echo "::error title=CLAIMREADY_URL is not set::Set the repository variable to the live judge URL and run this again."
+            exit 1
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "${CLAIMREADY_URL}")
+          echo "${CLAIMREADY_URL} answered ${code}"
+          if [ "${code}" != "200" ]; then
+            echo "::error title=The judge URL is not serving::${CLAIMREADY_URL} answered ${code}."
+            exit 1
+          fi
+
+      - name: Install ffmpeg, in CI only
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Playwright, in CI only
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund \
+            "playwright@${PLAYWRIGHT_VERSION}"
+          npx playwright install --with-deps chromium
+
+      - name: Film every machine beat
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: python3 video/build_video.py --capture-only
+
+      # Playwright writes the recording under each beat's raw directory and the builder reports the
+      # path it returned. Upload the whole raw directory rather than guessing an extension, so a
+      # run that films something unexpected can still be looked at.
+      - name: Upload what the browser actually filmed
+        uses: actions/upload-artifact@v4
+        with:
+          name: claimready-machine-beats
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            tmp/video/beats/*/raw/**
+            tmp/video/beats/*/capture-result.json
+
+  # ---------------------------------------------------------------------------
   # Renders and assembles. Manual only, because narration costs money per run.
   # ---------------------------------------------------------------------------
   build:
     name: Build the cut
     needs: gate-selftest
-    if: github.event_name == 'workflow_dispatch' && inputs.skip_build != true
+    if: github.event_name == 'workflow_dispatch' && inputs.skip_build != true && inputs.capture_only != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

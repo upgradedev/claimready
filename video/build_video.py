@@ -746,6 +746,11 @@ def main(argv=None):
     parser.add_argument("--plan", action="store_true", help="say what would happen and spend nothing")
     parser.add_argument("--check-takes", action="store_true",
                         help="list the owner takes that are missing, then stop")
+    parser.add_argument("--capture-only", action="store_true",
+                        help="film the machine beats against the deployed page and stop. No "
+                             "narration key is read, nothing is assembled, and no owner take is "
+                             "required. This exists so the browser capture is proved to work "
+                             "before anyone records a take or spends a narration credit")
     args = parser.parse_args(argv)
 
     beats = load_beats()
@@ -776,6 +781,35 @@ def main(argv=None):
 
     need("ffmpeg", "every beat is encoded here")
     need("ffprobe", "every duration is measured, never assumed")
+
+    if args.capture_only:
+        # The one limb of this pipeline that no test can stand in for: a real browser, driving the
+        # real deployed page, on a runner. Prove it here, where a failure costs a rerun, rather
+        # than on the day the owner has already recorded five takes and the narration is paid for.
+        machine = [s for s in beats if s["kind"] == "machine"]
+        if not machine:
+            print("no machine beats to film.")
+            return 0
+        print(f"filming {len(machine)} machine beat(s) against {args.url}\n")
+        failures = []
+        for spec in machine:
+            out_beat_dir = os.path.join(args.out, "beats", spec["id"])
+            os.makedirs(out_beat_dir, exist_ok=True)
+            try:
+                path = capture_machine_beat(spec, out_beat_dir, args.url)
+                seconds = (probe_streams(path)["video"] or 0.0) if os.path.isfile(path) else 0.0
+                if seconds <= 0:
+                    raise BuildError(f"the capture at {path} has no video duration.")
+                print(f"  {spec['id']:<20}captured {seconds:>7.2f}s  {path}")
+            except Exception as error:  # noqa: BLE001 report every beat, do not stop at the first
+                failures.append((spec["id"], str(error)))
+                print(f"  {spec['id']:<20}FAILED  {error}")
+        if failures:
+            print(f"\n{len(failures)} of {len(machine)} machine beats could not be filmed.",
+                  file=sys.stderr)
+            return 1
+        print("\nevery machine beat filmed. The browser capture works on this runner.")
+        return 0
 
     single = None
     if args.beat:
