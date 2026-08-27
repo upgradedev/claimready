@@ -1,0 +1,148 @@
+name: WebMCP evals
+
+# Deterministic smoke evals against the deployed judge URL.
+#
+# WHY THIS IS A SEPARATE WORKFLOW FROM ci.yml.
+# ci.yml says, correctly, that no job in it installs anything, ever. That claim is about ci.yml
+# and it stays true. This workflow is the deliberate exception: the eval harness is a third party
+# CLI and a browser, neither of which can be vendored into a zero dependency page. Nothing this
+# workflow installs is a dependency of the product. The page still ships with none.
+#
+# HONESTY RULE FOR THIS FILE.
+# No step here is allowed to swallow a failure to make the run look green. There is no
+# continue-on-error on the eval step, no `|| true` on anything that is a check, and no fallback
+# that turns "the harness could not run" into a pass. If the harness cannot run on a runner, this
+# workflow fails and says why. See evals/README.md for what has actually been observed to work.
+
+on:
+  workflow_dispatch:
+    inputs:
+      chrome_channel:
+        description: "Puppeteer channel the harness should drive. The harness default is chrome-canary, which has no Linux build."
+        type: string
+        default: "chrome-dev"
+      timeout_ms:
+        description: "Per step timeout in milliseconds passed to the harness."
+        type: string
+        default: "30000"
+  schedule:
+    # Once a day while the entry is being judged, so a live surface that quietly stops serving
+    # the tools is found by a failing run rather than by a judge.
+    - cron: "17 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  # Pinned. The version verified while this workflow was written was 0.0.3, published 2026-07-17.
+  # An unpinned npx makes a run irreproducible and lets a new release change the verdict silently.
+  EVALS_PACKAGE: "webmcp-evals@0.0.3"
+
+jobs:
+  smoke:
+    name: Smoke evals against the live page
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The URL is the whole point. An empty variable is a failure, never a skip.
+      - name: The judge URL must be configured
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAIMREADY_URL:-}" ]; then
+            echo "CLAIMREADY_URL is not set as a repository variable."
+            echo "There is nothing to evaluate. This is a failure, not a skip: a green run here"
+            echo "would claim the live tool surface was exercised when no page was fetched."
+            exit 1
+          fi
+          echo "Target: ${CLAIMREADY_URL}"
+
+      # Fetch the page before trusting any harness verdict. A readiness gate that never touches
+      # the live URL can stay green through a total outage.
+      - name: The live page must answer 200
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -L -o /tmp/page.html -w '%{http_code}' "${CLAIMREADY_URL}")"
+          echo "HTTP ${code}"
+          if [ "${code}" != "200" ]; then
+            echo "The live judge URL did not answer 200. Fixing that is the whole task."
+            exit 1
+          fi
+          # Cheap shape check on the bytes actually served, not on the repository source.
+          if ! grep -q 'src/ui/app.js' /tmp/page.html; then
+            echo "The served page does not reference the module that registers the tools."
+            echo "Something is deployed, but it is not this product."
+            exit 1
+          fi
+
+      # DIAGNOSTIC, NOT A GATE. The published flag surface is recorded into the log so the first
+      # real run settles, from the runner itself, the questions this workflow was written without
+      # being able to verify: whether the smoke command accepts a channel flag, and what the
+      # reporter and output directory options do here. `|| true` is deliberate and is confined to
+      # this step, which asserts nothing.
+      - name: Record the harness flag surface
+        shell: bash
+        run: |
+          npx --yes "${EVALS_PACKAGE}" --help 2>&1 | tee -a harness-help.log || true
+          npx --yes "${EVALS_PACKAGE}" smoke --help 2>&1 | tee -a harness-help.log || true
+
+      # The harness drives Chrome through Puppeteer and its default channel is chrome-canary,
+      # which Google does not build for Linux. The Dev channel is the closest Linux equivalent.
+      # Whether this build exposes the tool surface the harness expects is UNVERIFIED, and a
+      # failure here is reported as a failure rather than worked around.
+      - name: Install the Chrome Dev channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/chrome-dev.deb \
+            https://dl.google.com/linux/direct/google-chrome-unstable_current_amd64.deb
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq /tmp/chrome-dev.deb
+          google-chrome-unstable --version
+
+      - name: Smoke evals
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          CHROME_CHANNEL: ${{ inputs.chrome_channel || 'chrome-dev' }}
+          TIMEOUT_MS: ${{ inputs.timeout_ms || '30000' }}
+        run: |
+          set -euo pipefail
+          # pipefail matters: without it, tee would hand back its own exit code and every
+          # failing eval run would report success.
+          npx --yes "${EVALS_PACKAGE}" smoke \
+            -u "${CLAIMREADY_URL}" \
+            -e evals/evals.json \
+            --chrome-channel "${CHROME_CHANNEL}" \
+            --timeout "${TIMEOUT_MS}" \
+            -v 2>&1 | tee evals-smoke.log
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webmcp-evals-report
+          # .evals is where the harness writes JSON and HTML reports when it writes any. Whether
+          # the smoke command produces one is unverified, so the tee'd log is the artifact that is
+          # always present and the report directory is uploaded only if it appeared.
+          path: |
+            evals-smoke.log
+            harness-help.log
+            .evals/
+          if-no-files-found: warn
+          retention-days: 30
