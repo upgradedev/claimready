@@ -3,6 +3,13 @@
 The insurer's page hands your own agent its policy rules as typed tools, so you learn what you
 are covered for while you are still describing the crash.
 
+[![CI](https://github.com/upgradedev/claimready/actions/workflows/ci.yml/badge.svg)](https://github.com/upgradedev/claimready/actions/workflows/ci.yml)
+[![WebMCP evals](https://github.com/upgradedev/claimready/actions/workflows/evals.yml/badge.svg)](https://github.com/upgradedev/claimready/actions/workflows/evals.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
+The CI badge is red on purpose while the video is missing. The readiness gate refuses to let a
+mandatory deliverable pass, and a badge that hid that would be the wrong badge.
+
 ClaimReady is a first notice of loss page for a motor insurer. It is a static page with no
 dependencies and no build step, and it publishes its own capabilities to the visitor's AI agent
 through WebMCP.
@@ -340,8 +347,10 @@ go stale between commits.
 | Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
 | Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
 | Declarative form step, the HTML attribute API | not yet built | absent from `index.html` |
-| Tests over the WebMCP layer | not yet built. The unit tests cover the pure core only, so nothing in this repo has yet executed a registration | `grep -rl "modelContext" tests/` returns nothing |
-| Evals against the tool surface | built, never executed. Three journeys over the nine tools and a workflow that runs them exist and are tracked. No run has been observed, green or red, so nothing here is evidence yet. A green smoke run would be the first proof that the tools register in a real browser and answer in the authored order | `cat evals/evals.json`, `cat .github/workflows/evals.yml`, and the honesty section of [evals/README.md](evals/README.md) |
+| Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` reports 20 passing. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser |
+| The tool surface running in a real browser's own WebMCP implementation | proven once, in CI | [run 33074580188](https://github.com/upgradedev/claimready/actions/runs/33074580188): 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Read the honest limit below before quoting this |
+| Evals against the tool surface | built and executed | Three journeys over the nine tools, run green twice. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat .github/workflows/evals.yml` |
+| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not assert that the refusals refused. What they prove is that the tool surface registers and executes inside a browser's own implementation, and that the refusal text in the log is real output from it. The refusals themselves are asserted by `tests/unit/webmcp.test.js`, against a fake host |
 | Public video | not yet built. This is the one thing between the entry and a green gate, and it turns CI red on every branch until a public link lands in `docs/submission/video.md` | `node scripts/readiness.mjs` row `D4` |
 | Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
 
