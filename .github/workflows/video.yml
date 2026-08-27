@@ -176,8 +176,16 @@ jobs:
             exit 1
           fi
 
-      - name: Every owner take must be on disk before a cent is spent on narration
-        run: python3 video/build_video.py --check-takes
+      # Scoped to the named beat when there is one. A run re rendering a single machine beat needs
+      # no owner recording at all, and refusing it over four takes it will never open turned the
+      # beat input into something that could not be used.
+      - name: Every owner take this run needs must be on disk before a cent is spent on narration
+        run: |
+          if [ -n "${{ inputs.beat }}" ]; then
+            python3 video/build_video.py --check-takes --beat "${{ inputs.beat }}"
+          else
+            python3 video/build_video.py --check-takes
+          fi
 
       - name: Install ffmpeg, in CI only
         run: |
@@ -224,7 +232,10 @@ jobs:
       # The builder fetches every on camera file from the live host first and stops the build if
       # the page is not the commit it is about to write into the manifest. The SHA it settled on is
       # printed with the cut.
+      # Skipped when one beat was named, or a single beat re render would go straight on to
+      # rebuilding everything and demanding every take after all.
       - name: Build every beat and assemble the cut
+        if: inputs.beat == ''
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
@@ -233,7 +244,9 @@ jobs:
 
       # Required. Nothing is uploaded until this passes, and it reads the encoded files rather
       # than the manifest that claims what they are.
+      # The gate reads the assembled cut, which a single beat run does not produce.
       - name: Sync gate, read from the shipped pixels
+        if: inputs.beat == ''
         run: python3 video/sync_gate.py
 
       - name: Upload the cut, the captions and every beat

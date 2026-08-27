@@ -1008,9 +1008,21 @@ def main(argv=None):
     sha = deployed_sha(args.deployed_sha)
 
     if args.check_takes:
-        gaps = missing_takes(beats)
+        # Scoped by --beat, the same way the build is. Without this, asking whether ONE machine
+        # beat can be rendered answered a different question, whether every owner take exists, and
+        # a job re rendering a single beat refused over four recordings it was never going to use.
+        scope_for_takes = beats
+        if args.beat:
+            named = [s for s in beats if s["id"] == args.beat]
+            if not named:
+                raise BuildError(
+                    f"no beat called {args.beat!r}. There is: " + ", ".join(s["id"] for s in beats)
+                )
+            scope_for_takes = named
+        gaps = missing_takes(scope_for_takes)
         if not gaps:
-            print("every owner take is present. The cut can be built.")
+            where = f"beat {args.beat}" if args.beat else "the cut"
+            print(f"every owner take {where} needs is present. It can be built.")
             return 0
         print("owner takes still to record:\n")
         for spec in gaps:
