@@ -466,7 +466,12 @@ def capture_machine_beat(spec, out_beat_dir, url):
         shutil.rmtree(raw_dir)
     os.makedirs(raw_dir, exist_ok=True)
 
-    script_path = os.path.join(out_beat_dir, "capture.js")
+    # .cjs, deliberately. This script is written under the repository root, whose package.json
+    # declares {"type": "module"} so that node --test reads the .js sources as ES modules. A
+    # generated .js file there is therefore parsed as ESM, and its first require() throws before
+    # a browser is ever opened. The extension is the whole fix, and it stays until the generated
+    # script is written in module syntax.
+    script_path = os.path.join(out_beat_dir, "capture.cjs")
     with open(script_path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(CAPTURE_JS)
 
@@ -488,10 +493,24 @@ def capture_machine_beat(spec, out_beat_dir, url):
     )
     sys.stdout.write(result.stdout or "")
     if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        # Two very different failures arrive on the same exit code, and calling both a finding
+        # about the site sent a real defect in this file to the wrong place once already. If the
+        # script did not even start, the site is not the story.
+        camera = any(
+            marker in stderr
+            for marker in ("require is not defined", "Cannot find module", "SyntaxError",
+                           "ERR_MODULE_NOT_FOUND", "playwright")
+        )
+        blame = (
+            "the capture script itself did not run, so this is a defect in the camera and says "
+            "nothing about the page"
+            if camera else
+            "the page is filmed as it really is, so this is a finding about the deployed site "
+            "rather than about the camera"
+        )
         raise BuildError(
-            f"capturing beat {spec['id']} against {url} failed. The page is filmed as it really is, "
-            f"so this is a finding about the deployed site, not about the camera.\n\n"
-            f"{(result.stderr or '').strip()[-1500:]}"
+            f"capturing beat {spec['id']} against {url} failed. {blame}.\n\n{stderr[-1500:]}"
         )
 
     with open(payload["result"], "r", encoding="utf-8") as handle:
