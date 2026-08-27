@@ -6,6 +6,12 @@
 <title>ClaimReady, the policy aware claim desk</title>
 <meta name="description" content="A motor insurance claim page that hands your own agent its policy rules as typed WebMCP tools. The agent drafts and checks the claim. Only you can file it.">
 <meta name="color-scheme" content="light dark">
+<!--
+  The policy travels with the page, so it holds on any host rather than only where we control the
+  response headers. vercel.json sends the same directives plus frame-ancestors, which a meta tag
+  cannot express. Nothing here is inline: one module script, one stylesheet, no style attributes.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; form-action 'self'; base-uri 'none'">
 <link rel="stylesheet" href="./assets/styles.css">
 <script type="module" src="./src/ui/app.js"></script>
 </head>
