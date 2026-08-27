@@ -39,9 +39,18 @@ concurrency:
 
 env:
   NODE_VERSION: "20"
-  # Pinned. The version verified while this workflow was written was 0.0.3, published 2026-07-17.
-  # An unpinned npx makes a run irreproducible and lets a new release change the verdict silently.
-  EVALS_PACKAGE: "webmcp-evals@0.0.3"
+  # WHY THIS IS BUILT FROM SOURCE RATHER THAN INSTALLED FROM npm.
+  # The first real run of this workflow, 33069947791, failed with `error: unknown command 'smoke'`.
+  # Measured afterwards: npm has published exactly 0.0.1, 0.0.2 and 0.0.3 of webmcp-evals, latest
+  # 0.0.3 from 2026-07-17, and its CLI offers only `local` and `browser`. The deterministic `smoke`
+  # command, the one that needs no model and no API key, exists only on the project's main branch
+  # and has never been released. So the published package cannot run the mode this entry wants, and
+  # pretending otherwise is how a workflow that has never executed comes to describe a capability
+  # nobody has. The harness is therefore cloned at a pinned commit and built here.
+  EVALS_REPO: "https://github.com/GoogleChromeLabs/webmcp-tools.git"
+  # Pinned to a commit, not a branch. A branch makes a run irreproducible and lets an upstream push
+  # change the verdict silently.
+  EVALS_COMMIT: "d39eae4bd51e8c12736b8cae840bd98f190f3179"
 
 jobs:
   smoke:
@@ -90,16 +99,28 @@ jobs:
             exit 1
           fi
 
-      # DIAGNOSTIC, NOT A GATE. The published flag surface is recorded into the log so the first
-      # real run settles, from the runner itself, the questions this workflow was written without
-      # being able to verify: whether the smoke command accepts a channel flag, and what the
-      # reporter and output directory options do here. `|| true` is deliberate and is confined to
-      # this step, which asserts nothing.
-      - name: Record the harness flag surface
+      # Build the harness from the pinned commit. This is the step that has to work before any
+      # verdict from it means anything.
+      - name: Build the eval harness from source
         shell: bash
         run: |
-          npx --yes "${EVALS_PACKAGE}" --help 2>&1 | tee -a harness-help.log || true
-          npx --yes "${EVALS_PACKAGE}" smoke --help 2>&1 | tee -a harness-help.log || true
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout "${EVALS_REPO}" /tmp/webmcp-tools
+          git -C /tmp/webmcp-tools checkout "${EVALS_COMMIT}"
+          cd /tmp/webmcp-tools/webmcp-evals
+          npm install --no-audit --no-fund
+          npm run build
+          node dist/bin/webmcp-evals.js --version
+          echo "EVALS_BIN=/tmp/webmcp-tools/webmcp-evals/dist/bin/webmcp-evals.js" >> "$GITHUB_ENV"
+
+      # DIAGNOSTIC, NOT A GATE. Record what the built CLI actually offers, so a future reader can
+      # see the command surface this run was judged against rather than trusting this comment.
+      # `|| true` is deliberate and confined to this step, which asserts nothing.
+      - name: Record the harness command surface
+        shell: bash
+        run: |
+          node "${EVALS_BIN}" --help 2>&1 | tee -a harness-help.log || true
+          node "${EVALS_BIN}" smoke --help 2>&1 | tee -a harness-help.log || true
 
       # The harness drives Chrome through Puppeteer and its default channel is chrome-canary,
       # which Google does not build for Linux. The Dev channel is the closest Linux equivalent.
@@ -125,7 +146,12 @@ jobs:
           set -euo pipefail
           # pipefail matters: without it, tee would hand back its own exit code and every
           # failing eval run would report success.
-          npx --yes "${EVALS_PACKAGE}" smoke \
+          #
+          # The harness launches Chrome itself with --enable-features=WebMCP, so the tools are
+          # registered against the browser's OWN implementation. That is the whole reason this
+          # workflow is worth running: nothing else in this repository has ever exercised a native
+          # WebMCP host, and a shim written by the same project that it verifies proves very little.
+          node "${EVALS_BIN}" smoke \
             -u "${CLAIMREADY_URL}" \
             -e evals/evals.json \
             --chrome-channel "${CHROME_CHANNEL}" \
