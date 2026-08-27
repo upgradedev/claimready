@@ -40,8 +40,8 @@ const ROOT = join(SCRIPT_DIR, '..');
 
 /** The one sentence. It leads the README, it ships in the page, and the live check looks for it. */
 const FLAGSHIP =
-  "The insurer's page hands your own agent its policy rules as typed tools, so a claim is " +
-  'checked against your actual cover while you describe it, and only you can file it.';
+  "The insurer's page hands your own agent its policy rules as typed tools, so you learn " +
+  'what you are covered for while you are still describing the crash.';
 
 /** Short enough to survive punctuation edits, long enough that nothing else matches it. */
 const FLAGSHIP_FRAGMENT = 'hands your own agent its policy rules as typed tools';

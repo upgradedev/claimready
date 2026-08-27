@@ -1,7 +1,7 @@
 # ClaimReady
 
-The insurer's page hands your own agent its policy rules as typed tools, so a claim is checked
-against your actual cover while you describe it, and only you can file it.
+The insurer's page hands your own agent its policy rules as typed tools, so you learn what you
+are covered for while you are still describing the crash.
 
 Live, no account: https://upgradedev.github.io/claimready/. Tools appear in the ChatGPT desktop
 app's browser, or Chrome 149 or later with chrome://flags/#enable-webmcp-testing on. Anywhere else

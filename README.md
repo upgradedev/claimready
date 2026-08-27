@@ -1,7 +1,7 @@
 # ClaimReady
 
-The insurer's page hands your own agent its policy rules as typed tools, so a claim is checked
-against your actual cover while you describe it, and only you can file it.
+The insurer's page hands your own agent its policy rules as typed tools, so you learn what you
+are covered for while you are still describing the crash.
 
 ClaimReady is a first notice of loss page for a motor insurer. It is a static page with no
 dependencies and no build step, and it publishes its own capabilities to the visitor's AI agent

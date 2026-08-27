@@ -10,14 +10,16 @@
  *
  * DESIGN RULE, NOT A TODO. Three actions are deliberately absent from this surface and must stay
  * absent:
- *   1. Filing the claim. Only the person on the page can commit a claim to the insurer.
+ *   1. Filing the claim. No tool here reaches it. The person on the page presses the button.
  *   2. Unpinning a field the person pinned. Pinning is how they say "I checked this one myself",
  *      so nothing an agent can call may release it.
  *   3. Requesting roadside assistance. An agent can read the options and say what they are. The
  *      button is pressed by a person.
  * An agent that has been talked into something by a poisoned web page can therefore draft, read
- * and check all it likes, and can commit nothing. Adding a tool for any of the three would make
- * the product claim false, and the readiness gate fails the build if one appears.
+ * and check all it likes, and finds nothing here that files, unpins or dispatches. It is not
+ * prevented from driving the page the way any browser automation drives a page, and no claim in
+ * this repository says otherwise. Adding a tool for any of the three would make the product claim
+ * false, and the readiness gate fails the build if one appears.
  *
  * THE TOOL SET IS NOT FIXED. get_assistance_options exists only while the claim says the vehicle
  * cannot be driven. It is registered when that answer becomes false and withdrawn when it stops

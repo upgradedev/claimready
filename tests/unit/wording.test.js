@@ -152,10 +152,20 @@ const FALSE_ABSOLUTES = [
   { pattern: /can file nothing/i, why: 'says the agent cannot file, rather than that no tool files' },
   { pattern: /you cannot press it/i, why: 'says the agent cannot press, rather than that no tool reaches it' },
   { pattern: /only (a|the) (person|human)(?! presses)[^.]{0,20}can (do|press|arrange)/i, why: 'the same absolute in another shape' },
+  // The last member of the class, and the one that hid the longest. It lived in the flagship
+  // sentence, which is the most quoted string in the project and is pinned by three readiness rows,
+  // so it was in five files at once and not one rule in this repository could see it. It is the
+  // shape to watch for: a false absolute is most durable when it is inside the sentence everybody
+  // copies rather than in the prose nobody rereads.
+  { pattern: /only you can file/i, why: 'a scripted click files it too, so this states a limit on the agent rather than on the tool surface' },
+  { pattern: /only the person on the page can commit/i, why: 'the same absolute, in the module header a reviewer opens first' },
 ];
 
 function guardedFiles() {
-  const files = ['index.html', 'src/ui/app.js', 'src/ui/render.js'];
+  // register.js was carved out of this list while another agent owned it, and the carve-out
+  // outlived the reason: its header held two sentences of exactly the class this rule exists to
+  // catch, in the module a reviewer opens first to see how registration works. It is guarded now.
+  const files = ['index.html', 'src/ui/app.js', 'src/ui/render.js', 'src/webmcp/register.js'];
   for (const name of readdirSync(new URL('src/core/', ROOT))) {
     if (name.endsWith('.js')) files.push(`src/core/${name}`);
   }
