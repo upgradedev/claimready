@@ -26,3 +26,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Python bytecode from the video tooling. Never committed.
+__pycache__/
+*.pyc
