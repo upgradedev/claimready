@@ -62,7 +62,7 @@ const MAX_PARAM_DESCRIPTION = 150;
 
 const TEXT_EXTENSIONS = new Set([
   '.md', '.html', '.htm', '.js', '.mjs', '.cjs', '.css', '.json',
-  '.yml', '.yaml', '.txt', '.svg', '.webmanifest',
+  '.yml', '.yaml', '.txt', '.svg', '.webmanifest', '.py',
 ]);
 
 // Text files that carry no extension but still reach a reader.
@@ -98,11 +98,25 @@ function walk(dir, root, out) {
   return out;
 }
 
+/**
+ * Every text file a reader could reach, tracked or not.
+ *
+ * `--others --exclude-standard` is the load bearing part. Without it this listed only files git
+ * already tracks, so a file written five minutes ago was invisible to every rule here and the gate
+ * reported PASS over a count that had not moved. That is how a whole video pipeline and an evals
+ * suite were written, scanned by nothing, and reported clean: the number in the summary line was
+ * the number from before the work existed. Ignored files stay out, which is what
+ * `--exclude-standard` buys, so build output and scratch directories do not creep in.
+ */
 export function collectFiles(root) {
-  const git = spawnSync('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8' });
+  const git = spawnSync(
+    'git',
+    ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    { encoding: 'utf8' },
+  );
   let files;
   if (git.status === 0 && typeof git.stdout === 'string' && git.stdout.length > 0) {
-    files = git.stdout.split('\0').filter(Boolean).map((p) => join(root, p));
+    files = [...new Set(git.stdout.split('\0').filter(Boolean))].map((p) => join(root, p));
   } else {
     files = walk(root, root, []);
   }
