@@ -131,6 +131,31 @@ def probe_streams(path):
     if out["video"] is None and out["frames"] and out["fps"]:
         out["video"] = out["frames"] / out["fps"]
 
+    # WebM carries neither a stream duration nor a frame count in its header, and a browser
+    # recording is exactly that, so both cheap answers above come back empty for the one file this
+    # pipeline films for itself. Decode it and count. This reads the whole file, which is why it is
+    # last, and it is still a measurement: a file that will not decode keeps its None and the
+    # caller refuses it rather than assuming a length.
+    if out["video"] is None:
+        counted = _run([
+            "ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames",
+            "-show_entries", "stream=nb_read_frames,r_frame_rate", "-of", "json", path,
+        ])
+        if counted.returncode == 0:
+            streams = json.loads(counted.stdout or "{}").get("streams") or []
+            first = streams[0] if streams else {}
+            frames = first.get("nb_read_frames")
+            fps = out["fps"]
+            rate = first.get("r_frame_rate") or ""
+            if fps is None and "/" in rate:
+                num, den = rate.split("/", 1)
+                if float(den) != 0:
+                    fps = float(num) / float(den)
+            if frames not in (None, "N/A") and fps:
+                out["frames"] = int(frames)
+                out["fps"] = fps
+                out["video"] = int(frames) / fps
+
     return out
 
 
