@@ -249,6 +249,136 @@ a { color: var(--accent); }
 .strip-help summary { font-size: .8rem; color: var(--accent); cursor: pointer; }
 .strip-help-body p { margin: .4rem 0; font-size: .82rem; color: var(--ink-soft); max-inline-size: 68ch; }
 
+/* The published tool surface.
+   Drawn in both states, so a visitor with no agent still learns what this page hands one. Open by
+   itself only where there is room for the claim draft underneath, folded everywhere else, because
+   the claim draft is the point and nine rows above it would bury it. The summary carries the count
+   either way, so the fact survives the fold. */
+
+.tools {
+  max-width: 1400px;
+  margin: 0 auto 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: .55rem .9rem;
+}
+
+.tools-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .3rem .6rem;
+  cursor: pointer;
+}
+.tools-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* A summary laid out as a flex box loses the browser's own triangle, and without it nothing says
+   the block opens. Drawn back explicitly rather than left to the default. */
+.tools-summary::-webkit-details-marker { display: none; }
+.tools-summary::before {
+  content: "\25B8";
+  color: var(--ink-faint);
+  font-size: .72rem;
+  flex: none;
+}
+.tools[open] .tools-summary::before { content: "\25BE"; }
+
+.tools-title { font-size: .84rem; font-weight: 700; }
+
+.tools-count {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.tools-body { margin-top: .5rem; }
+
+.tools-note { margin: 0 0 .45rem; font-size: .76rem; line-height: 1.45; color: var(--ink-soft); max-inline-size: 92ch; }
+
+.tools-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: .4rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 640px) {
+  .tools-list { grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
+}
+
+/* Three wide columns rather than four narrow ones. A grid row is as tall as its tallest cell, so a
+   column too narrow for one name and its markers costs every cell in that row a second line. Three
+   columns fit the longest row on one line and the whole block is shorter for it. */
+@media (min-width: 1240px) {
+  .tools-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.tool {
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: .4rem .5rem;
+  min-width: 0;
+}
+.tool.is-live { border-left-color: var(--agent); }
+.tool.is-conditional { border-left-style: dashed; }
+
+.tool-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .4rem; }
+
+.tool-name {
+  font-family: var(--mono);
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--agent);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.tool.is-idle .tool-name { color: var(--ink-soft); }
+
+.tool-tag {
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: .05rem .32rem;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex: none;
+}
+.tag-read { background: var(--ok-bg); color: var(--ok); }
+.tag-write { background: var(--warn-bg); color: var(--warn); }
+.tag-untrusted { background: var(--stop-bg); color: var(--stop); }
+.tag-live { background: var(--agent-bg); color: var(--agent); }
+.tag-idle { background: var(--line-soft); color: var(--ink-faint); }
+
+/* Clamped to two lines, for the reason the requirement reasons are clamped: nine sentences at full
+   length is a wall of text sitting on top of the claim draft. An agent is handed the whole
+   sentence, and more, because it reads the tool itself. */
+.tool-purpose {
+  margin: .2rem 0 0;
+  font-size: .73rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.tool-when { margin: .2rem 0 0; font-size: .69rem; color: var(--warn); overflow-wrap: anywhere; }
+
+.tools-foot { margin: .5rem 0 0; font-size: .74rem; color: var(--ink-soft); max-inline-size: 92ch; }
+
 /* Demonstration controls. Small, out of the way, and never confused with the claim itself. */
 
 .demo-bar {
@@ -290,6 +420,24 @@ a { color: var(--accent); }
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* What the reset button just did. Empty until it is pressed, so it costs no space until it has
+   something to say, and highlighted briefly so a press on an untouched draft is still visibly a
+   press. */
+.demo-flash {
+  margin: 0;
+  font-size: .72rem;
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: .2rem .4rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  transition: background-color .5s ease, border-color .5s ease;
+}
+.demo-flash:empty { display: none; }
+.demo-flash.is-flash { background: var(--flash); border-color: var(--warn); }
 
 /* Layout */
 
@@ -722,6 +870,6 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
    come after every rule they turn off. Nothing here removes information, only movement. */
 
 @media (prefers-reduced-motion: reduce) {
-  .field-row, .revision { transition: none; }
+  .field-row, .revision, .demo-flash { transition: none; }
   .req.is-new { animation: none; }
 }

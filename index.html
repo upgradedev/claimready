@@ -66,6 +66,24 @@
   </details>
 </section>
 
+<!--
+  The published tool surface, drawn from src/webmcp/register.js in both states. It opens by itself
+  only on a screen tall and wide enough to keep the claim draft visible underneath it, and stays
+  folded otherwise, because the claim draft is the point. See the query in src/ui/render.js.
+-->
+<details class="tools" data-el="tools-details">
+  <summary class="tools-summary">
+    <span class="tools-title">WebMCP tools on this page</span>
+    <span class="tools-count" data-el="tools-count">Reading the tool surface</span>
+  </summary>
+  <div class="tools-body">
+    <p class="tools-note" data-el="tools-note"></p>
+    <ul class="tools-list" data-el="tools-list"></ul>
+    <p class="tools-foot">Filing the claim, pinning a field and asking for roadside assistance are
+      not on this list, in either state. They are buttons only a person can press.</p>
+  </div>
+</details>
+
 <p class="live-region" data-el="live" role="status" aria-live="polite"></p>
 
 <section class="demo-bar" aria-label="Demonstration controls">
@@ -76,6 +94,7 @@
     </select>
   </div>
   <button type="button" class="btn btn-plain btn-inline" data-el="reset-btn">Load synthetic incident</button>
+  <p class="demo-flash" data-el="reset-note"></p>
   <p class="demo-note" data-el="pack-note">Same tools, a different insurer's rules.</p>
 </section>
 

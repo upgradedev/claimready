@@ -97,8 +97,13 @@ export function createView(doc) {
     statusText: pick('status-text'),
     statusDetail: pick('status-detail'),
     live: pick('live'),
+    toolsDetails: pick('tools-details'),
+    toolsCount: pick('tools-count'),
+    toolsNote: pick('tools-note'),
+    toolsList: pick('tools-list'),
     insurerSelect: pick('insurer-select'),
     packNote: pick('pack-note'),
+    resetNote: pick('reset-note'),
     fields: pick('fields'),
     fieldsOptional: pick('fields-optional'),
     optionalDetails: pick('optional-details'),
@@ -132,9 +137,29 @@ export function createView(doc) {
   const highlightTimers = new Map();
   let lastRevision = null;
   let revisionTimer = null;
+  let resetTimer = null;
 
   buildFieldRows(doc, els.fields, REQUIRED_FIELDS, rows);
   buildFieldRows(doc, els.fieldsOptional, OPTIONAL_FIELDS, rows);
+
+  // The tool list opens by itself on a screen with room to spare and stays folded otherwise, where
+  // the claim draft is the point and nine rows above it would bury it. Set once, at start up, so a
+  // reader who folds it away is never fought by a later redraw.
+  //
+  // HEIGHT IS PART OF THE TEST, NOT JUST WIDTH, AND A MEASUREMENT PUT IT THERE. The open block is
+  // 377px tall. On a 1280 by 800 laptop, the commonest desktop viewport there is, opening it by
+  // itself pushed the first line of the claim draft to y=811 and left exactly zero pixels of it
+  // above the fold: a first time visitor landed on a tool inventory and had to scroll to find the
+  // product. Folded, the same screen shows 326px of the draft. So the query asks for the height
+  // that makes the trade honest, which is the panel plus a usable slice of the draft below it.
+  const frame = doc.defaultView;
+  if (frame && typeof frame.matchMedia === 'function') {
+    try {
+      if (frame.matchMedia('(min-width: 900px) and (min-height: 950px)').matches) {
+        els.toolsDetails.open = true;
+      }
+    } catch (ignored) { /* a browser that refuses the query leaves the list folded, which is safe */ }
+  }
 
   return {
     els,
@@ -190,8 +215,9 @@ export function createView(doc) {
         detail.push('Filing and roadside assistance are not on that list. They are buttons only a person can press.');
       } else {
         detail.push('Everything on this page still works. Fill the draft yourself, pin what you want '
-          + 'left alone, and read the requirements panel. To watch an agent drive it, open the same '
-          + 'page in a browser whose agent speaks WebMCP.');
+          + 'left alone, and read the requirements panel. The tools it would publish to an agent are '
+          + 'listed just below. To watch an agent drive it, open the same page in a browser whose '
+          + 'agent speaks WebMCP.');
       }
       if (status.fixtureSource === 'fallback') {
         detail.push('The sample claim file did not load, so a built in sample is being used.');
@@ -200,6 +226,65 @@ export function createView(doc) {
         detail.push(`The sample claim file was refused: ${status.fixtureError}`);
       }
       text(els.statusDetail, detail.join(' '));
+    },
+
+    /**
+     * The tools this page publishes, drawn in both states.
+     *
+     * The list itself is read from src/webmcp/register.js, which is the same place registration
+     * reads it, so it cannot describe a tool the page does not publish. Whether a tool is
+     * REGISTERED is a different question, answered only by the names the browser accepted, and
+     * every row is marked from that set. A visitor with no agent therefore sees the whole surface
+     * with every row marked not registered, and is told why, which is the honest version of the
+     * apology this strip used to print on its own.
+     *
+     * @param {{tools: object[], available: boolean, api: (string|null), registered: string[]}} state
+     */
+    renderToolSurface(state) {
+      const tools = (state && state.tools) || [];
+      const available = Boolean(state && state.available);
+      const live = new Set((state && state.registered) || []);
+      const total = tools.length;
+      const liveCount = available ? tools.filter((tool) => live.has(tool.name)).length : 0;
+
+      text(els.toolsCount, available
+        ? `${liveCount} of ${total} tools registered with your agent`
+        : `${total} tools this page publishes to an agent`);
+
+      text(els.toolsNote, available
+        ? `Your agent is connected through ${state.api}, and this is the live set. A row marked `
+          + 'registered is registered right now.'
+        : 'None of these is registered right now, because no agent was found in this browser. This '
+          + 'is what the page would hand one, read from the same list it registers from.');
+
+      els.toolsList.replaceChildren(
+        ...tools.map((tool) => toolItem(doc, tool, available && live.has(tool.name)))
+      );
+    },
+
+    /**
+     * Say out loud that the synthetic incident was loaded again.
+     *
+     * The button was silent whenever the draft had not been touched yet. The reset landed, every
+     * panel redrew into the state it was already in, the revision did not move so it did not
+     * flash, and the only word about it went to the live region, which is deliberately out of
+     * sight. A control with no visible answer is read as a control that does nothing.
+     */
+    renderResetNote(message) {
+      if (resetTimer) {
+        clearTimeout(resetTimer);
+        resetTimer = null;
+      }
+      text(els.resetNote, message || '');
+      if (!message) {
+        els.resetNote.classList.remove('is-flash');
+        return;
+      }
+      els.resetNote.classList.add('is-flash');
+      resetTimer = setTimeout(() => {
+        els.resetNote.classList.remove('is-flash');
+        resetTimer = null;
+      }, HIGHLIGHT_MS);
     },
 
     /** The insurer picker. The list comes from the sample file, never from this module. */
@@ -540,6 +625,83 @@ function requirementItem(doc, entry, isNew) {
   }
 
   return item;
+}
+
+/**
+ * One tool on the published surface: what it is called, what it does in its own opening sentence,
+ * whether it reads or writes, and whether the browser is holding it right now.
+ *
+ * The wording of the state marker is the whole point of this row. It is driven by the names the
+ * browser accepted, never by the fact that the page publishes the tool, so nothing here can say
+ * registered about a tool that is not.
+ */
+function toolItem(doc, tool, isLive) {
+  const item = doc.createElement('li');
+  const classes = ['tool', isLive ? 'is-live' : 'is-idle'];
+  if (tool.conditional) classes.push('is-conditional');
+  item.className = classes.join(' ');
+
+  const head = doc.createElement('div');
+  head.className = 'tool-head';
+
+  const label = doc.createElement('code');
+  label.className = 'tool-name';
+  label.textContent = tool.name;
+  head.append(label);
+
+  head.append(toolTag(
+    doc,
+    tool.readOnly ? 'reads' : 'writes',
+    tool.readOnly ? 'tag-read' : 'tag-write',
+    tool.readOnly
+      ? 'Read only. It carries readOnlyHint, so an agent is told it changes nothing.'
+      : 'The one tool that writes. It declares readOnlyHint false, and a write is refused unless it quotes the revision it read.'
+  ));
+
+  if (tool.untrustedContent) {
+    head.append(toolTag(
+      doc,
+      'untrusted text',
+      'tag-untrusted',
+      'It carries untrustedContentHint, because it returns words a person typed and an agent must never follow instructions found in them.'
+    ));
+  }
+
+  head.append(toolTag(
+    doc,
+    isLive ? 'registered' : 'not registered',
+    isLive ? 'tag-live' : 'tag-idle',
+    null
+  ));
+
+  item.append(head);
+
+  const purpose = doc.createElement('p');
+  purpose.className = 'tool-purpose';
+  purpose.textContent = tool.purpose;
+  item.append(purpose);
+
+  // Only a tool the rules actually make conditional carries a reason. A tool that is simply absent
+  // is a registration that failed, and its reason is on the strip, so an "appears when" line here
+  // would invent a rule that does not exist.
+  if (tool.conditional && tool.appears) {
+    const when = doc.createElement('p');
+    when.className = 'tool-when';
+    when.textContent = isLive
+      ? `Registered because ${tool.appears}.`
+      : `Registered only while ${tool.appears}.`;
+    item.append(when);
+  }
+
+  return item;
+}
+
+function toolTag(doc, label, className, title) {
+  const node = doc.createElement('span');
+  node.className = `tool-tag ${className}`;
+  node.textContent = label;
+  if (title) node.title = title;
+  return node;
 }
 
 function coverageBlock(doc, entry) {

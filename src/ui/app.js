@@ -33,7 +33,12 @@ import { loadPolicyPack, describePack } from '../core/policy.js';
 import { deriveRequirements, summariseRequirements } from '../core/requirements.js';
 
 import { createView } from './render.js';
-import { startToolSurface, textOfResult, registeredToolNames } from '../webmcp/register.js';
+import {
+  startToolSurface,
+  textOfResult,
+  registeredToolNames,
+  describeToolSurface
+} from '../webmcp/register.js';
 
 const FIXTURE_URL = './fixtures/demo-collision.json';
 const LEDGER_LIMIT = 40;
@@ -150,7 +155,7 @@ async function boot() {
   };
 
   view.renderPersona(persona);
-  view.renderStatus({ available: false, api: null, registered: [], failed: [], fixtureSource, fixtureError });
+  refreshStatus();
   view.renderRevision(claimNow().revision);
   view.renderCoverage(null);
   view.renderEstimate(null);
@@ -404,12 +409,30 @@ async function boot() {
     };
   }
 
+  /**
+   * The strip and the published tool list, redrawn together.
+   *
+   * They answer two different questions and must never be allowed to disagree. The strip says what
+   * the browser offered; the list says what this page publishes and marks each row with whether the
+   * browser is holding it. Both are read fresh here, the names from register.js and the surface
+   * from the same two lists it registers from, so the count moves the moment the conditional tool
+   * is published or withdrawn.
+   */
   function refreshStatus() {
+    const registered = toolStatus.available ? registeredToolNames() : [];
+
     view.renderStatus({
       ...toolStatus,
-      registered: toolStatus.available ? registeredToolNames() : [],
+      registered,
       fixtureSource,
       fixtureError
+    });
+
+    view.renderToolSurface({
+      tools: describeToolSurface(context),
+      available: toolStatus.available,
+      api: toolStatus.api,
+      registered
     });
   }
 
@@ -608,6 +631,13 @@ async function boot() {
     view.showFieldError('');
     drawClaim([]);
     drawRequirements();
+
+    // Said on the page as well as to the live region. On a draft nobody has touched yet the reset
+    // changes nothing anyone can see, the revision does not move so it does not flash, and without
+    // this line the button looks broken to the one visitor most likely to press it first.
+    const at = clockNow();
+    view.renderResetNote(`Synthetic incident loaded at ${at}. The draft is back at revision `
+      + `${claimNow().revision}, the ledger is empty and the panels are cleared.`);
     view.announce('The synthetic incident was loaded again. The draft is back at revision '
       + `${claimNow().revision}.`);
   }

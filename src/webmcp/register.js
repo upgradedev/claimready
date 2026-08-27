@@ -95,6 +95,83 @@ export const CONDITIONAL_TOOLS = [
   },
 ];
 
+/* ----------------------------------------------------------- the surface */
+
+/**
+ * What this page publishes to an agent, read from the two lists above.
+ *
+ * This is the registration path's own source of truth, asked without registering anything. It
+ * never reads document.modelContext and never throws when the API is absent, so a browser with no
+ * agent can still be told exactly what it would be handed. The page used to have no way to say
+ * that, and the alternative, a list typed out again in the view, would drift from the tools the
+ * first time one of them changed.
+ *
+ * The factories are called on every request rather than once at boot. Today none of them reads the
+ * context while building its descriptor, but one that ever did, for instance to name the loaded
+ * insurer, would go stale behind a change of rule pack if the answer were cached.
+ *
+ * Nothing here says a tool is registered. That is a fact about the browser, and only
+ * registeredToolNames knows it.
+ *
+ * @param {object} [context] the same tool context the registration path is given
+ * @returns {Array<object>} one entry per tool, in the order the page publishes them
+ */
+export function describeToolSurface(context = {}) {
+  const surface = [];
+  for (const factory of ALWAYS_ON_TOOLS) {
+    const entry = describeOne(factory, context, null);
+    if (entry) surface.push(entry);
+  }
+  for (const rule of CONDITIONAL_TOOLS) {
+    const entry = describeOne(rule.factory, context, rule);
+    if (entry) surface.push(entry);
+  }
+  return surface;
+}
+
+/**
+ * One tool, built and read rather than registered.
+ * @returns {object|null} null when the factory refused to produce a named descriptor
+ */
+function describeOne(factory, context, rule) {
+  let descriptor;
+  try {
+    descriptor = factory(context);
+  } catch (error) {
+    return null;
+  }
+  if (!descriptor || typeof descriptor.name !== 'string' || !descriptor.name) return null;
+
+  const annotations = descriptor.annotations || {};
+  const wording = typeof descriptor.description === 'string' ? descriptor.description : '';
+
+  return {
+    name: descriptor.name,
+    purpose: firstSentence(wording),
+    wording,
+    readOnly: annotations.readOnlyHint === true,
+    untrustedContent: annotations.untrustedContentHint === true,
+    conditional: Boolean(rule),
+    appears: rule ? rule.appears : null,
+  };
+}
+
+/**
+ * The opening sentence of a tool's own wording, for the one line the page shows beside its name.
+ *
+ * Split on a full stop followed by whitespace or the end of the text, never on the colon that
+ * several of these sentences use to introduce a list: cutting there leaves a fragment that reads
+ * like a defect rather than a summary.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function firstSentence(text) {
+  const body = String(text === undefined || text === null ? '' : text).trim();
+  const stop = body.search(/\.(\s|$)/);
+  return stop === -1 ? body : body.slice(0, stop + 1);
+}
+
 /**
  * The live model context object, or null when this browser has no agent surface.
  * @returns {object|null}
