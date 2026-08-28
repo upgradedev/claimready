@@ -74,3 +74,29 @@ jobs:
             exit 1
           fi
           node --test tests/unit
+
+      # THE PUBLISHED COVERAGE NUMBER MUST BE ABOUT THE PRODUCT.
+      #
+      # Node's own "all files" line is not. Its denominator is only what the run loaded, so a source
+      # file no test imports is absent from the table rather than counted as zero: src/ui/render.js
+      # and src/ui/app.js, 1,929 lines between them and the two largest files here, were absent
+      # while the total read 94.84%. Its numerator also includes the test files, which are near 100%
+      # because a test file runs by definition, and scripts/, which is near 40% because most of it
+      # is a command line path no test takes.
+      #
+      # So this step prints BOTH: the built in table, unchanged, and a second table restricted to
+      # src and computed from the exact line, branch and function counts rather than by averaging
+      # percentages. Node accepts more than one --test-reporter, which is how both appear.
+      #
+      # The reporter also fails the build, and it has two ways to do it. It has floors, set at or
+      # just under what the suite measures today so they are honest and can only be raised. And it
+      # lists every .js file under src off the filesystem and fails when one of them never appeared
+      # in the run at all, which is the check that would have caught the original defect and the one
+      # a percentage cannot make. Both were demonstrated failing before this step was added.
+      - name: Coverage of src, printed and gated
+        run: |
+          node --test \
+            --experimental-test-coverage \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=./tests/support/coverage_report.mjs --test-reporter-destination=stdout \
+            tests/unit

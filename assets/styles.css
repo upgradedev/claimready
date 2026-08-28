@@ -579,11 +579,23 @@ main {
 }
 .claim-note:empty { display: none; }
 
+/* The value and the control's pin, on one line. The pin follows the control in the markup, so
+   the tab order and the reading order agree: read the answer, then decide whether to pin it. */
+.field-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-top: .35rem;
+}
+
 .field-value {
-  margin: .35rem 0 0;
+  margin: 0;
   font-size: .9rem;
   font-weight: 600;
   overflow-wrap: anywhere;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .field-row.is-missing .field-value { color: var(--ink-faint); font-weight: 500; font-style: italic; }
 

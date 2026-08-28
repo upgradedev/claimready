@@ -37,7 +37,7 @@
  * has to infer anything.
  */
 
-import { FIELD_LABELS } from './claim.js';
+import { FIELD_LABELS, OPTIONAL_FIELDS } from './claim.js';
 
 /** How many outstanding requirements the file panel names before it counts the rest. */
 const MAX_NAMED_ASKS = 3;
@@ -360,4 +360,52 @@ export function fileGateStatement(state) {
       + 'open until you do it on this page.';
 
   return `Every required field is filled. ${insurer} still asks for: ${asks}.${tail}`;
+}
+
+/**
+ * What to say above the optional details, so the sentence is true against the pack that is loaded.
+ *
+ * THE OLD SENTENCE WAS "Not needed to file", AND THE PACK CAN ASK FOR THESE VERY FIELDS. Both
+ * shipped packs do: one asks for the police report reference on a structural or theft claim and
+ * for the location of a vehicle that cannot be driven, the other asks a collision claimant for a
+ * witness. All four of those are optional fields. The file gate really does not wait for them, so
+ * the old sentence was true about the button and false about the claim, which is the worst kind of
+ * true: a claimant reads it, folds the group away, and the insurer is still asking.
+ *
+ * SAME INPUT AS THE FILE PANEL, ON PURPOSE. It is handed the same `outstanding` list
+ * fileGateStatement reads, so the two sentences about one draft cannot drift apart. That is the
+ * rule this module already exists to enforce, applied once more.
+ *
+ * @param {{outstanding: Array<{label: string, field: (string|null)}>, insurer: (string|null),
+ *          requirementsKnown: boolean}} state the same object fileGateStatement takes
+ * @returns {string}
+ */
+export function optionalDetailsNote(state) {
+  const opener = 'The File button does not wait for these.';
+  const closer = 'Your agent can set them too, and this group opens by itself when it does, so '
+    + 'nothing is written where you cannot see it.';
+
+  const known = state ? state.requirementsKnown !== false : true;
+  if (!known) return `${opener} ${closer}`;
+
+  const outstanding = Array.isArray(state && state.outstanding) ? state.outstanding : [];
+  const wanted = outstanding.filter((entry) => entry && OPTIONAL_FIELDS.includes(entry.field));
+
+  const insurer = typeof (state && state.insurer) === 'string' && state.insurer.trim().length > 0
+    ? state.insurer.trim()
+    : 'This insurer';
+
+  if (wanted.length === 0) {
+    return `${opener} ${insurer} is not asking for any of them on this draft. ${closer}`;
+  }
+
+  // Capped for the same reason the file panel caps its list: a note that runs to five labels is a
+  // note nobody finishes reading.
+  const named = wanted.slice(0, MAX_NAMED_ASKS).map((entry) => entry.label);
+  const rest = wanted.length - named.length;
+  const asks = `${named.join('; ')}${rest > 0 ? `, and ${rest} more` : ''}`;
+
+  // A colon before the labels, the same as the file panel, because a pack writes them capitalised
+  // and "asking for The name of a witness" reads as a mistake.
+  return `${opener} ${insurer} is asking for: ${asks}. ${closer}`;
 }

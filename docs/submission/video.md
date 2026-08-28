@@ -27,8 +27,15 @@ duration `ffprobe` reported for the assembled `cut.mp4`, printed by row G of
 render, `06` roughly doubling in length, so four of the eight measured beats no longer exist as
 measured. Nothing has been re-rendered since, so there is no replacement figure to print here and
 none is invented. What can be said without measuring anything is that the targets in the eight
-`beat.json` files now add to 154s against a 170s cap, which `python video/build_video.py --plan`
-prints, and that the narration is always shorter than its target by design.
+`beat.json` files now add to 161s against a 170s cap, which `python video/build_video.py --plan`
+prints on its first line, and that the narration is always shorter than its target by design.
+
+That figure was 154s in an earlier version of this file and it was wrong by the time it was read.
+Re-run on 2026-08-28 the command prints `8 beats, targets adding to 161s, cap 170s`, so the number
+here is the one the tool prints rather than the one somebody remembered. The same run prints
+`5 owner take(s) missing: 03-agent-fills, 04-human-corrects, 05-reconcile, 06-refusal,
+07-human-files`, which is the same five named below, and `ls video/beats/*/take.mp4` finds no file
+at all. Nothing in this file claims a take exists.
 
 The length of the deliverable stays unmeasured until row G of `python video/sync_gate.py` prints a
 duration for a cut built from the five real owner takes. The per beat rehearsal numbers, and what

@@ -27,6 +27,7 @@ import {
   provenanceOf,
   fileClaim,
   readEvidenceNotes,
+  noteContextChange,
   validateClaim,
   describeClaim,
 } from '../../src/core/claim.js';
@@ -1002,4 +1003,72 @@ test('patchIsNoChange never writes anything or moves the revision', () => {
   patchIsNoChange(claim, { field: 'severity', value: 'dent' });
   patchIsNoChange(claim, { field: 'severity', value: 'scratch' });
   assert.deepEqual(snapshot(claim), before);
+});
+
+// ---------------------------------------------------------------------------
+// noteContextChange: the counter versions the answers, not only the fields
+// ---------------------------------------------------------------------------
+
+test('noteContextChange moves the revision by one and leaves every field alone', () => {
+  const claim = applyPatch(createClaim(fixture), { field: 'severity', value: 'dent' }).claim;
+  const before = snapshot(claim);
+
+  const result = noteContextChange(claim, 'the insurer rule pack changed to Kestrel Assurance');
+
+  assert.equal(result.ok, true, result.error);
+  assert.equal(result.code, null);
+  assert.equal(result.revision, before.revision + 1);
+  assert.deepEqual(snapshot(claim), before, 'the claim handed in is never mutated');
+  assert.deepEqual(
+    { ...snapshot(result.claim), revision: null },
+    { ...before, revision: null },
+    'a context change writes no value, no provenance, no pin and no status',
+  );
+});
+
+test('a context change needs a reason, so no counter ever ticks unexplained', () => {
+  const claim = createClaim(fixture);
+  for (const reason of [undefined, null, '', '   ', 12, {}]) {
+    const result = noteContextChange(claim, reason);
+    assert.equal(result.ok, false, JSON.stringify(reason ?? null));
+    assert.equal(result.code, PATCH_CODES.value);
+    assert.equal(result.revision, claim.revision);
+    assert.equal(result.claim, claim, 'the original claim comes back untouched');
+  }
+});
+
+test('noteContextChange refuses anything that is not a claim', () => {
+  assert.throws(() => noteContextChange(null, 'a reason'), TypeError);
+  assert.throws(() => noteContextChange('claim', 'a reason'), TypeError);
+});
+
+// A filed claim is allowed through on purpose. A patch on one is refused as
+// protected before the stale check ever runs, so refusing here would buy nothing,
+// and the read tools go on reporting a revision that should describe the context
+// they are reading.
+test('a filed claim still records a context change', () => {
+  const ready = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z' });
+  assert.equal(filed.ok, true, filed.error);
+
+  const noted = noteContextChange(filed.claim, 'the insurer rule pack changed to Kestrel Assurance');
+  assert.equal(noted.ok, true);
+  assert.equal(noted.claim.status, 'filed');
+  assert.equal(noted.revision, filed.revision + 1);
+});
+
+// The sequence the whole thing exists for, at the level below the store.
+test('a patch quoting the revision from before a context change is refused as stale', () => {
+  const claim = createClaim(fixture);
+  const readAt = claim.revision;
+
+  const moved = noteContextChange(claim, 'the insurer rule pack changed to Kestrel Assurance').claim;
+
+  const refused = applyPatch(moved, { field: 'severity', value: 'dent' }, { actor: 'agent', baseRevision: readAt });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, PATCH_CODES.stale);
+  assert.match(refused.error, /the rules answering for it, moved after you read it/);
+
+  const accepted = applyPatch(moved, { field: 'severity', value: 'dent' }, { actor: 'agent', baseRevision: moved.revision });
+  assert.equal(accepted.ok, true, accepted.error);
 });

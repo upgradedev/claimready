@@ -21,6 +21,24 @@
  * numbers in the message. That refusal is the point: it is what makes a shared
  * draft safe to write to from two sides at once.
  *
+ * THE COUNTER VERSIONS THE ANSWERS, NOT ONLY THE FIELDS. It already moved for
+ * things that touch no field at all: pinning, unpinning, filing and reloading the
+ * draft. It has to, because each of those changes what a reader would be told
+ * next. Two more things do that and used to be invisible here, so an agent could
+ * quote a number it had read before either of them and still be accepted:
+ *
+ *   - the insurer rule pack the page is reading against. Switch it and the cover
+ *     clauses, the excesses and the whole intake list change.
+ *   - a human action carried out on the page, such as asking for a roadside
+ *     collection, which closes a requirement no patch from either side can close.
+ *
+ * Neither is a claim field, and neither belongs on the claim. `noteContextChange`
+ * is how the page says one of them happened: it moves the counter and nothing
+ * else, so a patch quoting the earlier number is refused for the same reason and
+ * with the same code as one written before a human edit. The guarantee is
+ * therefore about the whole answering context and not only the draft, and every
+ * surface that describes it says so.
+ *
  * Treat every claim object as immutable. Every function here returns a new claim
  * on success and hands back the original, untouched, on failure.
  */
@@ -529,7 +547,7 @@ function staleRefusal(claim, actor, baseRevision) {
   if (asNumber !== revision) {
     return (
       `expected revision ${asNumber}, current revision ${revision}. ` +
-      'Read the claim state again before patching: somebody changed the draft after you read it, and their answer wins until you have seen it.'
+      'Read the claim state again before patching: the draft, or the rules answering for it, moved after you read it, and what is on the page now wins until you have seen it.'
     );
   }
 
@@ -801,6 +819,51 @@ export function unlockField(claim, field) {
   const next = copyClaim(claim);
   next.locked = lockedList(claim).filter((entry) => entry !== field);
   next.revision = currentRevision(claim) + 1;
+  return { claim: next, ok: true, error: null, code: null, revision: next.revision };
+}
+
+/**
+ * Record that something outside the claim changed what a reader would be told.
+ *
+ * WHAT THIS EXISTS FOR. The revision is what an agent quotes back, and the promise behind
+ * quoting it is that the patch is landing on the context the quoter actually read. Two things
+ * on this page break that promise without touching a field: loading another insurer's rule pack,
+ * and a person carrying out a human action that closes a requirement. Both change what
+ * get_requirements, read_claim_state, check_coverage and the rest answer. Before this existed the
+ * counter stood still through either one, so a patch written against the answers from before the
+ * switch was accepted at the same number afterwards.
+ *
+ * It moves the counter and nothing else. No field is written, no provenance is stamped, nothing
+ * is validated, and the reason is not stored on the claim: it is handed back so the caller can
+ * say it out loud. The claim is data about the incident and the pack that is loaded is not.
+ *
+ * A FILED CLAIM IS ALLOWED THROUGH, on purpose. A patch on a filed claim is refused as protected
+ * before the stale check ever runs, so refusing here would buy nothing, and the read tools still
+ * report the revision, which should go on describing the context they are reading.
+ *
+ * @param {object} claim
+ * @param {string} reason what changed, in the caller's words. Required, so a counter never moves
+ *        without something a person can be told.
+ * @returns {{claim: object, ok: boolean, error: (string|null), code: (string|null), revision: number}}
+ */
+export function noteContextChange(claim, reason) {
+  if (!claim || typeof claim !== 'object') {
+    throw new TypeError('noteContextChange needs a claim object.');
+  }
+  const revision = currentRevision(claim);
+
+  if (typeof reason !== 'string' || reason.trim().length === 0) {
+    return {
+      claim,
+      ok: false,
+      error: 'A context change has to name what changed, so the page can say why the revision moved. Nothing was changed.',
+      code: PATCH_CODES.value,
+      revision,
+    };
+  }
+
+  const next = copyClaim(claim);
+  next.revision = revision + 1;
   return { claim: next, ok: true, error: null, code: null, revision: next.revision };
 }
 

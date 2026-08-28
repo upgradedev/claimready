@@ -227,7 +227,10 @@ directions rather than only on the happy path.
 
 ## The gates
 
-Two scripts, both dependency free, both runnable offline.
+Three scripts, all dependency free, all runnable offline, and they live in three different workflows.
+`check_style.mjs` and the unit suite run in **CI**. `readiness.mjs` runs in **Readiness**, which is
+a separate workflow since 2026-08-28 precisely so that a missing deliverable stops turning the
+engineering badge red. `evals/replay.mjs` runs in **WebMCP evals**, ahead of anything that installs.
 
 `scripts/check_style.mjs` reads every tracked text file and fails on em dash code points, on
 annotation names that WebMCP does not define, on the names of other projects, and on tool metadata
@@ -235,7 +238,9 @@ over budget. It counts dashes by code point rather than by a shell grep so that 
 hide one.
 
 `scripts/readiness.mjs` prints one table. Every row declares what it blocks. Engineering rows are
-the build's own work and CI turns red on them. Deliverable rows are the things a judge needs to
+the build's own work and the **Readiness** workflow turns red on them. It used to be CI, and that
+was the problem: one missing video made the engineering badge read red on every branch, which told
+a reader the build was broken when nothing about the build was. Deliverable rows are the things a judge needs to
 exist, and they turn the build red too, in every mode, because a missing mandatory deliverable that
 leaves a green exit is the failure this whole project is most likely to repeat. Owner gated rows
 print in their own block with the manual step, because a script cannot prove any of them.
@@ -251,3 +256,9 @@ sandbox, and requires each one to report FAIL. It prints the detail line each br
 so a row that failed for the wrong reason is visible rather than merely red. A row that cannot be
 broken would be printed with the reason instead of quietly skipped, and today there are none. A gate
 nobody has watched fail is not evidence of anything.
+
+`node evals/replay.mjs` replays the eval journeys and the negative control against the real WebMCP
+registration path with a stand in for `document.modelContext`. It is held to the same rule. Three
+mutations break it on purpose, one refusing a patch that should land, one keeping a tool after its
+AbortSignal fires, one refusing to register the conditional tool at all, and the workflow fails if
+any of the three survives. `evals/README.md` has the measured output of all four runs.

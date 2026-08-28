@@ -559,3 +559,97 @@ test('the store carries the evidence notes and never lets a patch touch them', (
   assert.equal(result.code, 'PATCH_REJECTED_PROTECTED');
   assert.equal(store.getState().claim.evidence_notes.length, 2);
 });
+
+// ---------------------------------------------------------------------------
+// The answering context, and the hole the revision protocol did not cover
+//
+// The protocol promised that a patch quoting revision N lands on the context the
+// quoter read at N. It covered the claim's own fields and nothing else, and two
+// things on this page change what every tool ANSWERS without touching a field:
+// loading another insurer's rule pack, and a person carrying out a human action
+// that closes a requirement no patch can close.
+//
+// Before `context` existed, both left the counter where it was. An agent that had
+// read the intake list under one insurer could patch, at the same number, against
+// answers that no longer existed anywhere, and the page accepted it. The store
+// answered `Unknown action type: context.` and moved nothing.
+// ---------------------------------------------------------------------------
+
+test('a context change moves the revision and touches nothing else on the claim', () => {
+  const store = createStore(fixture);
+  store.dispatch({ type: 'patch', field: 'severity', value: 'dent' });
+  const before = snapshot(store.getState().claim);
+
+  const result = store.dispatch({ type: 'context', reason: 'the insurer rule pack changed to Kestrel Assurance' });
+
+  assert.equal(result.ok, true, result.error);
+  assert.equal(result.code, null);
+  assert.deepEqual(result.applied, [], 'no field was written, so none is reported as applied');
+  assert.equal(result.revision, before.revision + 1);
+
+  const after = snapshot(store.getState().claim);
+  assert.equal(after.revision, before.revision + 1);
+  assert.deepEqual({ ...after, revision: null }, { ...before, revision: null },
+    'a context change writes no value, no provenance and no pin');
+});
+
+test('a context change tells every subscriber, the same as any other change', () => {
+  const store = createStore(fixture);
+  const seen = [];
+  store.subscribe((state) => seen.push(state.claim.revision));
+
+  store.dispatch({ type: 'context', reason: 'a human action closed a requirement on this page' });
+  assert.deepEqual(seen, [1], 'the page redraws off this, so a silent one would leave a stale number on screen');
+});
+
+// The whole point, stated as the sequence it protects.
+test('a patch quoting the revision from before a context change is refused as stale', () => {
+  const store = createStore(fixture);
+
+  // The agent reads. This is the number it will quote back.
+  const readAt = store.getState().claim.revision;
+
+  // The person switches the insurer rule pack. Nothing on the claim moves, and every tool that
+  // reads the pack starts giving a different answer.
+  store.dispatch({ type: 'context', reason: 'the insurer rule pack changed to Kestrel Assurance' });
+
+  const result = store.dispatch({
+    type: 'patch',
+    actor: 'agent',
+    baseRevision: readAt,
+    changes: [{ field: 'severity', value: 'dent' }],
+  });
+
+  assert.equal(result.ok, false, 'this patch was written against answers that no longer exist');
+  assert.equal(result.code, 'PATCH_REJECTED_STALE');
+  assert.match(result.error, new RegExp(`expected revision ${readAt}, current revision ${readAt + 1}`));
+  assert.equal(store.getState().claim.severity, null, 'a refused patch writes nothing');
+});
+
+test('reading again after a context change is all it takes to get the patch accepted', () => {
+  const store = createStore(fixture);
+  store.dispatch({ type: 'context', reason: 'the insurer rule pack changed to Kestrel Assurance' });
+
+  const readAgain = store.getState().claim.revision;
+  const result = store.dispatch({
+    type: 'patch',
+    actor: 'agent',
+    baseRevision: readAgain,
+    changes: [{ field: 'severity', value: 'dent' }],
+  });
+
+  assert.equal(result.ok, true, result.error);
+  assert.equal(store.getState().claim.severity, 'dent');
+});
+
+test('a context change with no reason moves nothing, so a counter never ticks unexplained', () => {
+  const store = createStore(fixture);
+  const before = store.getState().claim.revision;
+
+  for (const action of [{ type: 'context' }, { type: 'context', reason: '   ' }, { type: 'context', reason: 7 }]) {
+    const result = store.dispatch(action);
+    assert.equal(result.ok, false, JSON.stringify(action));
+    assert.equal(result.code, 'PATCH_REJECTED_VALUE');
+    assert.equal(store.getState().claim.revision, before);
+  }
+});

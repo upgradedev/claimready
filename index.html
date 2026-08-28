@@ -31,7 +31,7 @@
   <div class="revision" data-el="revision-chip">
     <span class="revision-label">Draft revision</span>
     <span class="revision-number" data-el="revision">0</span>
-    <span class="revision-note">Every accepted change moves this, whoever made it.</span>
+    <span class="revision-note">Every accepted change moves this, whoever made it, and so does anything that changes what the tools answer.</span>
   </div>
 
   <div class="session">
@@ -108,16 +108,18 @@
   <section class="panel panel-claim" aria-labelledby="h-claim">
     <div class="panel-head">
       <h2 id="h-claim">Claim draft</h2>
-      <p class="panel-sub">Your agent and you write to the same draft. Every row shows who set it
-        last, and you can pin a row so no patch can move it.</p>
+      <p class="panel-sub">Your agent and you write to the same draft. Every row shows how the
+        answer arrived, through a control on this page or through a tool call, and you can pin a
+        row so no patch can move it.</p>
     </div>
     <p class="claim-note" data-el="claim-note"></p>
     <ul class="fields" data-el="fields"></ul>
 
     <details class="optional-block" data-el="optional-details">
       <summary>Optional details</summary>
-      <p class="optional-note">Not needed to file. Your agent can set these too, and the group opens
-        by itself when it does, so nothing is written where you cannot see it.</p>
+      <p class="optional-note" data-el="optional-note">The File button does not wait for these.
+        Your agent can set them too, and this group opens by itself when it does, so nothing is
+        written where you cannot see it.</p>
       <ul class="fields" data-el="fields-optional"></ul>
     </details>
 

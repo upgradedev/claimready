@@ -25,6 +25,11 @@
  *   { type: 'unlock', field }     human only, releases it
  *   { type: 'file',   at }        human only
  *   { type: 'reset' }              restores the draft and advances the revision, never rewinds it
+ *   { type: 'context', reason }   nothing on the claim changed, but what the tools ANSWER did.
+ *                                 Moves the revision so a patch quoting the earlier number is
+ *                                 refused as stale. The page dispatches it from exactly two
+ *                                 places: switching the insurer rule pack, and a human action
+ *                                 that closes a requirement. See noteContextChange in claim.js.
  *
  * `actor` defaults to 'human', because the page is the caller that can leave it
  * out. The tools layer passes actor 'agent' and the baseRevision the agent read,
@@ -40,6 +45,7 @@ import {
   fileClaim,
   hydrateClaim,
   lockField,
+  noteContextChange,
   unlockField,
 } from './claim.js';
 
@@ -140,6 +146,13 @@ export function createStore(initialState) {
       state = { claim: restored, lastError: null, lastCode: null };
       notify();
       return { ok: true, error: null, code: null, applied: [], revision: state.claim.revision, state };
+    }
+
+    if (type === 'context') {
+      // The claim is untouched. Only the number moves, because only the number is what an agent
+      // quotes back, and the answers it read are no longer the answers it would get.
+      const result = noteContextChange(state.claim, action.reason);
+      return settle(result, []);
     }
 
     if (type === 'file') {

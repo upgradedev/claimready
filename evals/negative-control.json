@@ -1,0 +1,41 @@
+[
+  {
+    "name": "NEGATIVE CONTROL, a patch that IS applied withdraws the ninth tool",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "The car would not start after the impact, so mark it as not drivable. I have just got it going again, so put that back to drivable, and then tell me whether this insurer still offers me anything for recovery."
+      }
+    ],
+    "expectedCall": [
+      { "functionName": "read_claim_state", "arguments": {} },
+
+      {
+        "functionName": "apply_claim_patch",
+        "arguments": {
+          "baseRevision": 0,
+          "changes": [{ "field": "vehicle_drivable", "value": false }]
+        }
+      },
+
+      { "functionName": "read_claim_state", "arguments": {} },
+
+      { "functionName": "get_assistance_options", "arguments": {} },
+
+      {
+        "functionName": "apply_claim_patch",
+        "arguments": {
+          "baseRevision": 1,
+          "changes": [{ "field": "vehicle_drivable", "value": true }]
+        }
+      },
+
+      { "functionName": "read_claim_state", "arguments": {} },
+
+      { "functionName": "read_claim_state", "arguments": {} },
+
+      { "functionName": "get_assistance_options", "arguments": {} }
+    ]
+  }
+]

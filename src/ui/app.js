@@ -745,6 +745,20 @@ async function boot() {
       : `You pinned ${field}. No patch can move it now.`);
   }
 
+  /**
+   * Point the page at another insurer's published rules.
+   *
+   * THE REVISION MOVES, AND THAT IS THE WHOLE POINT OF THE DISPATCH BELOW. Nothing on the claim
+   * changes here, and every tool starts answering differently: different clauses, a different
+   * excess, a different intake list. An agent holding the number it read a moment ago would have
+   * been writing against answers that no longer exist, and its patch was accepted at the same
+   * number. Recording the switch as a context change moves the counter, so that patch is refused
+   * as stale with the same code as one written before a human edit, and the agent reads again.
+   *
+   * This is dispatched from the picker only, never from applyPack, which also runs once at boot.
+   * Bumping the counter there would start the page at revision 1 and make every worked example
+   * that quotes 0 wrong.
+   */
   function switchPack(id) {
     if (!id || id === activePackId) return;
     applyPack(id);
@@ -761,9 +775,14 @@ async function boot() {
 
     requirementSignature = null;
     requirementsPrimed = false;
+
+    const insurer = context.pack ? context.pack.insurer : id;
+    store.dispatch({ type: 'context', reason: `the insurer rule pack changed to ${insurer}` });
+
     redraw([]);
     view.announce(context.pack
-      ? `Rules switched to ${context.pack.insurer}. The same tools now answer with that schedule.`
+      ? `Rules switched to ${context.pack.insurer}. The same tools now answer with that schedule, and the `
+        + `revision has moved on to ${claimNow().revision}, so a patch quoting an earlier one is refused.`
       : 'That rule pack could not be loaded.');
   }
 
@@ -839,12 +858,24 @@ async function boot() {
     ui.assistanceAt = clockNow();
     // What the person just did, named by the requirements it answers, so src/core and every tool
     // read one answer rather than four surfaces guessing from a note on the page.
-    recordHumanActions(getRequirements().filter((entry) => entry.humanOnly).map((entry) => entry.id));
+    const closed = getRequirements().filter((entry) => entry.humanOnly).map((entry) => entry.id);
+    recordHumanActions(closed);
+
+    // The claim did not move and the answers did: a requirement that every tool reported as open
+    // is now answered. Same reasoning as switchPack, same action, same refusal for an agent still
+    // holding the earlier number.
+    if (closed.length) {
+      store.dispatch({
+        type: 'context',
+        reason: `a human action closed ${closed.length === 1 ? 'a requirement' : `${closed.length} requirements`} on this page`
+      });
+    }
 
     view.showFieldError('');
     redraw([]);
 
-    view.announce('You requested roadside assistance. No tool on this page reaches that button.');
+    view.announce('You requested roadside assistance. No tool on this page reaches that button. The '
+      + `revision has moved on to ${claimNow().revision}, so a patch quoting an earlier one is refused.`);
     // Pressing this changes nothing about the tool surface. The tool that reads out the assistance
     // options exists while the claim says the vehicle cannot be driven, which is a fact about the
     // claim, and register.js is what watches it.

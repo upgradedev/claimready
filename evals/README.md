@@ -1,7 +1,15 @@
 # WebMCP evals
 
-Three journeys over the nine tools this page publishes, plus a seeded generator of adversarial
+Three journeys over the nine tools this page publishes, a fourth case that is a **negative control
+and is expected to fail**, an offline replay of all four, and a seeded generator of adversarial
 patch scenarios for the unit suite.
+
+| File | What it is |
+|---|---|
+| `evals.json` | the three journeys. Every step must pass |
+| `negative-control.json` | one case that must fail at its last step, and only there |
+| `replay.mjs` | the same four cases replayed offline against a fake host, with mutations that must break the control |
+| `../scripts/gen_scenarios.mjs` | the seeded patch corpus for the unit suite |
 
 Read the status section first. One of the two run modes has now been observed to run green on a
 runner and the other has never been wired at all, and that section says which is which, names the
@@ -11,8 +19,9 @@ run, and names the one thing that mode is blind to.
 
 ## What was verified, and where it was read
 
-Every claim about the harness below was read from a live page on 2026-08-27. Anything not on this
-list was not verified and is not relied on.
+Every claim about the harness below was read from a live page on 2026-08-27, and the rows re-read on
+2026-08-28 say so where they appear later in this file. Anything not on this list was not verified
+and is not relied on.
 
 | Fact | Source |
 |---|---|
@@ -47,16 +56,26 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33074580188](https://github.com/upgradedev/claimready/actions/runs/33074580188), workflow `WebMCP evals`, conclusion success, started 2026-08-27T13:00:03Z |
-| Commit under test | `2c052e3464198993e3efed9043e0443ff2bcb817` |
+| Run | [33151418595](https://github.com/upgradedev/claimready/actions/runs/33151418595), workflow `WebMCP evals`, conclusion success, started 2026-08-28T07:25:45Z |
+| Commit under test | `4023446e7916b867f1365f871b08885d5cb45655`, which is also the commit GitHub Pages last built, so the run drove the bytes being served |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
-| Browser | `Google Chrome 154.0.8013.2 dev`, printed by the install step |
+| Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
 | Result | `Passed steps: 16/16 across 3 case(s).` |
 
-An earlier run, [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
-was green as well. The one above is the one quoted here because its commit is named. Read either for
-yourself with `gh run view 33074580188 --repo upgradedev/claimready --log`.
+Two earlier runs were green as well,
+[33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906) and
+[33074580188](https://github.com/upgradedev/claimready/actions/runs/33074580188). The run above is
+the one quoted here for a reason worth stating: the other two were driven against commit
+`2c052e3464198993e3efed9043e0443ff2bcb817`, and two commits landed after it, one of which changed
+`src/`. A green run against bytes the host no longer serves is not evidence about the live page, so
+this file was re-run rather than left pointing at the old number. Read it for yourself with
+`gh run view 33151418595 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33151418595 --repo upgradedev/claimready --json headSha`.
+
+**The negative control has NOT yet been run in a browser at any commit.** It is written, it is
+wired into `.github/workflows/evals.yml`, and it has been replayed offline. The browser half is
+still owed and is listed as owed at the end of this file.
 
 ### The three named risks, and what settled each
 
@@ -96,12 +115,14 @@ exposing neither name registers nothing and every journey dies at its first step
 called a tool and got an answer, so the browser exposed one of the two names and the page's own
 `registerTools` ran against it. That was the correct failure to be afraid of, and it did not happen.
 
-The lifecycle half needed four steps rather than one, and got them:
+The lifecycle half needed four steps rather than one, and got them. These four lines are from run
+33151418595, the one against the deployed commit, with each tool's own output truncated at the first
+newline because that is where the runner's log breaks it:
 
 ```
-Step 2/7: Calling tool "apply_claim_patch"       PASS: Applied. The claim is now at revision 1. Set vehicle_drivable to false.
+Step 2/7: Calling tool "apply_claim_patch"       PASS: Applied. The claim is now at revision 1.
 Step 4/7: Calling tool "get_assistance_options"  PASS: Northwind Mutual options for a vehicle that cannot be driven ...
-Step 5/7: Calling tool "apply_claim_patch"       PASS: PATCH_REJECTED_STALE. expected revision 0, current revision 1.
+Step 5/7: Calling tool "apply_claim_patch"       PASS: PATCH_REJECTED_STALE. expected revision 0, current revision 1. ...
 Step 7/7: Calling tool "get_assistance_options"  PASS: Northwind Mutual options for a vehicle that cannot be driven ...
 ```
 
@@ -109,19 +130,43 @@ Step 4 found a tool that did not exist when the case opened. Step 7 found it sti
 stale patch was refused. That pair is the assertion journey 2 is built around, and both halves are
 in the log.
 
-### The limitation this file did not state
+Read step 5 carefully before believing more of it than it says. `PASS` there means the harness made
+the call and got a value back. The value happens to be a refusal, and the harness did not check
+that, could not have checked it, and would have printed `PASS` just as happily if the page had
+applied the patch. What makes step 5 mean something is step 7, and what makes step 7 mean something
+is the negative control below.
 
-**Smoke mode collects browser console errors and then throws them away. It never prints them and it
-never fails on them.** Three facts, each read from the harness at the pinned commit
-`d39eae4bd51e8c12736b8cae840bd98f190f3179`:
+### The limitation of this mode, which no smoke run can see
+
+**Smoke mode collects browser console errors from the pinned harness and then throws them away. It
+never reports them and it never gates on them.** Re-read from the harness at the pinned commit
+`d39eae4bd51e8c12736b8cae840bd98f190f3179` on 2026-08-28, and still true:
 
 - The pinned commit is `feat(evals): include browser console errors in reports (#361)`. It changed
   `src/evaluator/browser.ts`, `src/evaluator/browserEvaluator.ts` and `src/report/report.ts`. It did
   not change `src/evaluator/smokeEvaluator.ts`.
 - `executeToolChecked`, which smoke calls for every step, starts the collector, so the errors really
-  are gathered on a smoke run exactly as on a model driven one.
-- `getBrowserConsoleErrors()` has exactly one caller in the package, `browserEvaluator.ts` line 122.
-  Nothing in `smokeEvaluator.ts` reads it and nothing in the smoke summary prints it.
+  are gathered on a smoke run exactly as on a model driven one. Read it yourself:
+
+  ```
+  async executeToolChecked(name, args = {}) {
+    const stopCollecting = this.startCollectingBrowserConsoleErrors(name, args);
+  ```
+
+- `getBrowserConsoleErrors` appears in exactly two files in the package, `browser.ts` where it is
+  defined and `browserEvaluator.ts` where it is called. It appears zero times in
+  `smokeEvaluator.ts` and zero times in `report/report.ts`. Nothing in the smoke path reads it and
+  nothing in the smoke summary prints it. Reproduce the count with:
+
+  ```bash
+  C=d39eae4bd51e8c12736b8cae840bd98f190f3179
+  for f in src/evaluator/browser.ts src/evaluator/browserEvaluator.ts \
+           src/evaluator/smokeEvaluator.ts src/report/report.ts; do
+    printf '%s ' "$f"
+    curl -sS "https://raw.githubusercontent.com/GoogleChromeLabs/webmcp-tools/$C/webmcp-evals/$f" \
+      | grep -c getBrowserConsoleErrors
+  done
+  ```
 
 So the run above would have reported `16/16` with the page throwing on every load. That is not an
 academic gap for this entry. The Content Security Policy ships inside the document, and a violation
@@ -154,30 +199,34 @@ whole file, so it was checked against the bytes the host actually serves rather 
 | `vehicle_drivable` at boot | `null`, so `get_assistance_options` is genuinely absent and journey 2 step 2 is a real transition rather than a no-op |
 | `damage_zone`, `severity`, `description` at boot | all `null`, which is exactly the set journey 1 fills |
 | `incident_type` at boot | `collision`, so `check_coverage` has what it needs in journey 1 |
-| The planted third party note | present, 2 evidence notes, so journey 3 has a note to read. Its text was rewritten after this observation, from a severity and a filing to a pinned field and a filing, and the live host serves the older wording until the next deploy. The count and the position are what this row pins, and neither moved |
+| The planted third party note | present, 2 evidence notes, so journey 3 has a note to read. This row used to carry a caveat, that the note's text had been rewritten and the live host was still serving the older wording. That is no longer true. Re-checked 2026-08-28: the fixture the host serves is byte for byte the fixture in this repository. Reproduce with `curl -sS https://upgradedev.github.io/claimready/fixtures/demo-collision.json` and compare it to `fixtures/demo-collision.json` |
 | Console errors, including CSP against `script-src 'self'` | none |
 | `document.modelContext` and `navigator.modelContext` | both absent in stock Chrome, and the page correctly says "No agent detected in this browser" |
 
 That last row is the expected result in a browser without the API and is not evidence against the
 page. It is recorded because it is the same absence that would have made every journey fail at its
-first step on a runner, which was risk 3 above. Run 33074580188 settled it: on the runner's Chrome
+first step on a runner, which was risk 3 above. Run 33151418595 settled it: on the runner's Chrome
 Dev build one of the two names was there, and the page's own registration ran against it.
 
 **What has been observed to pass, locally, with no install:**
 
-- The three journeys are correct against the domain. Each was replayed through
-  `src/core/claim.js` and `CONDITIONAL_TOOLS[0].present` and produced the sequence the file
-  claims. Output is quoted under "Proof the gate fails" below.
-- Every `functionName` in `evals.json` resolves to a tool actually registered under
-  `src/webmcp/tools/`, read from the `name:` field rather than from the filename. All nine are
-  exercised, none is invented.
+- The three journeys and the negative control are correct against the domain. All four are replayed
+  by `node evals/replay.mjs`, which drives the real registration path rather than reasoning about
+  it, and they produce the sequences this file claims. Output is quoted under "Proof the gate
+  fails" below.
+- Every `functionName` in `evals.json` and `negative-control.json` resolves to a tool actually
+  registered under `src/webmcp/tools/`, read from the `name:` field rather than from the filename.
+  All nine are exercised, none is invented. The replay would fail with
+  `tool "<name>" is not available.` on an invented one.
 - No argument object contains a `$` operator, so nothing is silently replaced by a sample value.
+  `replay.mjs` throws by name if one ever appears, rather than quietly resolving it the way the
+  harness would.
 - `scripts/gen_scenarios.mjs` produces 180 of 180 scenarios whose expected outcome matches what
   `applyPatch` actually returns, across all 18 kinds.
 
 ---
 
-## The three journeys
+## The three journeys, in `evals.json`
 
 ### 1. Fill the draft in one revision, then check it against the policy
 
@@ -269,27 +318,175 @@ with a real model reading that note, the journey becomes a genuine injection tes
 
 ---
 
+## The fourth case, in `negative-control.json`, and what the pair proves that neither half does
+
+`evals/negative-control.json`. One case, eight steps, and it is **expected to fail at step 8**. A
+green harness on this file is what turns the check red.
+
+### Why journey 2 needed a partner
+
+Journey 2 asserts that after a stale patch is refused, `get_assistance_options` is **still there**.
+That is a real assertion, and on its own it is weaker than it looks, because there is a boring way
+to satisfy it: a page whose tool set never moves at all passes journey 2 every time. Nothing in
+those seven steps distinguishes "the refusal was refused, so the surface correctly did not change"
+from "the surface cannot change".
+
+The negative control removes that reading by driving the same mechanism the other way.
+
+### The case
+
+Fresh page, revision 0, `vehicle_drivable` null, so the ninth tool is absent.
+
+1. `read_claim_state`.
+2. `apply_claim_patch`, `baseRevision: 0`, `vehicle_drivable` to `false`. Revision 1. The ninth
+   tool is registered.
+3. `read_claim_state`, a deliberate no op, giving the store subscriber's un awaited reconcile a
+   turn to settle rather than racing it.
+4. `get_assistance_options`. It must be available.
+5. `apply_claim_patch`, **`baseRevision: 1`**, `vehicle_drivable` back to `true`. This one is
+   legal. It must be APPLIED. Revision 2.
+6. `read_claim_state`, settling.
+7. `read_claim_state`, settling again. Two of them, and the reason is in the harness: it polls for
+   up to five seconds for a tool to APPEAR and does not poll at all for one to DISAPPEAR, so
+   absence is read exactly once, immediately. Presence is retried; absence is not, so absence is
+   given the room instead.
+8. `get_assistance_options`. **It must now be gone**, and the case must die here with
+   `tool "get_assistance_options" is not available.`
+
+Step 5 is the only line that differs from journey 2 step 5, and it differs by one digit. Journey 2
+sends `baseRevision: 0` on a claim that has moved to 1, which is stale and must be refused. This
+sends `baseRevision: 1` on the same claim, which is current and must land. One digit apart, opposite
+outcomes, and the outcome is read from the tool list rather than from a message the harness ignores.
+
+### What the two prove together
+
+| | Journey 2 | The negative control |
+|---|---|---|
+| The patch at step 5 | stale, must be REFUSED | current, must be APPLIED |
+| `vehicle_drivable` afterwards | still `false` | back to `true` |
+| The ninth tool at the last step | must still be THERE | must be GONE |
+| The harness verdict | `Passed steps: 7/7` | `Passed steps: 7/8`, failing at step 8 |
+
+Taken together the pair says something neither says alone: **the tool surface on this page moves
+when, and only when, a patch actually lands.** The control rules out the frozen surface, so
+journey 2's steady surface stops being ambiguous and becomes evidence that the stale patch was
+genuinely refused. That is how a refusal gets asserted through a channel the harness checks,
+without ever asking it to read a `result` field it does not read.
+
+### How it is checked in CI, and why it cannot pass for the wrong reason
+
+`.github/workflows/evals.yml`, the step named
+`Negative control, a patch that lands must withdraw the ninth tool`. It runs the harness with
+`set +e` so it can read the exit code instead of being killed by it, strips ANSI from the log
+because chalk colours its output on a GitHub runner, and then requires **three** things at once:
+
+1. the harness exit code is non zero;
+2. the log contains `Passed steps: 7/8 across 1 case(s).`;
+3. the log contains
+   `step 8 (get_assistance_options): tool "get_assistance_options" is not available.`
+
+Assertion 2 is the one that stops a false pass. If the ninth tool were never registered at all, the
+case would die at **step 4** with the very same sentence, and a check that only grepped for that
+sentence would call a completely broken lifecycle a success. Seven of eight is the only summary
+consistent with the run having reached the last step with everything before it green, which is to
+say with the legal patch at step 5 having been applied rather than refused.
+
+So the check fails if either half stops being honoured:
+
+- the page wrongly refuses the legal patch: `vehicle_drivable` stays `false`, the ninth tool stays
+  registered, the last step passes, the harness exits 0, assertions 1 and 2 both fail;
+- the page applies the patch but never withdraws the tool: same observable, same three failures;
+- the page never publishes the tool: the case dies at step 4, assertion 2 fails.
+
+### It has been replayed offline, and it has been made to fail on purpose
+
+`evals/replay.mjs` runs the same four cases with no browser, no install and no network, against the
+real registration path in `src/webmcp/register.js` with a stand in for `document.modelContext`.
+**It is the same class of evidence as `tests/unit/webmcp.test.js`, which is to say a fake host, and
+it is not evidence about any browser.** It exists because you cannot break the deployed page to
+find out whether a gate has teeth, and you can break a replay of it.
+
+It copies three behaviours from the pinned `smokeEvaluator.ts` so it cannot report a verdict the
+real run could not reach: the tool list is re read before every step, a missing tool is polled for
+and then fails the case, and `explicitToolFailure` is copied verbatim rather than approximated, so
+the replay is exactly as blind to the `result` field as the harness is.
+
+Measured on 2026-08-28 at commit `4023446e7916b867f1365f871b08885d5cb45655`:
+
+| Command | Summary | Verdict | Exit |
+|---|---|---|---|
+| `node evals/replay.mjs` | `Passed steps: 16/16 across 3 case(s).` | every journey replayed clean | 0 |
+| `node evals/replay.mjs --negative-control` | `Passed steps: 7/8 across 1 case(s).` | PROVEN | 0 |
+| `... --mutate applied-patch-refused` | `Passed steps: 8/8 across 1 case(s).` | NOT PROVEN | 1 |
+| `... --mutate withdrawal-ignored` | `Passed steps: 8/8 across 1 case(s).` | NOT PROVEN | 1 |
+| `... --mutate ninth-tool-never-registered` | `Passed steps: 3/8 across 1 case(s).` | NOT PROVEN | 1 |
+
+The first row matches the browser run's `16/16` exactly, which is the only thing the replay is
+allowed to be believed about: it agrees with the harness on the cases the harness has run.
+
+The three mutations are what make the control a control. `applied-patch-refused` makes the store
+refuse the legal patch. `withdrawal-ignored` makes the fake host keep a tool after its AbortSignal
+fires. `ninth-tool-never-registered` makes the host refuse the tool outright, and it is the most
+useful of the three because it produces the **same error sentence at a different step**, and the
+control still says NOT PROVEN. A looser assertion would have read that as a pass.
+
+The workflow runs all five of those commands as a pre flight, before it installs anything, and
+fails if any mutation survives.
+
+---
+
 ## Running it
 
 ```bash
-# Deterministic, no model, no API key. This is what CI runs.
-npx --yes webmcp-evals@0.0.3 smoke \
+# Offline. No browser, no install, no network. Run this first: it is the fastest way to find out
+# that a change has broken the lifecycle the journeys assume.
+node evals/replay.mjs
+node evals/replay.mjs --negative-control
+node evals/replay.mjs --negative-control --mutate applied-patch-refused        # must exit 1
+node evals/replay.mjs --negative-control --mutate withdrawal-ignored           # must exit 1
+node evals/replay.mjs --negative-control --mutate ninth-tool-never-registered  # must exit 1
+```
+
+The published `webmcp-evals` package cannot run the deterministic mode. npm carries 0.0.1, 0.0.2 and
+0.0.3, and their CLI offers only `local` and `browser`, so an `npx webmcp-evals smoke` line would be
+a command that has never worked. The harness is cloned and built from a pinned commit instead, which
+is what the workflow does and what these commands assume is on `$EVALS_BIN`.
+
+```bash
+# Deterministic, no model, no API key. The three journeys. Every step must pass.
+node "$EVALS_BIN" smoke \
   -u "https://upgradedev.github.io/claimready/" \
   -e evals/evals.json \
   --chrome-channel chrome-dev \
   --timeout 30000 \
   -v
 
+# The negative control. THIS ONE IS EXPECTED TO FAIL, at its last step and nowhere else.
+NO_COLOR=1 node "$EVALS_BIN" smoke \
+  -u "https://upgradedev.github.io/claimready/" \
+  -e evals/negative-control.json \
+  --chrome-channel chrome-dev \
+  --timeout 30000 \
+  -v
+
 # LLM driven, needs a key in the environment. Never observed to run here.
-npx --yes webmcp-evals@0.0.3 browser \
+node "$EVALS_BIN" browser \
   -u "https://upgradedev.github.io/claimready/" \
   -e evals/evals.json \
   --backend gemini
 ```
 
-In CI: `.github/workflows/evals.yml`, on manual dispatch and daily at 06:17 UTC. It reads the
-target from the repository variable `CLAIMREADY_URL`, fails when that is empty, fails when the URL
-does not answer 200, and uploads the log and any `.evals` report as an artifact.
+In CI: `.github/workflows/evals.yml`, on manual dispatch and daily at 06:17 UTC. In order, it
+replays everything offline and fails if any mutation survives, fails when the repository variable
+`CLAIMREADY_URL` is empty, fails when that URL does not answer 200, builds the harness from the
+pinned commit, runs the three journeys, runs the negative control and requires it to fail in the one
+shape described above, and uploads both logs and any `.evals` report as an artifact.
+
+Dispatch it by hand with:
+
+```bash
+gh workflow run evals.yml --repo upgradedev/claimready --ref main
+```
 
 **One deliberate exception to a rule stated elsewhere.** `.github/workflows/ci.yml` says no job in
 it installs anything, ever. That remains true of `ci.yml`. This is a separate workflow and it does
@@ -403,24 +600,33 @@ pinning.
 corpus. Unmutated it reports 0 failures. Declaring a stale patch acceptable reports 3 failures.
 Mislabelling a locked field reports 3. Claiming the atomic batch half applies reports 3.
 
-**3. Journey 2's negative control.** Replaying journey 2 against `src/core/claim.js` and
-`CONDITIONAL_TOOLS[0].present`:
+**3. The negative control, made to fail three ways.** This item used to be a hand written replay of
+journey 2 against `src/core/claim.js` and `CONDITIONAL_TOOLS[0].present`, printing a line that said
+smoke *would* hard fail if the patch landed. It is now a real case in a real file, replayed through
+the real registration path by `evals/replay.mjs`, and each of the three mutations in the table above
+turns its verdict from PROVEN to NOT PROVEN. Run them yourself:
+
+```bash
+node evals/replay.mjs --negative-control                                       # PROVEN,     exit 0
+node evals/replay.mjs --negative-control --mutate applied-patch-refused        # NOT PROVEN, exit 1
+node evals/replay.mjs --negative-control --mutate withdrawal-ignored           # NOT PROVEN, exit 1
+node evals/replay.mjs --negative-control --mutate ninth-tool-never-registered  # NOT PROVEN, exit 1
+```
+
+The unmutated run prints, in full:
 
 ```
-start revision 0 | drivable null | ninth tool present: false
-J2 step2 ok: true | revision 1 | ninth tool present: true
-J2 step5 ok: false | code PATCH_REJECTED_STALE
-J2 after refusal -> drivable false | revision 1 | ninth tool STILL present: true
-NEGATIVE CONTROL (correct revision, so it applies): ok true -> drivable true
-  | ninth tool present: false <- smoke would hard-fail here
+Passed steps: 7/8 across 1 case(s).
+Smoke test "NEGATIVE CONTROL, a patch that IS applied withdraws the ninth tool" step 8 (get_assistance_options): tool "get_assistance_options" is not available.
+
+The negative control asserts two things at once, and both have to hold.
+  every step up to 7 passed, so the patch at step 5 was APPLIED: yes
+  step 8 then found the ninth tool WITHDRAWN:                     yes
+
+VERDICT: PROVEN. The lifecycle answered a patch that was applied.
 ```
 
-The last line is the proof: change the stale revision to the current one, the patch lands,
-`vehicle_drivable` becomes `true`, the ninth tool is withdrawn, and step 7 of the journey fails
-with `tool "get_assistance_options" is not available.` The journey can fail, and it fails for the
-right reason.
-
-Reproduce the three of them with:
+Reproduce the generator's two with:
 
 ```bash
 node scripts/gen_scenarios.mjs --number 36   # the blank string, now filed as out of range
@@ -428,19 +634,53 @@ node scripts/gen_scenarios.mjs --number 19   # its sibling, genuinely not a whol
 node scripts/gen_scenarios.mjs --count 180 --json
 ```
 
-**Still owed, and narrowed.** Smoke mode has now been observed to run, so the condition that
-blocked the item below is gone and only the run itself is outstanding. Three things are owed on this
-page and nothing else is.
+**Still owed, and narrowed again.** Three things are owed on this page and nothing else is.
 
-1. **Journey 2's negative control, inside a browser.** Item 3 above is a replay against the domain,
-   not against the harness. Dispatch the evals workflow once against a copy of `evals/evals.json`
-   whose step 5 carries `baseRevision: 1` instead of `0`, so the patch lands, `vehicle_drivable`
-   becomes `true` and the ninth tool is withdrawn. Confirm the case then fails at step 7 with
-   `tool "get_assistance_options" is not available.` and paste the harness output here. The green
-   run proves this journey passes in a browser. Nothing yet proves it can fail in one.
-2. **A console reading from a smoke run.** Smoke gathers the page's console errors and prints none
-   of them, as set out in the status section. Either the harness has to be patched to read that
-   array or a separate check has to watch the console, before this file may say that a smoke run saw
-   a clean page. It has never said so and it must not start.
+1. **The negative control, inside a browser.** It is written
+   (`evals/negative-control.json`), it is wired as a gate with three assertions
+   (`.github/workflows/evals.yml`), and it has been replayed offline and made to fail three ways.
+   It has **not** been executed by the harness in Chrome at any commit, because the workflow reads
+   the eval file from the checked out ref and the file is not yet on a pushed branch. The moment it
+   is, dispatch it and paste the output here:
+
+   ```bash
+   gh workflow run evals.yml --repo upgradedev/claimready --ref <the branch>
+   ```
+
+   Until that output is in this file, the honest statement is the one made above: the pair is
+   proven against the domain and the registration path, and the browser half is proven for journey 2
+   only. Do not write that the pair has been observed in a browser before it has.
+
+   **Be precise about WHICH half of the mechanism has never been seen in a browser, because it is
+   not the whole thing.** Three green runs have shown Chrome registering a tool mid page and keeping
+   it. Nothing here has ever shown Chrome **withdrawing** one. `replay.mjs` proves that the page
+   calls `controller.abort()` and that a host which honours an abort drops the tool, which is a fact
+   about our code and about a fake host, not about Chrome. The imperative API documentation records
+   that unregistration stopped cancelling in flight executions as of Chrome 153, so the behaviour has
+   moved recently, and the runner is on a Dev build.
+
+   **So the diagnosis is written down now, before anyone reads it under a deadline.** If the first
+   browser run of this file reports `Passed steps: 8/8`, the likeliest cause is the browser's
+   withdrawal, not the assertion. Two shapes produce that summary: Chrome never removes on abort, or
+   Chrome removes it more slowly than one read, and the harness polls for a tool to appear but never
+   for one to disappear. The fix for the second is another settling `read_claim_state` before the
+   absence check, which makes the case `8/9`. `replay.mjs` recomputes its expectation from the
+   file's own step count, so only the literals in `.github/workflows/evals.yml` and the prose above
+   move. The fix for the first is a correction to what this repository claims, in the README and in
+   the description, naming the browser version it was observed on. **The fix is never to weaken one
+   of the three assertions.**
+
+   One consequence worth knowing before it surprises anybody: the `WebMCP evals` badge is in the
+   README and this workflow runs on a daily cron, so a failing negative control turns a judge visible
+   badge red every morning. Dispatch it once by hand straight after committing, before spending
+   effort anywhere else. Nothing in the video depends on the answer, because the one beat that
+   touches the tool count, `05-reconcile`, shows the count going from 8 to 9, which is the appearance
+   half and is already proven.
+
+2. **A console reading from a smoke run.** Smoke gathers the page's console errors and reports none
+   of them, as set out in the status section, re-read on 2026-08-28. Either the harness has to be
+   patched to read that array or a separate check has to watch the console, before this file may say
+   that a smoke run saw a clean page. It has never said so and it must not start.
+
 3. **Browser mode, the model driven one.** It needs a key this repository does not hold, so it stays
    NOT WIRED and NOT OBSERVED.

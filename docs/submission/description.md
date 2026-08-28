@@ -1,21 +1,21 @@
-# ClaimReady
+# ClaimReady, motor first notice of loss
 
 The insurer's page hands your own agent its policy rules as typed tools, so you learn what you
 are covered for while you are still describing the crash.
 
-Live, no account: https://upgradedev.github.io/claimready/. Tools appear in the ChatGPT desktop
-app's browser, or Chrome 149 or later with chrome://flags/#enable-webmcp-testing on. Elsewhere it
-works by hand and says no agent was found.
+Live, no account: https://upgradedev.github.io/claimready/
+Code: https://github.com/upgradedev/claimready
+Unrelated home inventory products share the name. These two links are this entry.
+
+Tools appear in the ChatGPT desktop browser, or Chrome 149+ with
+chrome://flags/#enable-webmcp-testing. Elsewhere it works by hand.
 
 ## Who this is for
 
-The driver at the roadside with a damaged car and a phone. The first notice of loss handler who
-opens it next morning gains too, but the demo is the driver's half.
-
-I build claims and policy systems for European assistance operators. Intakes that arrive wrong are
-almost never wrong about what happened, they are wrong about what this policy needed. The driver's
-assistant is already open, and the trigger is the sentence they were going to say anyway. What this
-removes is the retyping.
+The driver at the roadside with a damaged car and a phone. I build claims systems for European
+assistance operators. My judgement, not a study: intakes that arrive wrong are rarely wrong about
+what happened, but about what this policy needed. The assistant is already open, the
+trigger is the sentence they were going to say anyway, and what goes is the retyping.
 
 ## Why this is a strong fit for WebMCP
 
@@ -24,43 +24,45 @@ on one origin and change per customer. The insurer publishes typed tools and det
 the visitor brings their own agent. No model runs here and no key exists. Remove WebMCP and the
 agent is back to guessing.
 
+The honest alternative is REST with an OpenAPI file, and it loses twice. It must be built for
+this insurer in advance, so it does nothing for an agent meeting the origin for the first time:
+here, a second rule pack in fixtures/insurers makes the same nine tools answer differently, nothing
+rebuilt. And it says what a service offers, never what it offers right now, for this claim.
+
 ## A better experience
 
-The driver hears what their policy says, instead of after a call queue and a letter.
-The person keeps the final action, every field shows who set it last, and any field can be pinned.
+The driver hears what their policy says instead of after a call queue and a letter. Every field
+shows who set it last, and any can be pinned.
 
 ## What people and agents can do together that was difficult or impossible before
 
 An agent that has never met this insurer learns what this policy requires, from the insurer, while
-the driver is still describing the crash.
+the driver describes the crash. Then the surface moves: the driver says the car
+cannot be driven, get_assistance_options is registered live, and the agent has a capability it did
+not have a moment ago, then loses it when that answer changes.
 
-Nothing was built for it in advance. It reads the tool list on the origin that owns the rules, so
-the requirements come back as this policy's, each with its clause, and a second insurer's rule pack
-makes the same tools answer differently. Then the surface moves under it: the driver says the car
-cannot be driven, get_assistance_options is registered while the page is open, and the agent gains
-a capability it did not have a moment ago, then loses it if that answer changes.
-
-Two parties writing one document is old and I do not claim it. The revision protocol that refuses a
-stale patch whole is what makes the paragraph above safe to run, not what is new in it.
+Tested, not asserted. evals/negative-control.json must FAIL: it applies a patch
+putting the car back on the road, then requires the ninth tool to be gone. Its companion requires
+that tool to survive a refused patch. The surface moves when a patch lands and holds still
+when one does not.
 
 ## How it is implemented
 
-Tools are registered on document.modelContext, falling back to navigator.modelContext, over a pure
-domain core. Page and tools drive one store, so an agent action shows on screen. Read tools carry
-readOnlyHint, and tools returning words the insurer did not write carry untrustedContentHint. Each
-registration has its own AbortController, and the set is reconciled on every change, which is how a
-tool appears and disappears with the claim. Inputs are validated in code.
+Tools register on document.modelContext, falling back to navigator.modelContext, over a pure domain
+core. Page and tools share one store, so an agent action shows on screen. Read tools carry
+readOnlyHint; anything returning words the insurer did not write carries untrustedContentHint. Each
+registration holds its own AbortController and the set is reconciled on every change. Input is
+validated in code, not by schema.
 
-## What is deliberately not a tool
+## Not a tool
 
-Filing, requesting assistance, and pinning or unpinning a field. No tool reaches any of them. A
-browser agent can still click a button, so the claim is about the tool surface, not the click.
-
-The demo ships a third party note asking the agent to change a field the claimant pinned, then to
-file. The patch comes back PATCH_REJECTED_LOCKED naming that field. For the filing there is no tool
-to call. The ledger shows a refusal as plainly as a success.
+Filing, requesting assistance and pinning reach no tool. A browser agent can still click a button,
+so the claim is about the tool surface, not the click. The demo ships a third party note telling
+the agent to change a pinned field and file: the patch returns PATCH_REJECTED_LOCKED naming the
+field, and for the filing there is nothing to call.
 
 ## Honest limits
 
-Everything here is invented: insurers, policy, vehicle, claimant. There is no insurer integration
-and no adjudication. What I say about intakes is experience, not a measured study.
+Insurer, policy, vehicle and claimant are invented. No integration, no adjudication. Nobody has run
+this on real intakes, so there is no measurement of claims arriving more complete, and I have not
+invented one.

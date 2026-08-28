@@ -23,6 +23,18 @@ ClaimReady is a first notice of loss page for a motor insurer. It is a static pa
 dependencies and no build step, and it publishes its own capabilities to the visitor's AI agent
 through WebMCP.
 
+**One note on the name, before you go looking for it.** ClaimReady is not a unique name. Search it
+and you will also find unrelated products that share it, including a student project from 2025 and a
+company selling AI home contents documentation. Both of those are home and property inventory tools
+for homeowners and renters. This one is a motor first notice of loss page for a driver at the
+roadside, it has no connection to either, and nothing here is derived from either. The identity of
+this entry is a pair of URLs rather than a word: the repository at
+<https://github.com/upgradedev/claimready> and the live page at
+<https://upgradedev.github.io/claimready/>. If a link did not come from the submission, it is not
+this project. The name is kept rather than changed because renaming in the last week would move the
+one URL that must never break, the live page the readiness gate fetches and a judge opens, and a
+shared name costs a search result rather than an entry.
+
 ## Contents
 
 - [Who this is for](#who-this-is-for)
@@ -66,10 +78,33 @@ not scrape them, does not hold them in a system prompt and does not need an inte
 for it in advance. It asks the page, and the page answers with a clause id.
 
 The dullest honest alternative is a REST endpoint with an OpenAPI file beside it, and it is worth
-naming rather than dodging. It loses on two counts. It needs an integration built for this insurer
-in advance, so it does nothing for an agent that has never met this origin before. And it cannot
-gain and lose a capability while the page is open, which is exactly what `get_assistance_options`
-does the moment the driver says the car cannot be driven.
+naming rather than dodging, because for most of what this page does the REST endpoint is perfectly
+adequate. It loses on two specific counts, and both are checkable from outside.
+
+**One. Discovery has to happen in advance, and here it does not.** A REST plus OpenAPI integration
+has to be built for this insurer, by somebody, before any agent can use it, which does nothing for
+an agent meeting this origin for the first time. Here the agent asks the page. Check it by loading
+the two rule packs in `fixtures/insurers/` against the same claim: `northwind` and `kestrel` make
+the same nine tools answer differently, with different requirements and different clause ids, and
+nothing was rebuilt between them. That is the difference between an integration and a discovery.
+
+**Two. The capability set is a function of the claim, and a REST surface is a function of the
+deploy.** `get_assistance_options` does not exist while the page thinks the car is drivable. Say the
+car cannot be driven and it is registered, live, into the agent's own tool list. Say it is drivable
+again and it is withdrawn. Watch the count move from 8 to 9 on the status strip. An OpenAPI document
+describes what a service offers; it cannot describe what this service offers *right now*, for *this*
+claim, and it certainly cannot hand a new capability to an agent in the middle of a conversation.
+
+That second point is the one this repository spends its evidence on, because it is the one a
+reviewer should be most suspicious of. `evals/negative-control.json` is a case that is required to
+FAIL: it applies a patch that puts the car back on the road, and then requires the ninth tool to be
+gone. Its companion, journey 2, requires the tool to survive a patch that was refused. Together they
+say the surface moves when a patch lands and holds still when one does not.
+
+Where the honest limit is. There is no measurement here of intakes arriving more complete, because
+no insurer has run this and inventing that number would be worse than not having it. What the
+repository can support is what the mechanism does, and it is all reachable: nine tools, two rule
+packs, one conditional tool, one refusal protocol, and a ledger that prints every call.
 
 ## How it fits together
 
@@ -270,6 +305,24 @@ Two more, because they are part of the same promise:
 
 **https://upgradedev.github.io/claimready/**
 
+**What is running there, and how to check it rather than believe it.** The deployed commit is
+whatever these two commands say, and they are the source of truth, not this paragraph:
+
+```sh
+gh api repos/upgradedev/claimready/pages/builds/latest --jq '.commit, .updated_at'
+git rev-parse HEAD
+```
+
+Observed on 2026-08-28: Pages had built `4023446e7916b867f1365f871b08885d5cb45655` at
+`2026-08-28T06:57:47Z`, which was the head of `main` at that moment. Pages rebuilds on every push,
+so the two agree again a minute or so after any commit, and a reader who finds them disagreeing has
+found a real problem rather than a stale note.
+
+Those two agreeing is the whole point. A green check against a commit the host is no longer serving
+proves nothing about what a judge opens, and this repository has already had that happen once: two
+green eval runs named a commit that two later commits had superseded. The evals row in the Status
+table now names a run whose `headSha` is the built commit, for exactly that reason.
+
 No account, no install, nothing to accept. The page is served over HTTPS, which WebMCP requires,
 and it carries its Content Security Policy in the document, which is what makes the policy hold
 here: GitHub Pages sends no CSP header of its own. The Status table below is the honest state of
@@ -339,6 +392,17 @@ node scripts/readiness.mjs --ci --allow-undeployed
 
 # prove the gate can fail, by breaking every row in turn and requiring each one to refuse
 node scripts/readiness.mjs --selftest
+
+# replay the three eval journeys against the real registration path, with a fake agent host
+node evals/replay.mjs
+
+# the negative control: a patch that lands must WITHDRAW the ninth tool, so this case must fail
+node evals/replay.mjs --negative-control
+
+# and prove that control can fail, three different ways. Each of these must exit non zero
+node evals/replay.mjs --negative-control --mutate applied-patch-refused
+node evals/replay.mjs --negative-control --mutate withdrawal-ignored
+node evals/replay.mjs --negative-control --mutate ninth-tool-never-registered
 ```
 
 Both readiness runs above exit non zero while the video row `D4` is red, and that is deliberate:
@@ -369,16 +433,16 @@ go stale between commits.
 | Page and tool call ledger | built | open `index.html`, and row `IDX` |
 | Unit tests | built | `node --test tests/unit` prints the pass and fail counts |
 | Live URL a judge can open | deployed | `node scripts/readiness.mjs` row `LIVE`, which fetches it and fails on anything but a 200 carrying the first sentence of this file |
-| Content Security Policy actually exercised against the page | yes, on the deployed origin | open the live URL with the console open: the policy ships in the document, and the page loads with no console output at all |
+| Content Security Policy actually exercised against the page | yes, on the deployed origin, re-checked 2026-08-28 against the commit now served | open the live URL with the console open: the policy ships in the document, and the page loads with no console output at all. The date matters. This row was first written against an earlier deploy, and two commits landed after it, so it was re-observed rather than carried forward. The one automated check that reads a console is `CAPTURE_JS` in the video pipeline, which fails a capture on any `console.error`. The eval harness does not: see `evals/README.md` |
 | Damage sketch module, agent draws and human corrects | not yet built | absent from `src/webmcp/tools` |
 | Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
 | Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
 | Declarative form step, the HTML attribute API | not yet built | absent from `index.html` |
-| Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` reports 20 passing. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser |
-| The tool surface running in a real browser's own WebMCP implementation | proven once, in CI | [run 33074580188](https://github.com/upgradedev/claimready/actions/runs/33074580188): 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Read the honest limit below before quoting this |
-| Evals against the tool surface | built and executed | Three journeys over the nine tools, run green twice. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat .github/workflows/evals.yml` |
-| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not assert that the refusals refused. What they prove is that the tool surface registers and executes inside a browser's own implementation, and that the refusal text in the log is real output from it. The refusals themselves are asserted by `tests/unit/webmcp.test.js`, against a fake host. A second limit is in `evals/README.md`: smoke mode gathers the page's browser console errors and never prints them or fails on them, so a green run says nothing at all about the console |
-| Public video | not yet built. This is the one thing between the entry and a green gate, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows | `node scripts/readiness.mjs` row `D4` |
+| Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` prints the count. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser. This row used to hardcode a number and the number was wrong, so it now names the command instead, which is what the paragraph above this table promises |
+| The tool surface running in a real browser's own WebMCP implementation | proven, in CI, against the deployed commit | [run 33151418595](https://github.com/upgradedev/claimready/actions/runs/33151418595), 2026-08-28: 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Its `headSha` is the commit GitHub Pages last built, which is the part that matters: two earlier green runs were against a commit that had since been superseded, so they proved nothing about the bytes now being served. Read the honest limit below before quoting this |
+| Evals against the tool surface | built and executed | Three journeys over the nine tools, plus a fourth case that is a negative control and is required to FAIL. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat evals/negative-control.json`, `cat .github/workflows/evals.yml` |
+| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not on their own assert that the refusals refused. What the negative control adds is the other direction: it applies a patch that is legal, requires the ninth tool to be WITHDRAWN, and fails the workflow unless the harness reports exactly seven of eight steps passed and names the last one. Read as a pair, the surface moves when a patch lands and holds still when one is refused, which is what makes journey 2 evidence rather than a no op. That pair has been replayed offline and made to fail three ways; it has **not yet been run in a browser**, because it is not yet on a pushed branch. Narrower still, and stated in `evals/README.md`: three green runs have shown Chrome REGISTERING a tool mid page and keeping it, and nothing has yet shown Chrome WITHDRAWING one. That half is proven against our own code and a fake host only. A second limit lives there too: smoke mode gathers the page's browser console errors and never reports or gates on them, so a green run says nothing at all about the console |
+| Public video | not yet built. It is the only row that blocks the readiness **exit code**, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows. It is **not** the only thing between this repository and a finished submission: `node scripts/readiness.mjs` today prints `READY TO SUBMIT: 14 of 20 proven, 70 percent`, and the six outstanding rows are `D4` plus five owner gated ones, including `O3`, whether the form reads Submitted | `node scripts/readiness.mjs` row `D4` |
 | Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
 
 Every count in this README comes with the command that produces it, so no number here has to be
@@ -397,8 +461,11 @@ src/ui/               rendering, the tool call ledger, and the human only button
 fixtures/             the synthetic policy, vehicle and parts table
 fixtures/insurers/    the insurer rule packs the requirements are derived from
 tests/unit/           node --test, no runner
-scripts/              the style gate and the readiness gate, both dependency free
+scripts/              the style gate, the readiness gate and the scenario generator, all dependency free
+evals/                the three journeys, the negative control that must fail, and the offline replay
 docs/architecture.md  the layer map and the dependency rule
+docs/submission/      the description and the video runbook, which are the deliverable records
+video/                the per beat video pipeline and its sync gate
 ```
 
 ## Licence

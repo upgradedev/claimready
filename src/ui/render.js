@@ -33,7 +33,7 @@ import {
   provenanceOf
 } from '../core/claim.js';
 import { exclusionLabels } from '../core/coverage.js';
-import { fileGateStatement, fileGateIsSettled } from '../core/requirements.js';
+import { fileGateStatement, fileGateIsSettled, optionalDetailsNote } from '../core/requirements.js';
 
 const HIGHLIGHT_MS = 1500;
 
@@ -64,12 +64,41 @@ const FIELD_CONTROLS = {
   witness_name: 'text'
 };
 
-/** What each provenance value from core is called on the page, for a reader who is not a developer. */
+/**
+ * What each provenance value from core is called on the page.
+ *
+ * THE BADGE NAMES A SURFACE, NOT AN AUTHOR, BECAUSE THE SURFACE IS THE PART THAT IS KNOWN. It
+ * used to read "you" and "agent", which reads as a claim about who was at the keyboard, and the
+ * page cannot know that. A value typed into a control is recorded as human whoever moved the
+ * control, so an agent driving the page the way any browser automation drives a page is recorded
+ * as human too. What the claim genuinely records is the route the answer took: a control on this
+ * page, or a tool call. So that is what the badge says, and its title says it in full.
+ *
+ * The class names are unchanged and keyed off the provenance value rather than off the word, so
+ * renaming a word can never quietly drop the colour with it.
+ */
 const BADGE_WORDS = {
-  human: 'you',
-  agent: 'agent',
-  policy: 'policy',
+  human: 'via page',
+  agent: 'via tool',
+  policy: 'on file',
   derived: 'derived'
+};
+
+const BADGE_CLASS = {
+  human: 'badge-you',
+  agent: 'badge-agent',
+  policy: 'badge-policy',
+  derived: 'badge-derived'
+};
+
+const BADGE_TITLES = {
+  human: 'This answer arrived through a control on this page. That is the surface it came in on, '
+    + 'not who was at the keyboard: an agent that drives the page rather than calling a tool '
+    + 'arrives this way too.',
+  agent: 'This answer arrived through a tool call, and the call is in the ledger below.',
+  policy: 'This answer was already on file when the page opened.',
+  derived: 'This answer was worked out by the page.',
+  none: 'Nothing has answered this yet.'
 };
 
 const BADGE_CLASSES = ['badge-agent', 'badge-you', 'badge-policy', 'badge-derived', 'badge-none'];
@@ -107,6 +136,7 @@ export function createView(doc) {
     fields: pick('fields'),
     fieldsOptional: pick('fields-optional'),
     optionalDetails: pick('optional-details'),
+    optionalNote: pick('optional-note'),
     claimNote: pick('claim-note'),
     fieldError: pick('field-error'),
     requirements: pick('requirements'),
@@ -433,6 +463,12 @@ export function createView(doc) {
     renderActions(state) {
       els.fileBtn.disabled = Boolean(state.filed) || !state.ready;
 
+      // Drawn here, from this state, because it is a third statement about the same draft. The
+      // note above the optional group used to say those fields were not wanted before filing while
+      // the loaded pack was asking for two of them. It is composed by src/core from the same
+      // outstanding list the file panel reads, so the two cannot say different things.
+      text(els.optionalNote, optionalDetailsNote(state));
+
       if (state.filed) {
         text(els.fileReason, 'This claim has been filed. Load the synthetic incident again to run the demonstration from the start.');
         els.fileReason.classList.remove('is-blocked');
@@ -507,7 +543,15 @@ function buildFieldRows(doc, host, fields, rows) {
     pinWord.textContent = 'Pin';
 
     pin.append(pinIcon, pinWord);
-    head.append(label, badge, pin);
+
+    // THE PIN COMES AFTER THE CONTROL IT PINS, IN THE DOM, NOT ONLY ON THE SCREEN. It used to sit
+    // in the head row beside the label, so a keyboard user reached "pin this answer" one tab
+    // before reaching the answer, and was offered a decision about a value they had not read yet.
+    // Moving it with CSS alone would have fixed the picture and left the tab order saying the
+    // opposite of it, so it moves in the markup and the stylesheet follows: the pin sits on the
+    // same line as the value it pins, to the right of it, which is where the eye and the tab key
+    // now agree it is.
+    head.append(label, badge);
 
     const control = buildControl(doc, field);
     control.id = `f-${field}`;
@@ -518,10 +562,14 @@ function buildFieldRows(doc, host, fields, rows) {
     value.className = 'field-value';
     value.textContent = 'Missing';
 
+    const foot = doc.createElement('div');
+    foot.className = 'field-foot';
+    foot.append(value, pin);
+
     const hint = doc.createElement('p');
     hint.className = 'field-hint';
 
-    root.append(head, control, value, hint);
+    root.append(head, control, foot, hint);
     rows.set(field, { root, control, value, badge, pin, pinIcon, pinWord, hint });
     return root;
   });
@@ -952,11 +1000,13 @@ function applyBadge(badge, source) {
   badge.classList.remove(...BADGE_CLASSES);
   const word = source ? BADGE_WORDS[source] : null;
   if (word) {
-    badge.classList.add(`badge-${word === 'you' ? 'you' : source}`);
+    badge.classList.add(BADGE_CLASS[source]);
     badge.textContent = word;
+    badge.title = BADGE_TITLES[source];
   } else {
     badge.classList.add('badge-none');
     badge.textContent = 'not set';
+    badge.title = BADGE_TITLES.none;
   }
 }
 

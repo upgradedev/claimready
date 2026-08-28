@@ -13,6 +13,12 @@ name: WebMCP evals
 # continue-on-error on the eval step, no `|| true` on anything that is a check, and no fallback
 # that turns "the harness could not run" into a pass. If the harness cannot run on a runner, this
 # workflow fails and says why. See evals/README.md for what has actually been observed to work.
+#
+# ONE STEP DELIBERATELY EXPECTS THE HARNESS TO FAIL, and it is not an exception to the rule above.
+# The negative control step runs the harness with `set +e` so it can read the exit CODE rather than
+# be killed by it, and it then requires that code to be non zero and requires two exact strings in
+# the log. A green harness there turns that step red. It is the opposite of laundering: it is the
+# only way to assert that something the page must refuse was in fact refused.
 
 on:
   workflow_dispatch:
@@ -62,6 +68,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+
+      # PRE FLIGHT, AND IT IS A GATE. Dependency free, no browser, no install. It replays the
+      # journeys and the negative control against the real registration path with a fake host, and
+      # it runs the three mutations that must each make the control report NOT PROVEN. If the
+      # control's expectation has stopped matching the code at this commit, this fails here rather
+      # than being read as a browser problem forty seconds later.
+      - name: Replay the journeys and the negative control offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          node evals/replay.mjs --quiet
+          node evals/replay.mjs --negative-control --quiet
+          for mutation in applied-patch-refused withdrawal-ignored ninth-tool-never-registered; do
+            if node evals/replay.mjs --negative-control --mutate "${mutation}" --quiet; then
+              echo "The mutation ${mutation} did not break the negative control."
+              echo "A control that survives its own mutation is not a control. Fix it, do not widen it."
+              exit 1
+            fi
+            echo "mutation ${mutation}: the control refused it, as it must."
+          done
 
       # The URL is the whole point. An empty variable is a failure, never a skip.
       - name: The judge URL must be configured
@@ -158,6 +184,100 @@ jobs:
             --timeout "${TIMEOUT_MS}" \
             -v 2>&1 | tee evals-smoke.log
 
+      # THE NEGATIVE CONTROL, IN THE BROWSER. This run is EXPECTED TO FAIL, and a green harness
+      # here is what turns this step red.
+      #
+      # WHY IT EXISTS. Every answer this page gives comes back through toResult, so a refusal
+      # travels inside an ordinary result envelope and the harness's explicitToolFailure can never
+      # see it. The step above therefore cannot tell a refusal from a success. Tool AVAILABILITY is
+      # the one channel with teeth: the harness re reads the tool list before every step and stops
+      # the case when a tool is missing.
+      #
+      # Journey 2 uses that channel one way round: after a STALE patch is refused,
+      # get_assistance_options must still be there. That direction alone is satisfiable by a page
+      # that simply never changes its tool set, so on its own it does not prove the refusal
+      # refused. This file closes the loop the other way. The patch at step 5 is legal, it must
+      # land, vehicle_drivable goes back to true and the ninth tool must be WITHDRAWN, so step 8
+      # must fail with `tool "get_assistance_options" is not available.`
+      #
+      # Read as a pair: journey 2 shows the surface does not move when a patch is refused, and this
+      # shows the surface DOES move when a patch is applied. Neither is a no op, because the same
+      # page produced both.
+      #
+      # Three assertions, and all three have to hold, so this cannot pass for the wrong reason:
+      #   the harness must exit non zero;
+      #   exactly seven of eight steps must have passed, which pins the failure to the last step and
+      #     proves the legal patch at step 5 was not refused;
+      #   the failure must name step 8 and the missing tool.
+      # If the ninth tool were never registered at all, the case would die at step 4 with the same
+      # sentence and a 3/8 summary, and the second assertion refuses that.
+      #
+      # WHY THE CASE SETTLES TWICE BEFORE THE LAST STEP. The harness polls for up to five seconds
+      # for a tool to APPEAR and does not poll at all for one to DISAPPEAR, so absence is read once,
+      # immediately. Steps 6 and 7 are both no op reads that give the page's un awaited reconcile,
+      # and the browser's own tool list, room to settle before that single read.
+      - name: Negative control, a patch that lands must withdraw the ninth tool
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          CHROME_CHANNEL: ${{ inputs.chrome_channel || 'chrome-dev' }}
+          TIMEOUT_MS: ${{ inputs.timeout_ms || '30000' }}
+          # The assertions below are exact string matches. chalk colours its output on a GitHub
+          # runner because CI and GITHUB_ACTIONS are both set, so colour is turned off here and the
+          # log is stripped again afterwards. A gate that silently stopped matching because of an
+          # escape sequence would be a gate that had stopped gating.
+          NO_COLOR: "1"
+          FORCE_COLOR: "0"
+        run: |
+          set -uo pipefail
+          set +e
+          node "${EVALS_BIN}" smoke \
+            -u "${CLAIMREADY_URL}" \
+            -e evals/negative-control.json \
+            --chrome-channel "${CHROME_CHANNEL}" \
+            --timeout "${TIMEOUT_MS}" \
+            -v > evals-negative-control.raw.log 2>&1
+          harness_exit=$?
+          set -e
+
+          sed -r 's/\x1b\[[0-9;]*m//g' evals-negative-control.raw.log > evals-negative-control.log
+          cat evals-negative-control.log
+
+          failures=0
+
+          if [ "${harness_exit}" -eq 0 ]; then
+            echo "ASSERTION 1 FAILED: the harness exited 0. The negative control is supposed to fail."
+            echo "Either the legal patch was refused, or the ninth tool was not withdrawn."
+            failures=1
+          else
+            echo "ASSERTION 1 passed: the harness exited ${harness_exit}."
+          fi
+
+          if ! grep -qF 'Passed steps: 7/8 across 1 case(s).' evals-negative-control.log; then
+            echo "ASSERTION 2 FAILED: the summary is not 'Passed steps: 7/8 across 1 case(s).'"
+            echo "Seven of eight is the only shape that means the run reached the last step with"
+            echo "everything before it green. Anything else failed somewhere it was not supposed to."
+            echo "A summary of 8/8 means the ninth tool was still there. Read the note in"
+            echo "evals/README.md under 'Still owed' before touching anything: the likeliest cause"
+            echo "is the browser's withdrawal, not this assertion, and the assertion is never the fix."
+            failures=1
+          else
+            echo "ASSERTION 2 passed: seven of eight steps passed, so the patch at step 5 landed."
+          fi
+
+          if ! grep -qF 'step 8 (get_assistance_options): tool "get_assistance_options" is not available.' evals-negative-control.log; then
+            echo "ASSERTION 3 FAILED: step 8 did not report the ninth tool missing."
+            failures=1
+          else
+            echo "ASSERTION 3 passed: step 8 found the ninth tool withdrawn."
+          fi
+
+          if [ "${failures}" -ne 0 ]; then
+            echo "The negative control did not hold. Fix the page, never this check."
+            exit 1
+          fi
+          echo "Negative control held. The tool surface moved because a patch was applied."
+
       - name: Upload the report
         if: always()
         uses: actions/upload-artifact@v4
@@ -168,6 +288,8 @@ jobs:
           # always present and the report directory is uploaded only if it appeared.
           path: |
             evals-smoke.log
+            evals-negative-control.log
+            evals-negative-control.raw.log
             harness-help.log
             .evals/
           if-no-files-found: warn

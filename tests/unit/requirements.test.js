@@ -9,6 +9,7 @@ import {
   packFieldDemands,
   fileGateStatement,
   fileGateIsSettled,
+  optionalDetailsNote,
 } from '../../src/core/requirements.js';
 import { loadPolicyPack } from '../../src/core/policy.js';
 import {
@@ -17,6 +18,7 @@ import {
   validateClaim,
   requiredFieldsFor,
   REQUIRED_FIELDS,
+  OPTIONAL_FIELDS,
   INCIDENT_TYPES,
   SEVERITIES,
 } from '../../src/core/claim.js';
@@ -574,7 +576,10 @@ test('the file panel is settled only when there is nothing left for anyone to do
 
 test('the view prints the file panel sentence from this module and holds no copy of it', () => {
   const view = readFileSync(new URL('../../src/ui/render.js', import.meta.url), 'utf8');
-  assert.match(view, /import \{ fileGateStatement, fileGateIsSettled \} from '\.\.\/core\/requirements\.js';/);
+  assert.match(
+    view,
+    /import \{ fileGateStatement, fileGateIsSettled, optionalDetailsNote \} from '\.\.\/core\/requirements\.js';/,
+  );
   assert.match(view, /text\(els\.fileReason, fileGateStatement\(state\)\);/);
   assert.match(view, /classList\.toggle\('is-blocked', !fileGateIsSettled\(state\)\)/);
   assert.ok(
@@ -585,4 +590,102 @@ test('the view prints the file panel sentence from this module and holds no copy
     !/Still needed before you can file/.test(view),
     'render.js carries its own copy of the missing fields sentence again',
   );
+
+  // The third sentence about the same draft, held to the same rule. The note above the optional
+  // group is composed here and drawn there, from the state the file panel already receives, so a
+  // copy of it in the view would be a second answer waiting to disagree with this one.
+  assert.match(view, /text\(els\.optionalNote, optionalDetailsNote\(state\)\);/);
+  assert.ok(
+    !/Not needed to file/.test(view),
+    'render.js carries its own copy of the optional details sentence again',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// The note above the optional details, and the sentence it used to print
+//
+// index.html said "Not needed to file" over a group holding four fields that both
+// shipped packs can ask for: the police report reference, the location of a car
+// that cannot be driven, and, under the other insurer, a witness to a collision.
+// The file gate genuinely does not wait for them, so the sentence was true about
+// the button and false about the claim, and a claimant who read it and folded the
+// group away was still short of what the intake wanted.
+// ---------------------------------------------------------------------------
+
+/** The demo draft with a collision on it, which is what the page opens on. */
+function collisionDraft() {
+  return createClaim(fixture);
+}
+
+test('the note names the optional fields the loaded pack is actually asking for', () => {
+  // Kestrel asks a collision claimant for a witness, and witness_name is optional.
+  const state = panelState(collisionDraft(), kestrel);
+  const note = optionalDetailsNote(state);
+
+  assert.match(note, /The File button does not wait for these/);
+  assert.match(note, /Kestrel Assurance is asking for: /);
+  assert.match(note, /witness/i);
+  assert.doesNotMatch(note, /not asking for any/);
+});
+
+test('the note says so plainly when the pack asks for none of them', () => {
+  // Northwind asks for a police report only on a structural or theft claim, and for a location
+  // only when the car cannot be driven. Neither is true of the draft the page opens on.
+  const state = panelState(collisionDraft(), northwind);
+  const note = optionalDetailsNote(state);
+
+  assert.match(note, /Northwind Mutual is not asking for any of them on this draft/);
+  assert.doesNotMatch(note, /is asking for: /);
+});
+
+test('the note follows the claim, so answering a question can add one of these fields', () => {
+  const stranded = patch(patch(collisionDraft(), 'severity', 'structural'), 'vehicle_drivable', false);
+  const note = optionalDetailsNote(panelState(stranded, northwind));
+
+  // Two optional fields at once: the police report the structural rule raises, and the address
+  // the collection rule raises.
+  assert.match(note, /police report/i);
+  assert.match(note, /Where the car is now/i);
+});
+
+test('a requirement that no field answers is not named as an optional field', () => {
+  const stranded = patch(collisionDraft(), 'vehicle_drivable', false);
+  const state = panelState(stranded, northwind);
+
+  assert.ok(
+    state.outstanding.some((entry) => entry.id === 'roadside_collection'),
+    'the human action has to be outstanding for this test to mean anything',
+  );
+  assert.doesNotMatch(optionalDetailsNote(state), /Roadside collection/);
+});
+
+test('with no rule pack loaded the note claims nothing about what is asked for', () => {
+  const note = optionalDetailsNote({ ready: false, missing: [], outstanding: [], requirementsKnown: false });
+  assert.match(note, /The File button does not wait for these/);
+  assert.doesNotMatch(note, /asking/);
+});
+
+// The two sentences about one draft are drawn from one input, which is the rule
+// this module exists to hold. If the file panel is told the intake wants an
+// optional field, this note has to name it.
+test('the note and the file panel never disagree about the same draft', () => {
+  // A complete draft whose only open asks are the collection and the address for it. Small enough
+  // that neither statement has to cap its list, so the two can be compared word for word.
+  const ready = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+  const stranded = patch(patch(ready, 'vehicle_drivable', false), 'location', null);
+
+  for (const pack of [northwind, kestrel]) {
+    const state = panelState(stranded, pack);
+    assert.equal(state.ready, true, 'the file gate is satisfied, which is the interesting case');
+    const wanted = state.outstanding.filter((entry) => OPTIONAL_FIELDS.includes(entry.field));
+    assert.ok(wanted.length > 0, `${pack.insurer} has to be asking for an optional field here`);
+    assert.ok(state.outstanding.length <= 3, 'small enough that neither sentence has to cap its list');
+
+    const gate = fileGateStatement(state);
+    const note = optionalDetailsNote(state);
+    for (const entry of wanted) {
+      assert.ok(gate.includes(entry.label), `the file panel dropped ${entry.id}`);
+      assert.ok(note.includes(entry.label), `the optional note dropped ${entry.id}`);
+    }
+  }
 });

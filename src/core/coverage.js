@@ -55,6 +55,35 @@ function driverStillOpen(policy, claim) {
   );
 }
 
+/**
+ * Whether a yes on this policy still depends on a date nobody has given.
+ *
+ * THE SAME DEFECT AS THE DRIVER ONE, IN THE OTHER FIELD THE SCHEDULE READS. findOutsidePeriod
+ * answers null on an empty date, which is right as far as it goes: a claim with no date has not
+ * fallen outside anything. But the answer then printed a flat COVERED with a clause and an excess
+ * on a claim that had never said when the loss happened, and typing one date inside the period
+ * left it unchanged while typing one outside turned it into NOT COVERED. A cover answer that
+ * ignores whether the loss falls inside the policy period is answering a question the schedule
+ * has not decided.
+ *
+ * Only a yes can be provisional, for the same reason as the driver: an exclusion that has fired,
+ * a section that was never bought and a driver who is excluded are all answers no date can move.
+ *
+ * A pack that states no period, or one whose period is not two dates, makes the question moot,
+ * so the yes stays a plain yes rather than being provisional for ever.
+ */
+function dateStillOpen(policy, claim) {
+  const date = claim.incident_date;
+  if (typeof date === 'string' && date.trim()) return null;
+  const period = policy.period;
+  if (!period || typeof period.start !== 'string' || typeof period.end !== 'string') return null;
+  const under = typeof period.clause === 'string' && period.clause ? ` under clause ${period.clause}` : '';
+  return (
+    ' No date has been recorded for the incident yet, and this policy covers losses between ' +
+    `${period.start} and ${period.end}${under}, so this answer is provisional until the claim says when it happened.`
+  );
+}
+
 function findExcludedDriver(policy, claim) {
   const driver = normaliseName(claim.driver);
   if (!driver) return null;
@@ -132,10 +161,13 @@ export function exclusionLabels(decision) {
  *   exclusions  the exclusion objects that actually fired, each {code, clause, reason}.
  *               Empty when the claim is covered.
  *   provisional true when the answer is a yes that still depends on something the
- *               claim has not said yet. Today that is only the driver, on a policy
- *               that names an excluded one. A no is never provisional. A caller
- *               that prints a bare "COVERED" over a provisional answer is telling
- *               the claimant something the schedule has not decided.
+ *               claim has not said yet. Two things can do that, and either one is
+ *               enough: no driver named on a policy that excludes one, and no
+ *               incident date on a policy that states a period. A no is never
+ *               provisional. A caller that prints a bare "COVERED" over a
+ *               provisional answer is telling the claimant something the schedule
+ *               has not decided. The reason names every open question, so a caller
+ *               that reads the reason knows what to ask for next.
  *
  * @param {object} policy the `policy` block of the fixture
  * @param {object} claim a claim from claim.js
@@ -210,7 +242,11 @@ export function checkCoverage(policy, claim) {
       ? 'This section carries no excess, so there is nothing for you to pay towards it.'
       : `You pay the first ${deductible} ${currency} as the excess.`;
 
+  // Two open questions, and they compose. Either one on its own makes the yes provisional, and a
+  // claim that has said neither who was driving nor when it happened says both out loud rather
+  // than whichever one the code happened to look at last.
   const openDriver = driverStillOpen(policy, claim);
+  const openDate = dateStillOpen(policy, claim);
 
   return {
     covered: true,
@@ -219,8 +255,8 @@ export function checkCoverage(policy, claim) {
     currency,
     reason:
       `A ${claim.incident_type} claim is covered under ${coverage.label}, clause ${coverage.clause}. ` +
-      `${excessText}${openDriver ?? ''}`,
+      `${excessText}${openDriver ?? ''}${openDate ?? ''}`,
     exclusions: [],
-    provisional: Boolean(openDriver),
+    provisional: Boolean(openDriver || openDate),
   };
 }

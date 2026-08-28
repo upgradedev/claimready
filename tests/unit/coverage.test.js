@@ -244,3 +244,83 @@ test('a claim with no incident type yet is undecided rather than provisional', (
   assert.equal(result.provisional, false);
   assert.match(result.reason, /incident type is not recorded yet/i);
 });
+
+// ---------------------------------------------------------------------------
+// A yes that has not read the date is not a yes
+//
+// The driver hole was closed and the same hole in the field beside it was left
+// open. findOutsidePeriod answers null on an empty date, which is correct on its
+// own terms, so a claim with an incident type and no date printed a flat COVERED
+// with a clause and an excess while the schedule had not been asked the one
+// question the period clause exists to answer. Typing a date inside the period
+// changed nothing; typing one outside it turned the same claim into NOT COVERED.
+// ---------------------------------------------------------------------------
+
+/** A claim that names the incident and the driver, and no date. */
+function undated() {
+  const claim = createClaim({ policy, claim: {} });
+  const typed = applyPatch(claim, { field: 'incident_type', value: 'collision' });
+  assert.equal(typed.ok, true);
+  const named = applyPatch(typed.claim, { field: 'driver', value: 'Maria K.' });
+  assert.equal(named.ok, true);
+  assert.equal(named.claim.incident_date, null, 'the point of this fixture is the missing date');
+  return named.claim;
+}
+
+test('a covered claim with no incident date is provisional, not a flat yes', () => {
+  const result = checkCoverage(policy, undated());
+
+  assert.equal(result.covered, true, 'the schedule does cover a collision');
+  assert.equal(result.provisional, true, 'but a date outside the period would turn it into a no');
+  assert.match(result.reason, /No date has been recorded/);
+  assert.match(result.reason, /PL-1\.2/, 'the answer cites the period clause it depends on');
+  assert.match(result.reason, /provisional/);
+});
+
+test('the same undated claim is provisional under the other insurer too', () => {
+  const result = checkCoverage(kestrel, undated());
+  assert.equal(result.covered, true);
+  assert.equal(result.provisional, true);
+  assert.match(result.reason, /KP-2\.1/);
+});
+
+// The discriminating half. A schedule that states no period cannot be waiting on
+// a date, so the same claim gets a plain yes rather than a permanent maybe.
+test('an undated claim is not provisional on a policy that states no period', () => {
+  const noPeriod = { ...policy };
+  delete noPeriod.period;
+  const result = checkCoverage(noPeriod, undated());
+
+  assert.equal(result.covered, true);
+  assert.equal(result.provisional, false);
+  assert.doesNotMatch(result.reason, /provisional/);
+});
+
+test('giving the date settles it, either way', () => {
+  const inside = applyPatch(undated(), { field: 'incident_date', value: '2026-08-20' });
+  assert.equal(inside.ok, true);
+  const safe = checkCoverage(policy, inside.claim);
+  assert.equal(safe.covered, true);
+  assert.equal(safe.provisional, false, 'the question it depended on has been answered');
+
+  const outside = applyPatch(undated(), { field: 'incident_date', value: '2025-11-04' });
+  assert.equal(outside.ok, true);
+  const refused = checkCoverage(policy, outside.claim);
+  assert.equal(refused.covered, false);
+  assert.equal(refused.clause, 'PL-1.2');
+  assert.equal(refused.provisional, false, 'a no is never provisional');
+});
+
+// Both open at once, and both said. One overwriting the other is the easy way to
+// write this and it would hide whichever question the code looked at second.
+test('a claim missing both the driver and the date names both open questions', () => {
+  const claim = createClaim({ policy, claim: {} });
+  const typed = applyPatch(claim, { field: 'incident_type', value: 'collision' });
+  assert.equal(typed.ok, true);
+
+  const result = checkCoverage(policy, typed.claim);
+  assert.equal(result.covered, true);
+  assert.equal(result.provisional, true);
+  assert.match(result.reason, /Nobody is named as the driver/);
+  assert.match(result.reason, /No date has been recorded/);
+});
