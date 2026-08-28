@@ -117,9 +117,9 @@
   ],
   "human_only": {
     "rule": "Filing is never a tool. Neither is pinning a field, unpinning it, or calling out a recovery truck.",
-    "why": "An agent that has been talked into something by a poisoned page or a planted note must have nothing to call. It can draft, read and check as much as it likes, and it can commit nothing.",
+    "why": "An agent that has been talked into something by a poisoned page or a planted note must have nothing to call. It can draft, read and check as much as it likes, and there is no tool on the list that commits any of the three.",
     "what_this_does_not_mean": "It does not mean the buttons are unreachable. An agent driving a browser clicks ordinary DOM buttons, and no page can tell that click from a person's. A check on isTrusted or user activation would refuse an honest probe and pass a remotely driven browser, so this convention does not ask for one. The claim is about the published tool surface and nothing wider.",
-    "residual": "An agent working through the tool surface can still write a wrong value into any field the claimant has not pinned. The pin, the revision protocol and a visible record of every call are what the claimant holds against that.",
+    "residual": "An agent working through the tool surface can still write a wrong value into any field the claimant has not pinned. The pin, the revision protocol and a visible record of every tool call are what the claimant holds against that. That record covers tool calls only. A button pressed in the browser leaves no entry in it, because no tool call was made.",
     "how_to_check": "A page that claims this should be checkable from the outside: read the published tool list and look for the action. If it is there, the claim is false."
   },
   "untrusted_content": {

@@ -559,9 +559,24 @@ function checkDescription(root) {
   // looked for "theme fit", which appears nowhere in the rules: it confused the Stage One
   // pass/fail gate on fitting the theme with this deliverable. Corrected against the live rules
   // page on 2026-08-26, https://webmcp.devpost.com/rules
-  const required = ['fit for webmcp', 'better', 'impossible', 'implemented'];
+  //
+  // WHY THE THIRD ELEMENT ACCEPTS EITHER WORD. The rules say "difficult or impossible", and this
+  // row used to demand the literal "impossible". That turned the gate into a ratchet pointing the
+  // wrong way: a maintainer who noticed the description was overclaiming, and softened it to the
+  // organizer's own lower bar, turned CI red and was pushed straight back into the overclaim. A
+  // gate is allowed to insist the element is addressed. It is not allowed to insist on the
+  // stronger of the two words the rules themselves offer. Each entry below is a list of accepted
+  // spellings and one of them has to appear.
+  const required = [
+    ['fit for webmcp'],
+    ['better'],
+    ['impossible', 'difficult'],
+    ['implemented'],
+  ];
   const lowered = text.toLowerCase();
-  const missing = required.filter((token) => !lowered.includes(token));
+  const missing = required
+    .filter((alternatives) => !alternatives.some((token) => lowered.includes(token)))
+    .map((alternatives) => alternatives.join(' or '));
   return row(
     'D3',
     'deliverable: written description, four mandatory elements',
@@ -842,7 +857,15 @@ const SELFTEST_CASES = [
   {
     id: 'D3',
     name: 'the description stops answering one of the four mandatory elements',
-    break: (s) => editFile(s, join('docs', 'submission', 'description.md'), (t) => t.split('impossible').join('hard')),
+    // BOTH accepted spellings have to go. Removing only "impossible" no longer breaks anything,
+    // because "difficult" is the organizer's other word for the same element and the row accepts
+    // it. A break that leaves an accepted spelling behind tests nothing and would report a check
+    // that had quietly stopped failing as a check that still fails.
+    break: (s) => editFile(
+      s,
+      join('docs', 'submission', 'description.md'),
+      (t) => t.split('impossible').join('hard').split('difficult').join('hard'),
+    ),
     run: (s) => checkDescription(s),
   },
   {

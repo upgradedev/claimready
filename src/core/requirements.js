@@ -39,6 +39,9 @@
 
 import { FIELD_LABELS } from './claim.js';
 
+/** How many outstanding requirements the file panel names before it counts the rest. */
+const MAX_NAMED_ASKS = 3;
+
 function isEmptyValue(value) {
   if (value === null || value === undefined) return true;
   return typeof value === 'string' && value.trim().length === 0;
@@ -201,10 +204,18 @@ export function deriveRequirements(policy, claim, completedHumanActions) {
  * silent about incident_type, which the page requires on its own account because
  * a cover check cannot run without it.
  *
+ * A rule that no field can answer is reported too, under `humanOnly`, by id. It has
+ * to be: a caller that only ever saw the field rules could not see the sharpest
+ * requirement either pack states, which is the one no patch from either side can
+ * close. The guard test in tests/unit/requirements.test.js was blind to
+ * roadside_collection for exactly that reason.
+ *
  * @param {object} policy a pack from policy.js
  * @param {object} claim a claim from claim.js
- * @returns {{asked: string[], named: string[]}} `asked` is what the pack wants on
- *          this claim, `named` is every field any rule in the pack mentions
+ * @returns {{asked: string[], named: string[], humanOnly: string[]}} `asked` is what
+ *          the pack wants on this claim, `named` is every field any rule in the pack
+ *          mentions, `humanOnly` is the ids of the rules asked for right now that no
+ *          field answers
  */
 export function packFieldDemands(policy, claim) {
   if (!policy || typeof policy !== 'object') {
@@ -213,15 +224,20 @@ export function packFieldDemands(policy, claim) {
   const rules = Array.isArray(policy.requirements) ? policy.requirements : [];
   const named = new Set();
   const asked = new Set();
+  const humanOnly = new Set();
   for (const rule of rules) {
     const field = rule.satisfied_by && typeof rule.satisfied_by.field === 'string'
       ? rule.satisfied_by.field
       : null;
-    if (!field) continue;
+    const matched = evaluate(rule.when, claim).matched;
+    if (!field) {
+      if (matched) humanOnly.add(rule.id);
+      continue;
+    }
     named.add(field);
-    if (evaluate(rule.when, claim).matched) asked.add(field);
+    if (matched) asked.add(field);
   }
-  return { asked: [...asked], named: [...named] };
+  return { asked: [...asked], named: [...named], humanOnly: [...humanOnly] };
 }
 
 /**
@@ -254,4 +270,94 @@ export function summariseRequirements(requirements) {
   const names = outstanding.map((entry) => entry.label).join('; ');
   const line = `${outstanding.length} of ${requirements.length} intake requirements are still open: ${names}.`;
   return line.length <= 300 ? line : `${line.slice(0, 297)}...`;
+}
+
+/**
+ * Whether the file panel has nothing left to flag.
+ *
+ * The same question fileGateStatement answers in words, so the colour beside the
+ * sentence cannot say something the sentence does not. A draft that is ready to
+ * file while the intake is still asking for something is not settled, and neither
+ * is one whose rule pack never loaded, because that is an unknown rather than a
+ * clear answer.
+ *
+ * @param {object} state the same object fileGateStatement takes
+ * @returns {boolean}
+ */
+export function fileGateIsSettled(state) {
+  if (!state || state.ready !== true) return false;
+  if (state.requirementsKnown === false) return false;
+  return !Array.isArray(state.outstanding) || state.outstanding.length === 0;
+}
+
+/**
+ * What the file panel says about a draft, in one sentence.
+ *
+ * TWO PANELS, ONE INPUT. The page prints two statements about one draft: what the
+ * file gate still needs, and what the insurer's intake still asks for. They were
+ * built from two different inputs, so on a draft where every required field was
+ * filled and the intake still wanted something the page printed "The draft is
+ * complete" a few inches above "1 of 7 intake requirements are still open". Both
+ * sentences were true of the input each was handed, and the page was wrong.
+ *
+ * So the outstanding requirements come in here too, and the word complete is
+ * reachable only when there are none of them. Where the intake is still asking,
+ * the sentence says the two separate things that are actually true: every required
+ * field is filled, AND this is what the insurer still wants.
+ *
+ * THE HUMAN ACTION IS NAMED AS ONE. A requirement with no field is one no patch
+ * can close, from the page or from an agent, because there is no field to write.
+ * Saying so is the honest version, and it is the same fact the requirements panel
+ * and the tools already state.
+ *
+ * Whether the File button stays enabled is a separate decision and is not made
+ * here. This function only ever produces the sentence beside it.
+ *
+ * @param {{ready: boolean, missing: string[], outstanding: Array<object>,
+ *          insurer: (string|null), requirementsKnown: boolean}} state
+ *        `outstanding` is the list from outstandingRequirements. `requirementsKnown`
+ *        is false when no rule pack loaded, which is not the same as nothing being
+ *        asked for and must never be printed as though it were.
+ * @returns {string}
+ */
+export function fileGateStatement(state) {
+  const ready = Boolean(state && state.ready);
+  const missing = Array.isArray(state && state.missing) ? state.missing : [];
+  const outstanding = Array.isArray(state && state.outstanding) ? state.outstanding : [];
+  const known = state ? state.requirementsKnown !== false : true;
+
+  if (!ready) {
+    const labels = missing.map((field) => FIELD_LABELS[field] || field);
+    return labels.length
+      ? `Still needed before you can file: ${labels.join(', ')}.`
+      : 'Waiting for the draft to be complete.';
+  }
+
+  if (!known) {
+    return 'Every required field is filled. The insurer rule pack did not load, so this page cannot '
+      + 'say what else the intake asks for.';
+  }
+
+  if (outstanding.length === 0) {
+    return 'The draft is complete. Filing is yours to do.';
+  }
+
+  const insurer = typeof (state && state.insurer) === 'string' && state.insurer.trim().length > 0
+    ? state.insurer.trim()
+    : 'This insurer';
+
+  // Named, and capped, for the same reason describeClaim caps its pinned list: a
+  // panel that runs to ten labels buries the one line the claimant acts on.
+  const named = outstanding.slice(0, MAX_NAMED_ASKS).map((entry) => entry.label);
+  const rest = outstanding.length - named.length;
+  const asks = `${named.join('; ')}${rest > 0 ? `, and ${rest} more` : ''}`;
+
+  const humanOnly = outstanding.filter((entry) => !entry.field);
+  const tail = humanOnly.length === 0
+    ? ''
+    : ` No field answers ${humanOnly.length === 1 ? 'that one' : 'those'} and no tool on this page `
+      + `reaches ${humanOnly.length === 1 ? 'it' : 'them'}, so ${humanOnly.length === 1 ? 'it stays' : 'they stay'} `
+      + 'open until you do it on this page.';
+
+  return `Every required field is filled. ${insurer} still asks for: ${asks}.${tail}`;
 }

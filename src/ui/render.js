@@ -29,11 +29,11 @@ import {
   REQUIRED_FIELDS,
   OPTIONAL_FIELDS,
   PATCHABLE_FIELDS,
-  FIELD_LABELS,
   isLocked,
   provenanceOf
 } from '../core/claim.js';
 import { exclusionLabels } from '../core/coverage.js';
+import { fileGateStatement, fileGateIsSettled } from '../core/requirements.js';
 
 const HIGHLIGHT_MS = 1500;
 
@@ -277,9 +277,10 @@ export function createView(doc) {
      * Say out loud that the synthetic incident was loaded again.
      *
      * The button was silent whenever the draft had not been touched yet. The reset landed, every
-     * panel redrew into the state it was already in, the revision did not move so it did not
-     * flash, and the only word about it went to the live region, which is deliberately out of
-     * sight. A control with no visible answer is read as a control that does nothing.
+     * panel redrew into the state it was already in, and the only word about it went to the live
+     * region, which is deliberately out of sight. A control with no visible answer is read as a
+     * control that does nothing. The revision chip does flash now, because a reset advances the
+     * counter rather than rewinding it, but a number moving by one is not an answer on its own.
      */
     renderResetNote(message) {
       if (resetTimer) {
@@ -441,16 +442,10 @@ export function createView(doc) {
         text(els.fileResult, `Filed by you at ${state.filedAt}. No tool on this page reaches this button.`);
       } else {
         text(els.fileResult, '');
-        if (state.ready) {
-          text(els.fileReason, 'The draft is complete. Filing is yours to do.');
-          els.fileReason.classList.remove('is-blocked');
-        } else {
-          const missing = (state.missing || []).map((field) => FIELD_LABELS[field] || field);
-          text(els.fileReason, missing.length
-            ? `Still needed before you can file: ${missing.join(', ')}.`
-            : 'Waiting for the draft to be complete.');
-          els.fileReason.classList.add('is-blocked');
-        }
+        // Both halves of what the panel says come from src/core, the sentence and whether it is a
+        // clear answer, so the colour beside the words cannot claim something the words do not.
+        text(els.fileReason, fileGateStatement(state));
+        els.fileReason.classList.toggle('is-blocked', !fileGateIsSettled(state));
       }
 
       // Three states, and every one of them draws a reason. A control that is closed with nothing

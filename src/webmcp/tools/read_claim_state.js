@@ -14,7 +14,16 @@
  *
  * The revision leads the output and the instruction to quote it back sits in the closing lines,
  * both of which are kept whole when the result has to be shortened. What gets dropped under
- * pressure is requirement detail, which get_requirements will hand over in full.
+ * pressure is draft and requirement detail, and the result says how much, so a shortened answer is
+ * never mistaken for a whole one.
+ *
+ * WHICH LINES ARE HEAD AND WHICH ARE BODY IS THE WHOLE OF THAT PROMISE, AND IT WAS WRONG. The
+ * field lines and the pin list were head, so budgetedBlock was asked to keep about 1490 characters
+ * of variable length text whole inside a 1500 character budget. It could not, said nothing, and
+ * toResult clipped the far end: the revision instruction, the filing boundary sentence and every
+ * line of the body went, on a valid claim with each free text field at the app's own cap. The head
+ * is now the one line that cannot grow, and everything that grows with the claim is body, ordered
+ * so the shortest and most actionable summaries are the last to go.
  */
 
 import { toResult, budgetedBlock, clip, packOf, satisfiedByOf, NO_PACK_REASON } from '../register.js';
@@ -81,40 +90,51 @@ export default (ctx) => ({
       if (target.field && OPTIONAL_FIELDS.includes(target.field)) wantedEmpty.push(target.field);
     }
 
+    // THE HEAD IS ONE LINE, AND IT IS ONE LINE ON PURPOSE. Everything budgetedBlock promises to
+    // keep whole has to be short enough to keep whole, and every line below this one grows with
+    // the claim: ten field lines at the app's caps plus a pin list naming every field ran to about
+    // 1490 characters on its own, which left the tail nothing and cost the body everything. The
+    // policy id is data the page was handed rather than a literal, so it is clipped too.
     const head = [
-      `Claim draft on policy ${ctx.policyId}, revision ${claim ? claim.revision : 'unknown'}, status ${claim ? claim.status : 'unknown'}.`,
+      `Claim draft on policy ${clip(String(ctx.policyId), 40)}, revision ${claim ? claim.revision : 'unknown'}, status ${claim ? claim.status : 'unknown'}.`,
     ];
+
+    // Ordered by what an agent loses least by losing. The two short summaries come first, because
+    // "what is missing" and "what is pinned" are each one line and each changes what the agent
+    // does next. The field lines follow, and they are the long part, so they are what gives way.
+    const body = [];
+
+    body.push(verdict.missing && verdict.missing.length
+      ? `Still missing: ${verdict.missing.join(', ')}.`
+      : 'Nothing required is missing.');
+
+    if (pinned.length) {
+      body.push(`Pinned by the person on the page: ${clip(pinned.join(', '), 260)}. apply_claim_patch refuses any change to a pinned field until they unpin it, and no tool on this page unpins one.`);
+    }
+
+    if (Array.isArray(verdict.warnings) && verdict.warnings.length) {
+      body.push(`Warnings: ${clip(verdict.warnings.join(' '), 220)}`);
+    }
+
+    // A loading problem is not requirement detail and must not queue behind the draft, so it goes
+    // in beside the other one line summaries rather than with the list it failed to produce.
+    if (!pack) body.push(NO_PACK_REASON);
 
     // Every field on the static list is listed, and only the ones this claim actually has to
     // answer are marked required. A theft claim is not asked for an impact position, so saying
     // "required" beside it would send an agent looking for a value nothing wants.
     const required = requiredFieldsFor(claim);
     for (const field of REQUIRED_FIELDS) {
-      head.push(fieldLine(field, claim, provenance, pinned, required.includes(field)));
+      body.push(fieldLine(field, claim, provenance, pinned, required.includes(field)));
     }
     for (const field of OPTIONAL_FIELDS) {
       const shown = !isEmpty(claim ? claim[field] : undefined) || wantedEmpty.includes(field);
-      if (shown) head.push(fieldLine(field, claim, provenance, pinned, false));
+      if (shown) body.push(fieldLine(field, claim, provenance, pinned, false));
     }
 
-    if (pinned.length) {
-      head.push(`Pinned by the person on the page: ${pinned.join(', ')}. No patch of yours can move a pinned field until they unpin it.`);
-    }
-
-    head.push(verdict.missing && verdict.missing.length
-      ? `Still missing: ${verdict.missing.join(', ')}.`
-      : 'Nothing required is missing.');
-
-    if (Array.isArray(verdict.warnings) && verdict.warnings.length) {
-      head.push(`Warnings: ${clip(verdict.warnings.join(' '), 220)}`);
-    }
-
-    const body = [];
-    if (!pack) {
-      body.push(NO_PACK_REASON);
-    } else if (open.length === 0) {
+    if (pack && open.length === 0) {
       body.push(`All ${requirements.length} of this insurer's intake requirements are answered.`);
-    } else {
+    } else if (pack) {
       body.push(`Open intake requirements, ${open.length} of ${requirements.length}:`);
       for (const entry of open) body.push(requirementLine(pack, entry));
     }
@@ -134,7 +154,7 @@ export default (ctx) => ({
       head,
       body,
       tail,
-      more: (count) => `${count} more requirement(s) are open. Call get_requirements for the whole list.`,
+      more: (count) => `${count} further line(s) of the draft and the open requirements were withheld to fit the output budget. Call get_requirements for the intake list in full.`,
     }));
   }
 });

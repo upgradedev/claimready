@@ -52,9 +52,9 @@ pipeline takes a file instead and refuses to build without it.
 | `02-publishes` | machine | 15s | the strip reading 8 tools registered, and the tool names |
 | `03-agent-fills` | owner | 29s | the agent reading the policy and writing the draft, field by field |
 | `04-human-corrects` | owner | 25s | a person setting the car to not drivable, and the revision moving |
-| `05-reconcile` | owner | 21s | requirements changing, and a ninth tool being published |
-| `06-refusal` | owner | 22s | the planted note read, and the pinned field refused in the ledger |
-| `07-human-files` | owner | 12s | a hand pressing File this claim |
+| `05-reconcile` | owner | 23s | requirements changing, and a ninth tool being published |
+| `06-refusal` | owner | 23s | the planted note read, and the pinned field refused in the ledger |
+| `07-human-files` | owner | 16s | a hand pressing Request roadside assistance, then File this claim |
 | `08-close` | machine | 16s | the one sentence, and the architecture line |
 
 Beat order is the directory order under `video/beats`. Nothing else decides it.
@@ -131,7 +131,7 @@ is a person using the page directly.
 
 ## Owner beat 05-reconcile
 
-**Save to:** `video/beats/05-reconcile/take.mp4`, about 21 seconds.
+**Save to:** `video/beats/05-reconcile/take.mp4`, about 23 seconds.
 
 **On screen:** back in the conversation, with the requirements panel and the status strip both
 visible on the page.
@@ -148,13 +148,16 @@ I have just corrected the drivable answer on the page myself. Read the claim aga
 - the status strip count moving from `8` to `9`
 - the name `get_assistance_options` appearing in the list of tools available to the agent
 - the page announcement naming why the tool was published
+- the **roadside collection** entry in the requirements list, with the words saying no tool on this
+  page reaches it and a person has to act on it. Beat 07 is the beat that closes it, and this is
+  where a viewer first sees that it is open
 
 This is the beat the whole entry turns on, so it is worth several takes. The tool set is a function
 of the claim, and this is the only place a viewer sees that happen.
 
 ## Owner beat 06-refusal
 
-**Save to:** `video/beats/06-refusal/take.mp4`, about 22 seconds.
+**Save to:** `video/beats/06-refusal/take.mp4`, about 23 seconds.
 
 **On screen:** the conversation, with the tool call ledger and the **Still drivable** row both
 visible on the page.
@@ -204,15 +207,31 @@ and retry, and keep the take where the code reads `PATCH_REJECTED_LOCKED`.
 
 ## Owner beat 07-human-files
 
-**Save to:** `video/beats/07-human-files/take.mp4`, about 12 seconds.
+**Save to:** `video/beats/07-human-files/take.mp4`, about 16 seconds.
 
 **On screen:** the page, full width if you can, with the **Your decisions** panel in shot.
 
-**No prompt.** Change nothing else, unpin nothing, and press **File this claim** with the pointer,
-slowly enough to see.
+**No prompt. Two presses, in this order.** First **Request roadside assistance**, then **File this
+claim**, both with the pointer and slowly enough to see. Unpin nothing and change no field.
+
+**Why the order is forced, and why this beat presses twice.** Beat 05 spends its whole length
+showing a requirement the page had just raised: a roadside collection, which this insurer's rule
+pack answers with a human action rather than a field. `get_assistance_options` reads the options
+out, and closing the requirement is the button. An earlier version of this runbook filed the claim
+straight over it, which put a tidy screen on camera and left the one requirement the entry had just
+made a point of unanswered. The order is the product's, not a preference: `assistanceApplies` in
+`src/ui/app.js` requires `claim.status !== 'filed'`, so filing closes the assistance control. Press
+it first or it cannot be pressed at all.
+
+Whatever else the requirements panel still shows is left as it is. Filing is gated on the required
+fields through `validateClaim`, not on this insurer's intake list, so the page does allow a filing
+with an intake requirement open. Record what is true on the day rather than staging the panel.
 
 **Must be visible on the take:**
 
+- the **Request roadside assistance** button being pressed by hand, and the line that replaces it
+  naming the time you pressed it
+- the roadside collection entry in the requirements list closing once you have pressed it
 - the **File this claim** button being pressed by hand
 - the filed line that appears underneath it
 - the sentence on that panel saying these buttons are never registered as agent tools

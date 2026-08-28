@@ -230,3 +230,114 @@ test('the guard leaves the true statement about the tool surface alone', () => {
     assert.deepEqual(caught.map((rule) => rule.why), [], `the guard fired on: ${sentence}`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The faint ink has to be readable, and a value is easy to nudge back
+//
+// --ink-faint carries real text in 18 places, the tool count that is this entry's
+// whole argument among them, which `grep -c "color: var(--ink-faint)"
+// assets/styles.css` counts, and at #7b8894 it failed WCAG AA against
+// every ground the page ships: 3.63:1 on white and 3.13:1 on --line-soft, which
+// is what .tag-idle and .badge-none sit on, against a 4.5:1 threshold. Nothing in
+// the repository could have said so, because a colour is one token and a token is
+// one line, so this reads the shipped stylesheet and does the arithmetic.
+//
+// The pairs are named rather than discovered. A scan that worked out which ground
+// each rule sits on would need a cascade, and a wrong answer from one would be a
+// gate that passes for the wrong reason.
+// ---------------------------------------------------------------------------
+
+const AA_NORMAL_TEXT = 4.5;
+
+/**
+ * The grounds --ink-faint text is drawn on, in each scheme.
+ *
+ * --flash was missing from this list and the omission shipped a real failure. It is a
+ * transient highlight ground, which is exactly why it was overlooked, but faint text
+ * lands on it in two places that are not transient at all:
+ *
+ *   1. index.html:31-34 nests .revision-note, which is --ink-faint at styles.css:200,
+ *      inside .revision, and .revision.is-bumped paints --flash at styles.css:202. That
+ *      pair occurs on EVERY accepted change, from the page or from an agent.
+ *   2. .field-row.is-changed paints --flash at styles.css:599 while
+ *      .field-row.is-missing .field-value is --ink-faint at styles.css:580. render.js
+ *      toggles is-missing at 331 and adds is-changed at 966, so clearing a field puts
+ *      both classes on one row.
+ *
+ * In the dark scheme that pair measured 4.12:1 against the 4.5 threshold, at the
+ * --ink-faint of #8a9aa9 that cleared the other four grounds. Adding the ground here is
+ * what forces the token to be fixed rather than the check to be narrowed, and the token
+ * that moved was --ink-faint rather than --flash: --flash is a highlight fill, so its own
+ * separation from --surface is the thing that makes it read as a highlight, and darkening
+ * it to win a text ratio would have paid for AA with the cue the fill exists to give.
+ */
+const FAINT_ON = ['--surface', '--bg', '--surface-2', '--line-soft', '--flash'];
+
+function relativeLuminance(hex) {
+  const channels = [1, 3, 5]
+    .map((at) => parseInt(hex.slice(at, at + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrastRatio(a, b) {
+  const [lighter, darker] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * The tokens as the browser would resolve them, light scheme or dark.
+ *
+ * The light values are declared on `:root` and the dark ones inside the
+ * prefers-color-scheme block, which is later in the file, so reading the file in
+ * order and letting the last declaration win is the same answer the cascade gives.
+ */
+function tokens(scheme) {
+  const css = read('assets/styles.css');
+  const darkAt = css.indexOf('@media (prefers-color-scheme: dark)');
+  assert.ok(darkAt > 0, 'the dark scheme block has been renamed or removed');
+  const source = scheme === 'dark' ? css : css.slice(0, darkAt);
+
+  const out = {};
+  for (const [, name, value] of source.matchAll(/(--[a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)) {
+    out[name] = value.toLowerCase();
+  }
+  return out;
+}
+
+test('the token reader finds every colour the contrast check needs, in both schemes', () => {
+  for (const scheme of ['light', 'dark']) {
+    const found = tokens(scheme);
+    for (const name of ['--ink-faint', '--ink-soft', '--ink', ...FAINT_ON]) {
+      assert.match(found[name] || '', /^#[0-9a-f]{6}$/, `${name} was not read in the ${scheme} scheme`);
+    }
+  }
+  assert.notEqual(tokens('light')['--ink-faint'], tokens('dark')['--ink-faint'], 'one scheme is not being read');
+});
+
+test('every colour the page draws faint text in clears WCAG AA on every ground it ships on', () => {
+  const failures = [];
+  for (const scheme of ['light', 'dark']) {
+    const found = tokens(scheme);
+    for (const ink of ['--ink', '--ink-soft', '--ink-faint']) {
+      for (const ground of FAINT_ON) {
+        const ratio = contrastRatio(found[ink], found[ground]);
+        if (ratio < AA_NORMAL_TEXT) {
+          failures.push(`${scheme}: ${ink} ${found[ink]} on ${ground} ${found[ground]} is ${ratio.toFixed(2)}:1`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(failures, [], `text below 4.5:1 ships on the page:\n${failures.join('\n')}`);
+});
+
+// A guard nobody has seen fail proves nothing, so it is broken on purpose once,
+// with the value that actually shipped.
+test('the contrast guard fails on the value the audit found', () => {
+  const grounds = { '--surface': '#ffffff', '--bg': '#f4f6f8', '--surface-2': '#f8fafc', '--line-soft': '#eaeff3' };
+  const caught = Object.entries(grounds)
+    .map(([name, ground]) => [name, contrastRatio('#7b8894', ground)])
+    .filter(([, ratio]) => ratio < AA_NORMAL_TEXT);
+  assert.equal(caught.length, 4, 'the arithmetic no longer catches the value that shipped');
+  assert.equal(contrastRatio('#7b8894', '#ffffff').toFixed(2), '3.63', 'the ratio itself has drifted');
+});

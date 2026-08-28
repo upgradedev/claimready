@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { createStore } from '../../src/core/store.js';
-import { createClaim, validateClaim } from '../../src/core/claim.js';
+import { createClaim, validateClaim, PATCHABLE_FIELDS } from '../../src/core/claim.js';
 
 const FIXTURE_URL = new URL('../../fixtures/demo-collision.json', import.meta.url);
 const fixture = JSON.parse(readFileSync(FIXTURE_URL, 'utf8'));
@@ -163,30 +163,104 @@ test('subscribe insists on a function', () => {
 // reset
 // ---------------------------------------------------------------------------
 
+/**
+ * The draft goes back and the counter does not, so the two are asserted apart.
+ *
+ * `snapshot` is the whole claim, revision included, and comparing the whole thing
+ * is what these tests were doing. Loosening that comparison to make a reset pass
+ * would have thrown away the check that the draft really is restored, so the claim
+ * is compared field by field and the revision is asserted separately, in the
+ * direction it is now required to move.
+ */
+function fieldsOnly(claim) {
+  const out = {};
+  for (const field of [...PATCHABLE_FIELDS, 'status', 'filed_at', 'policy_id', 'reference']) {
+    out[field] = claim[field];
+  }
+  out.provenance = snapshot(claim.provenance);
+  out.locked = snapshot(claim.locked);
+  out.evidence_notes = snapshot(claim.evidence_notes);
+  return out;
+}
+
 test('reset puts the draft back to how the fixture left it', () => {
   const store = createStore(fixture);
-  const before = snapshot(store.getState().claim);
+  const before = fieldsOnly(store.getState().claim);
 
   store.dispatch({ type: 'patch', field: 'severity', value: 'structural' });
   store.dispatch({ type: 'patch', field: 'damage_zone', value: 7 });
-  assert.notDeepEqual(snapshot(store.getState().claim), before);
+  assert.notDeepEqual(fieldsOnly(store.getState().claim), before);
+  const movedTo = store.getState().claim.revision;
 
   const result = store.dispatch({ type: 'reset' });
   assert.equal(result.ok, true);
-  assert.deepEqual(snapshot(store.getState().claim), before);
+  assert.deepEqual(fieldsOnly(store.getState().claim), before);
   assert.equal(store.getState().lastError, null);
+
+  // Everything but the number. A reset that rewound it would hand a second draft
+  // the same revision an agent has already read.
+  assert.ok(
+    store.getState().claim.revision > movedTo,
+    `the reset went back to revision ${store.getState().claim.revision} from ${movedTo}`,
+  );
 });
 
 test('reset survives being run more than once', () => {
   const store = createStore(fixture);
-  const before = snapshot(store.getState().claim);
+  const before = fieldsOnly(store.getState().claim);
+  const seen = [store.getState().claim.revision];
 
   store.dispatch({ type: 'patch', field: 'severity', value: 'dent' });
   store.dispatch({ type: 'reset' });
+  seen.push(store.getState().claim.revision);
+  store.dispatch({ type: 'patch', field: 'severity', value: 'dent' });
+  store.dispatch({ type: 'reset' });
+  seen.push(store.getState().claim.revision);
+
+  assert.deepEqual(fieldsOnly(store.getState().claim), before);
+  assert.deepEqual(seen, [...seen].sort((a, b) => a - b), `the counter went backwards: ${seen.join(', ')}`);
+  assert.equal(new Set(seen).size, seen.length, `a revision was reused: ${seen.join(', ')}`);
+});
+
+// ---------------------------------------------------------------------------
+// The reset hole, reproduced then closed
+//
+// An agent reads revision 0. The person on the page edits, and the draft moves to
+// revision 1. The person then presses Load synthetic incident, which threw the
+// edit away AND put the counter back to 0. The agent's patch, quoting the 0 it
+// read, was then accepted against a draft that was not the one it had read, and
+// the stale check, which exists for exactly this, saw two equal numbers and waved
+// it through. Same number, different draft: the classic shape of it.
+// ---------------------------------------------------------------------------
+
+test('a patch quoting a revision from before a reset is refused as stale', () => {
+  const store = createStore(fixture);
+  const readAt = store.getState().claim.revision;
+
   store.dispatch({ type: 'patch', field: 'severity', value: 'dent' });
   store.dispatch({ type: 'reset' });
 
-  assert.deepEqual(snapshot(store.getState().claim), before);
+  const stale = store.dispatch({
+    type: 'patch',
+    changes: [{ field: 'severity', value: 'structural' }],
+    actor: 'agent',
+    baseRevision: readAt,
+  });
+
+  assert.equal(stale.ok, false, 'the stale patch was accepted against a draft it never read');
+  assert.equal(stale.code, 'PATCH_REJECTED_STALE');
+  assert.match(stale.error, new RegExp(`expected revision ${readAt}`));
+  assert.equal(store.getState().claim.severity, null, 'nothing was written');
+
+  // And the agent that reads again is not stuck: the current number works.
+  const fresh = store.dispatch({
+    type: 'patch',
+    changes: [{ field: 'severity', value: 'structural' }],
+    actor: 'agent',
+    baseRevision: store.getState().claim.revision,
+  });
+  assert.equal(fresh.ok, true, fresh.error);
+  assert.equal(store.getState().claim.severity, 'structural');
 });
 
 // ---------------------------------------------------------------------------
@@ -470,7 +544,7 @@ test('reset puts the revision, the pins and the provenance back as well', () => 
 
   store.dispatch({ type: 'reset' });
   const claim = store.getState().claim;
-  assert.equal(claim.revision, 0);
+  assert.equal(claim.revision, 3, 'the reset is itself a change and advances the counter');
   assert.deepEqual(claim.locked, []);
   assert.equal(claim.provenance.severity, undefined);
   assert.equal(claim.provenance.incident_type, 'policy', 'what the fixture supplied is still the fixture');

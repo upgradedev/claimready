@@ -279,15 +279,20 @@ to record.
 Measured 2026-08-27. Every number below came back from `ffprobe` through `video/sync_gate.py`, run
 against the encoded beat files.
 
-**Four of these rows are superseded.** The narration was rewritten on 2026-08-27, after the render,
+**Five of these rows are superseded.** The narration was rewritten on 2026-08-27, after the render,
 to take a false sentence out of `04` and to rewrite `06` around the refusal the page now actually
-produces. Nothing has been rendered since, so the affected rows are marked rather than adjusted, and
-no replacement number is invented. Word counts are the one thing that can be stated without
-rendering, and `python video/build_video.py --plan` prints them.
+produces. It was rewritten again on 2026-08-28, in `05`, `06` and `07`, after a review found that
+`07` filed the claim over an insurer requirement `05` had just spent its whole length showing as
+open, and that `06` ended on a claim about what an agent can do rather than about what the tool
+surface publishes. Nothing has been rendered since, so the affected rows are marked rather than
+adjusted, and no replacement number is invented. Word counts are the one thing that can be stated
+without rendering, and `python video/build_video.py --plan` prints them.
 
 Every column below is historical except the last two. The target column is the target as it stood on
-the day of the render, not necessarily what `beat.json` says now: `06-refusal` has since moved from
-13s to 22s, and the current numbers are the ones `python video/build_video.py --plan` prints.
+the day of the render, not necessarily what `beat.json` says now: `06-refusal` has moved from 13s to
+22s and then to 23s, `05-reconcile` from 21s to 23s and `07-human-files` from 12s to 16s, because
+each of those beats now has more to say. The current numbers are the ones
+`python video/build_video.py --plan` prints.
 
 | Beat | Target on the day | Narration, measured | Drift | Target now | Still the narration that was measured |
 | --- | --- | --- | --- | --- | --- |
@@ -295,16 +300,19 @@ the day of the render, not necessarily what `beat.json` says now: `06-refusal` h
 | `02-publishes` | 15s | 15.00s | 0.0 ms | 15s | yes |
 | `03-agent-fills` | 29s | 26.10s | 0.0 ms | 29s | no, one word changed, 75 words either way |
 | `04-human-corrects` | 25s | 23.80s | 0.0 ms | 25s | no, 67 words then, 69 now |
-| `05-reconcile` | 21s | 21.00s | 0.0 ms | 21s | no, one word changed, 55 words either way |
-| `06-refusal` | 13s | 12.20s | 0.0 ms | 22s | no, rewritten, 34 words then, 49 now |
-| `07-human-files` | 12s | 11.60s | 0.0 ms | 12s | yes |
+| `05-reconcile` | 21s | 21.00s | 0.0 ms | 23s | no, rewritten, 55 words then, 60 now |
+| `06-refusal` | 13s | 12.20s | 0.0 ms | 23s | no, rewritten twice, 34 words then, 52 now |
+| `07-human-files` | 12s | 11.60s | 0.0 ms | 16s | no, rewritten, 37 words then, 40 now |
 | `08-close` | 16s | 14.20s | 0.0 ms | 16s | yes |
-| **cut** | **145s** | **135.80s** | | **154s** | four of eight beats changed, so 135.80s is not this cut |
+| **cut** | **145s** | **135.80s** | | **161s** | five of eight beats changed, so 135.80s is not this cut |
 
 Two things still follow. The targets in `beat.json` are all a little longer than the narration on
 purpose, because a take that runs long is trimmed and a take that runs short is held on its last
-frame, which reads on screen as a freeze. Record long. And at 154s of targets against a 170s cap,
-the cut has room even if every beat renders at its full target, which none of them does.
+frame, which reads on screen as a freeze. Record long. And at 161s of targets against a 170s cap,
+the cut has room even if every beat renders at its full target, which none of them does. The margin
+is 9s of targets rather than 16s, which is still comfortable because the finished length is the
+narration and the narration has always come in under its target. It is not comfortable enough to
+spend again without re-reading this paragraph.
 
 The measurement used stand in pictures, so it said nothing about what the beats look like. It said
 that the render path completes, that the sync arithmetic holds on real speech rather than on a test

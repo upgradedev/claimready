@@ -9,8 +9,22 @@
  * tool only asks the question and puts the answer on the page.
  */
 
-import { toResult, packOf } from '../register.js';
+import { toResult, budgetedBlock, clip, packOf } from '../register.js';
 import { checkCoverage, exclusionLabels } from '../../core/coverage.js';
+
+/**
+ * How much of each piece of insurer text to show.
+ *
+ * The clause, the reason and the exclusion labels all come out of the rule pack, which is data
+ * this page is handed rather than anything the code decides, so none of them has a length of its
+ * own. Joining them raw and handing the lot to toResult is what cost this tool its closing line:
+ * an excluded driver with a long reason clause produced exactly 1500 characters, and the sentence
+ * that says this is not a settlement decision was the part that got cut off the end.
+ */
+const CLAUSE_ROOM = 90;
+const REASON_ROOM = 420;
+const EXCLUSION_ROOM = 320;
+const INSURER_ROOM = 80;
 
 export default (ctx) => ({
   name: 'check_coverage',
@@ -62,42 +76,56 @@ export default (ctx) => ({
     // answered is the fact the reader needs, and where the two belong to different insurers the
     // tool says so in the next line rather than leaving it to be worked out.
     const pack = packOf(ctx);
-    const source = pack ? `${pack.insurer} rules` : 'the policy schedule on this page';
+    const insurer = pack ? clip(String(pack.insurer), INSURER_ROOM) : null;
+    const source = insurer ? `${insurer} rules` : 'the policy schedule on this page';
+    const policyId = clip(String(ctx.policyId), 40);
 
     let verdict = 'NOT COVERED';
     if (decision.covered) verdict = decision.provisional ? 'COVERED, PROVISIONALLY' : 'COVERED';
 
-    const lines = [`Cover decision under ${source}, on the claim for policy ${ctx.policyId}: ${verdict}.`];
+    // The verdict is the head and nothing else is, because the head is the one part budgetedBlock
+    // has no way to shorten. Everything below grows with the rule pack.
+    const head = [`Cover decision under ${source}, on the claim for policy ${policyId}: ${verdict}.`];
 
-    if (pack && ctx.packId && ctx.homePackId && ctx.packId !== ctx.homePackId) {
-      lines.push(
-        `These are ${pack.insurer}'s published rules, loaded on this page so the same claim can be `
-        + `read against them. Policy ${ctx.policyId} is not with ${pack.insurer}.`
+    // Ordered by what a claimant is harmed most by not hearing. A provisional yes read as a plain
+    // yes is the worst outcome this tool can cause, so that warning goes first and the clause text
+    // it rests on, which is the longest thing here, goes last.
+    const body = [];
+
+    if (decision.provisional) {
+      body.push(
+        'Provisional, so do not tell the claimant they are covered yet. Ask who was driving and '
+        + 'send it with apply_claim_patch, then call check_coverage again.'
       );
     }
 
-    if (decision.clause) lines.push(`Clause: ${decision.clause}`);
-    if (decision.reason) lines.push(`Reason: ${decision.reason}`);
-
-    if (decision.provisional) {
-      lines.push(
-        'Provisional, so do not tell the claimant they are covered yet. Ask who was driving and '
-        + 'send it with apply_claim_patch, then call check_coverage again.'
+    if (insurer && ctx.packId && ctx.homePackId && ctx.packId !== ctx.homePackId) {
+      body.push(
+        `These are ${insurer}'s published rules, loaded on this page so the same claim can be `
+        + `read against them. Policy ${policyId} is not with ${insurer}.`
       );
     }
 
     // exclusions holds objects. exclusionLabels is the one place that turns them into words.
     const applied = exclusionLabels(decision);
     if (applied.length) {
-      lines.push(`Exclusions that apply: ${applied.join('; ')}`);
+      body.push(`Exclusions that apply: ${clip(applied.join('; '), EXCLUSION_ROOM)}`);
     }
 
     if (decision.covered && decision.deductible !== undefined && decision.deductible !== null) {
-      lines.push(`Deductible the claimant pays: ${decision.deductible} ${decision.currency || ctx.currency}`);
+      body.push(`Deductible the claimant pays: ${decision.deductible} ${decision.currency || ctx.currency}`);
     }
 
-    lines.push('This is a check against the sample policy on this page, not a settlement decision.');
+    if (decision.clause) body.push(`Clause: ${clip(String(decision.clause), CLAUSE_ROOM)}`);
+    if (decision.reason) body.push(`Reason: ${clip(String(decision.reason), REASON_ROOM)}`);
 
-    return toResult(lines.join('\n'));
+    const tail = ['This is a check against the sample policy on this page, not a settlement decision.'];
+
+    return toResult(budgetedBlock({
+      head,
+      body,
+      tail,
+      more: (count) => `${count} further line(s) of this decision were withheld to fit the output budget. They are on the page.`,
+    }));
   }
 });

@@ -3,8 +3,9 @@
 Three journeys over the nine tools this page publishes, plus a seeded generator of adversarial
 patch scenarios for the unit suite.
 
-Read the honesty section first. One of the two run modes has been observed to work and the other
-has not, and this file says which is which.
+Read the status section first. One of the two run modes has now been observed to run green on a
+runner and the other has never been wired at all, and that section says which is which, names the
+run, and names the one thing that mode is blind to.
 
 ---
 
@@ -38,33 +39,104 @@ everything operational here comes from the repository and the registry rather th
 
 ---
 
-## Honesty: what has and has not been observed to pass
+## Status: what has run, and what has not
 
-**Smoke mode on a GitHub Actions runner: NOT OBSERVED. Treat it as unproven until a run is green.**
+**Smoke mode on a GitHub Actions runner: OBSERVED, green.** This section used to say the opposite.
+It said smoke mode was unproven, and it named three specific risks that only a run could settle. The
+run happened, and all three are settled below.
 
-Three specific things stand between this workflow and a green run, and none of them was resolvable
-without running it:
+| | Observed |
+|---|---|
+| Run | [33074580188](https://github.com/upgradedev/claimready/actions/runs/33074580188), workflow `WebMCP evals`, conclusion success, started 2026-08-27T13:00:03Z |
+| Commit under test | `2c052e3464198993e3efed9043e0443ff2bcb817` |
+| Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
+| Browser | `Google Chrome 154.0.8013.2 dev`, printed by the install step |
+| Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
+| Result | `Passed steps: 16/16 across 3 case(s).` |
 
-1. `browser.ts` defaults to the Puppeteer channel `chrome-canary`. Google does not build Canary
-   for Linux, so that default cannot be satisfied on `ubuntu-latest`. The workflow installs the
-   Dev channel and passes `--chrome-channel chrome-dev`. Whether the smoke command accepts that
-   flag is itself unverified: it is listed under global options in the README, while the smoke
-   table lists only `-u`, `-e`, `--timeout` and `-v`.
-2. Tool discovery goes through `page.webmcp.tools()`, which needs a Puppeteer build that exposes a
-   WebMCP surface. Which versions do is not stated anywhere read above.
-3. This page uses the native `document.modelContext`, falling back to `navigator.modelContext`
-   (`src/webmcp/register.js` lines 103 to 109). It ships no polyfill. If the browser on the runner
-   does not expose either name, `registerTools` reports the surface unavailable, no tools are
-   registered, and every journey fails at its first step. That is the correct failure and it must
-   not be papered over.
+An earlier run, [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
+was green as well. The one above is the one quoted here because its commit is named. Read either for
+yourself with `gh run view 33074580188 --repo upgradedev/claimready --log`.
 
-The workflow therefore fails rather than reporting a pass it did not earn. There is no
-`continue-on-error` on the eval step and no fallback that turns "the harness could not run" into a
-pass. The one `|| true` in the file is on a diagnostic step that asserts nothing, and it exists so
-that the first real run records the harness flag surface into the artifact and settles points 1
-and 3 from the runner itself.
+### The three named risks, and what settled each
 
-**LLM driven browser mode: NOT WIRED and NOT OBSERVED.** It needs a model key
+**1. The Puppeteer channel.** `browser.ts` defaults to `chrome-canary`, which Google does not build
+for Linux, and the workflow passes `--chrome-channel chrome-dev`. The open question was whether the
+`smoke` command would accept that flag at all, since the harness documents it in one place and not
+in the other. This is the one risk that a chain settles rather than a single line, so the chain is
+written out instead of being compressed into a claim.
+
+- The run's own recorded help output lists `--chrome-channel <channel>` under the top level
+  `Options:` block with `(default: "chrome-canary")`, while `webmcp-evals smoke --help`, captured in
+  the same log, lists only `-u`, `-e`, `--timeout` and `-v`.
+- The command executed was `smoke -u ... -e evals/evals.json --chrome-channel chrome-dev --timeout
+  30000 -v`, and the step exited zero. No `unknown option` was printed.
+- A browser opened a page: `[Smoke] Opening fresh page for "Fill the draft in one revision, then
+  check it against the policy" at https://upgradedev.github.io/claimready/...`
+
+The last step is a deduction and is labelled as one. `chrome-canary` has no Linux build, so a run
+that had fallen through to the default could not have launched a browser on `ubuntu-latest`. A
+browser launched, so the Dev channel reached the launcher. That is two log anchors plus an
+inference, and no line in the log says the flag was honoured in those words.
+
+**2. Tool discovery through `page.webmcp.tools()`.** Settled by a line. The first step of the first
+journey is a tool call, and it came back with the page's own text:
+
+```
+[Smoke] Case "Fill the draft in one revision, then check it against the policy" Step 1/5: Calling tool "read_claim_state" with args: {}
+  └─ PASS: Output: Claim draft on policy MTR-2026-0417, revision 0, status draft.
+```
+
+A step whose tool is not discovered fails with `tool "<name>" is not available.` and stops the case.
+Sixteen steps in a row did not.
+
+**3. The native API, with no polyfill shipped.** Settled by that same line. This page registers on
+`document.modelContext`, falls back to `navigator.modelContext`, and ships no polyfill, so a browser
+exposing neither name registers nothing and every journey dies at its first step. Journey 1 step 1
+called a tool and got an answer, so the browser exposed one of the two names and the page's own
+`registerTools` ran against it. That was the correct failure to be afraid of, and it did not happen.
+
+The lifecycle half needed four steps rather than one, and got them:
+
+```
+Step 2/7: Calling tool "apply_claim_patch"       PASS: Applied. The claim is now at revision 1. Set vehicle_drivable to false.
+Step 4/7: Calling tool "get_assistance_options"  PASS: Northwind Mutual options for a vehicle that cannot be driven ...
+Step 5/7: Calling tool "apply_claim_patch"       PASS: PATCH_REJECTED_STALE. expected revision 0, current revision 1.
+Step 7/7: Calling tool "get_assistance_options"  PASS: Northwind Mutual options for a vehicle that cannot be driven ...
+```
+
+Step 4 found a tool that did not exist when the case opened. Step 7 found it still there after the
+stale patch was refused. That pair is the assertion journey 2 is built around, and both halves are
+in the log.
+
+### The limitation this file did not state
+
+**Smoke mode collects browser console errors and then throws them away. It never prints them and it
+never fails on them.** Three facts, each read from the harness at the pinned commit
+`d39eae4bd51e8c12736b8cae840bd98f190f3179`:
+
+- The pinned commit is `feat(evals): include browser console errors in reports (#361)`. It changed
+  `src/evaluator/browser.ts`, `src/evaluator/browserEvaluator.ts` and `src/report/report.ts`. It did
+  not change `src/evaluator/smokeEvaluator.ts`.
+- `executeToolChecked`, which smoke calls for every step, starts the collector, so the errors really
+  are gathered on a smoke run exactly as on a model driven one.
+- `getBrowserConsoleErrors()` has exactly one caller in the package, `browserEvaluator.ts` line 122.
+  Nothing in `smokeEvaluator.ts` reads it and nothing in the smoke summary prints it.
+
+So the run above would have reported `16/16` with the page throwing on every load. That is not an
+academic gap for this entry. The Content Security Policy ships inside the document, and a violation
+of it surfaces as a console error and as nothing else, so the mode used to prove the tool surface is
+the mode that is blind to the failure the deployed page is most likely to have. Until something
+reads that array, the console evidence for this page comes from two other places: `CAPTURE_JS` in
+the video pipeline, which fails a capture on any `console.error` from the live page, and opening the
+page by hand with the console visible.
+
+The workflow itself still refuses to launder a failure. There is no `continue-on-error` on the eval
+step and no fallback that turns "the harness could not run" into a pass. The one `|| true` in the
+file is on the diagnostic step that records the harness command surface, which asserts nothing and
+is the step that produced the help output quoted under risk 1.
+
+**LLM driven browser mode: still NOT WIRED and NOT OBSERVED.** It needs a model key
 (`GOOGLE_AI`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`) which this repository does not hold. The
 `messages` in `evals.json` are written as real prompts so the journeys are meaningful the day
 somebody runs `browser` mode, not as placeholders.
@@ -87,8 +159,9 @@ whole file, so it was checked against the bytes the host actually serves rather 
 | `document.modelContext` and `navigator.modelContext` | both absent in stock Chrome, and the page correctly says "No agent detected in this browser" |
 
 That last row is the expected result in a browser without the API and is not evidence against the
-page. It is recorded because it is the same absence that would make every journey fail at its
-first step on a runner, which is the risk named above.
+page. It is recorded because it is the same absence that would have made every journey fail at its
+first step on a runner, which was risk 3 above. Run 33074580188 settled it: on the runner's Chrome
+Dev build one of the two names was there, and the page's own registration ran against it.
 
 **What has been observed to pass, locally, with no install:**
 
@@ -148,8 +221,9 @@ journey uses the page's own lifecycle as the oracle:
 1. `read_claim_state` at revision 0.
 2. `apply_claim_patch` with `baseRevision: 0` setting `vehicle_drivable` to `false`. The draft
    moves to revision 1 and `get_assistance_options` is registered as the ninth tool.
-3. `read_claim_state`, a deliberate no-op. `src/webmcp/register.js` line 495 fires the reconcile
-   without awaiting it, so this step gives the registration a turn to settle rather than racing it.
+3. `read_claim_state`, a deliberate no-op. The store subscriber in `src/webmcp/register.js` fires
+   the reconcile without awaiting it, the `reconcile('claim changed').catch(...)` line, so this
+   step gives the registration a turn to settle rather than racing it.
 4. `get_assistance_options`. It must be available. That alone proves the dynamic registration.
 5. `apply_claim_patch` with `baseRevision: 0` again, now stale, trying to set `vehicle_drivable`
    back to `true`. It must be refused with `PATCH_REJECTED_STALE`.
@@ -244,10 +318,10 @@ Eighteen kinds are generated, each carrying its own oracle: the exact `PATCH_COD
 them as refusals would have produced a corpus that fails against correct code:
 
 - **An enum in the wrong case is coerced, not rejected.** `enumField` trims and lowercases before
-  comparing (`src/core/claim.js` lines 196 to 209), so `"COLLISION"` is stored as `"collision"`
+  comparing (`enumField` in `src/core/claim.js`), so `"COLLISION"` is stored as `"collision"`
   and the patch succeeds. The scenario pins the stored value instead of a refusal code.
 - **A date before the policy started is accepted by the patch layer.** `isIsoDate` checks the
-  calendar and the year range, not the schedule (lines 166 to 175). Whether the incident falls
+  calendar and the year range, not the schedule (`isIsoDate` in the same file). Whether the incident falls
   outside cover is `check_coverage` answering on clause `PL-1.2`, and deliberately not the patch
   layer's job.
 
@@ -354,8 +428,19 @@ node scripts/gen_scenarios.mjs --number 19   # its sibling, genuinely not a whol
 node scripts/gen_scenarios.mjs --count 180 --json
 ```
 
-**Still owed.** Item 3 above is a replay against the domain, not against a browser. The equivalent
-proof in smoke mode, that step 7 really does report the missing tool, cannot be recorded until
-smoke mode has been observed to run at all. When the first green run happens, run the same journey
-once by hand with the stale `baseRevision: 0` at step 5 changed to `1`, confirm it fails at step 7,
-and paste the harness output here.
+**Still owed, and narrowed.** Smoke mode has now been observed to run, so the condition that
+blocked the item below is gone and only the run itself is outstanding. Three things are owed on this
+page and nothing else is.
+
+1. **Journey 2's negative control, inside a browser.** Item 3 above is a replay against the domain,
+   not against the harness. Dispatch the evals workflow once against a copy of `evals/evals.json`
+   whose step 5 carries `baseRevision: 1` instead of `0`, so the patch lands, `vehicle_drivable`
+   becomes `true` and the ninth tool is withdrawn. Confirm the case then fails at step 7 with
+   `tool "get_assistance_options" is not available.` and paste the harness output here. The green
+   run proves this journey passes in a browser. Nothing yet proves it can fail in one.
+2. **A console reading from a smoke run.** Smoke gathers the page's console errors and prints none
+   of them, as set out in the status section. Either the harness has to be patched to read that
+   array or a separate check has to watch the console, before this file may say that a smoke run saw
+   a clean page. It has never said so and it must not start.
+3. **Browser mode, the model driven one.** It needs a key this repository does not hold, so it stays
+   NOT WIRED and NOT OBSERVED.

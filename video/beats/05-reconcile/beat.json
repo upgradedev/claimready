@@ -2,7 +2,7 @@
   "id": "05-reconcile",
   "title": "The tool surface follows the claim",
   "kind": "owner",
-  "target_seconds": 21,
+  "target_seconds": 23,
   "take": "take.mp4",
   "record": {
     "surface": "back in the conversation, with the requirements panel and the status strip both visible on the page",
@@ -13,7 +13,8 @@
       "the requirements list changing, with the reason printed beside each entry",
       "the status strip count moving from 8 to 9",
       "the name get_assistance_options appearing in the list of tools available to the agent",
-      "the page announcement naming why the tool was published"
+      "the page announcement naming why the tool was published",
+      "the roadside collection entry in the requirements list, with the words saying no tool on this page reaches it and a person has to act on it"
     ]
   }
 }

@@ -4,11 +4,20 @@ The insurer's page hands your own agent its policy rules as typed tools, so you 
 are covered for while you are still describing the crash.
 
 [![CI](https://github.com/upgradedev/claimready/actions/workflows/ci.yml/badge.svg)](https://github.com/upgradedev/claimready/actions/workflows/ci.yml)
+[![Readiness](https://github.com/upgradedev/claimready/actions/workflows/readiness.yml/badge.svg)](https://github.com/upgradedev/claimready/actions/workflows/readiness.yml)
 [![WebMCP evals](https://github.com/upgradedev/claimready/actions/workflows/evals.yml/badge.svg)](https://github.com/upgradedev/claimready/actions/workflows/evals.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
-The CI badge is red on purpose while the video is missing. The readiness gate refuses to let a
-mandatory deliverable pass, and a badge that hid that would be the wrong badge.
+Two of those badges answer two different questions and it is worth knowing which is which. **CI** is
+the engineering: secret scan, style gate, unit tests. **Readiness** is the submission: one table of
+deliverable rows, and it is red on purpose while the public video is missing. The readiness gate
+refuses to let a mandatory deliverable pass in any mode, `--ci` included, and a badge that hid that
+would be the wrong badge. Until 2026-08-28 the two were one workflow, so the engineering badge read
+red on every branch for a missing video, which told a reader the build was broken when nothing about
+the build was.
+
+A badge for a workflow that has not yet run on the default branch reports nothing rather than
+reporting a pass. If **Readiness** looks blank, that is what it is saying.
 
 ClaimReady is a first notice of loss page for a motor insurer. It is a static page with no
 dependencies and no build step, and it publishes its own capabilities to the visitor's AI agent
@@ -186,15 +195,20 @@ The shipped code makes exactly that call with the receiver resolved into a varia
 from `src/webmcp/register.js`, verbatim:
 
 ```js
-// line 379. getModelContext() reads document.modelContext, then navigator.modelContext, else null
+// getModelContext() reads document.modelContext, then navigator.modelContext, else null
 const modelContext = getModelContext();
 
-// line 405. One AbortController per tool, so a single tool can be withdrawn while the page runs
+// One AbortController per tool, so a single tool can be withdrawn while the page runs
 await modelContext.registerTool(descriptor, { signal: controller.signal });
 ```
 
-Read `getModelContext` at `src/webmcp/register.js:179` to confirm the variable is
-`document.modelContext` whenever the browser has it.
+Both of those lines live in `src/webmcp/register.js`. Find them with
+`grep -n "getModelContext()" src/webmcp/register.js` and
+`grep -n "registerTool(descriptor" src/webmcp/register.js`, then read the function itself, at
+`grep -n "export function getModelContext" src/webmcp/register.js`, to confirm the variable is
+`document.modelContext` whenever the browser has it. Line numbers are deliberately not quoted:
+the previous set went stale inside a day, and a citation the reader has to distrust is worse than
+a command they can run.
 
 ### Never tools, by design
 
@@ -223,7 +237,10 @@ and write a wrong value into any field the claimant has not pinned. That last on
 this page does not remove, and an earlier version of this section understated it by listing only
 what no tool reaches. What is absent from the tool surface is a tool for filing, for assistance
 and for unpinning, because none of the three is published. What the claimant holds against the
-rest is the pin, the revision protocol, and a ledger that shows every call as it happens.
+rest is the pin, the revision protocol, and a ledger that shows every tool call as it happens.
+The ledger is instrumentation on the tool surface and nothing else. A button pressed in the
+browser, by a person or by an agent driving the page, leaves no entry in it, because there is no
+tool call to record.
 
 `node scripts/readiness.mjs` scans the tool files for those names on every push and fails the build
 if one appears. What that proves is precise: no tool file declares one. It is a name blocklist over
@@ -283,10 +300,20 @@ Three prompts to paste:
 
 1. `Look at this claim page, tell me what it still needs from me, then set the incident date to last Thursday and the damage to a dent at the 4 o'clock position.`
 2. `Check whether my policy actually covers this, and tell me the clause and my deductible before I file anything.`
-3. `Try to file this claim for me.`
+3. `List every tool this page gives you, then tell me which of the things on this claim you can do through a tool and which ones the page says a person has to do.`
 
-The third one is the interesting prompt. The agent should come back and tell you it cannot, because
-filing is not a tool it has, and then point you at the button.
+The third one is the interesting prompt, and the honest answer is the interesting one. The page
+publishes eight tools, nine once the draft says the car cannot be driven, and none of them files a
+claim, requests a roadside collection or pins a field. The agent does not have to be told that: the
+page says it in its own tool output, so the answer comes back with the page's wording in it,
+`Filing the claim is a button pressed by the person on the page. It is not available as a tool.`
+
+Be clear about what that does and does not settle, because a judge will test the loose version of
+it. If you then say `file this claim for me`, a browser driving agent may well press the button,
+and OpenAI's own WebMCP documentation says an agent falls back to its ordinary browser capabilities
+when no tool fits. That is the expected behaviour and it is not a hole in the claim. The claim is
+about the tool surface: there is no name on the published list for filing, so nothing an injected
+instruction can ask for reaches it through a tool.
 
 ## Quickstart, with nothing installed
 
@@ -350,8 +377,8 @@ go stale between commits.
 | Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` reports 20 passing. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser |
 | The tool surface running in a real browser's own WebMCP implementation | proven once, in CI | [run 33074580188](https://github.com/upgradedev/claimready/actions/runs/33074580188): 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Read the honest limit below before quoting this |
 | Evals against the tool surface | built and executed | Three journeys over the nine tools, run green twice. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat .github/workflows/evals.yml` |
-| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not assert that the refusals refused. What they prove is that the tool surface registers and executes inside a browser's own implementation, and that the refusal text in the log is real output from it. The refusals themselves are asserted by `tests/unit/webmcp.test.js`, against a fake host |
-| Public video | not yet built. This is the one thing between the entry and a green gate, and it turns CI red on every branch until a public link lands in `docs/submission/video.md` | `node scripts/readiness.mjs` row `D4` |
+| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not assert that the refusals refused. What they prove is that the tool surface registers and executes inside a browser's own implementation, and that the refusal text in the log is real output from it. The refusals themselves are asserted by `tests/unit/webmcp.test.js`, against a fake host. A second limit is in `evals/README.md`: smoke mode gathers the page's browser console errors and never prints them or fails on them, so a green run says nothing at all about the console |
+| Public video | not yet built. This is the one thing between the entry and a green gate, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows | `node scripts/readiness.mjs` row `D4` |
 | Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
 
 Every count in this README comes with the command that produces it, so no number here has to be

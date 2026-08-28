@@ -7,6 +7,8 @@ import {
   outstandingRequirements,
   summariseRequirements,
   packFieldDemands,
+  fileGateStatement,
+  fileGateIsSettled,
 } from '../../src/core/requirements.js';
 import { loadPolicyPack } from '../../src/core/policy.js';
 import {
@@ -312,8 +314,32 @@ function claimMatrix() {
   return out;
 }
 
-test('for every field a pack names, the pack and the file gate agree on every claim shape', () => {
-  const disagreements = [];
+/**
+ * Every field either pack names, over the whole matrix, with nothing skipped.
+ *
+ * THE VERSION OF THIS TEST THAT SHIPPED FIRST WAS BLIND, AND BLIND IN THE ONE
+ * DIRECTION THAT MATTERED. It opened with `if (!REQUIRED_FIELDS.includes(field))
+ * continue;`, so it only ever compared the intersection where the two answers are
+ * the same thing by construction, and disagreement was impossible inside its own
+ * scope. police_report_ref, location and witness_name were never looked at once.
+ * A guard that can only pass is not a forcing function, it is a decoration.
+ *
+ * The two directions are not the same claim and are asserted separately:
+ *
+ *   CONTRADICTION, and it must never happen. The file gate requires a field on a
+ *   claim the pack does not ask for it on. That is the defect this test was
+ *   written for: the gate demanded an impact position on a theft claim while both
+ *   packs said theft is exempt.
+ *
+ *   BEYOND THE GATE, which is legitimate and has to be ENUMERATED rather than
+ *   ignored. A pack may ask for more than the page blocks filing on, and both do.
+ *   That gap is exactly what the file panel has to say out loud, so it is pinned
+ *   here by name: a new rule cannot join the set without this test going red.
+ */
+test('for every field a pack names, the file gate never requires what the pack does not ask for', () => {
+  const contradictions = [];
+  const beyondTheGate = new Set();
+  const examined = new Set();
   const matrix = claimMatrix();
   assert.ok(matrix.length >= 84, `the matrix collapsed to ${matrix.length} claims`);
 
@@ -322,19 +348,64 @@ test('for every field a pack names, the pack and the file gate agree on every cl
       const { asked, named } = packFieldDemands(pack, claim);
       const gate = requiredFieldsFor(claim);
       for (const field of named) {
-        if (!REQUIRED_FIELDS.includes(field)) continue;
+        examined.add(field);
         const packWantsIt = asked.includes(field);
         const gateWantsIt = gate.includes(field);
-        if (packWantsIt !== gateWantsIt) {
-          disagreements.push(
-            `${name} on ${label}: pack asks for ${field}=${packWantsIt}, file gate requires it=${gateWantsIt}`,
+        if (gateWantsIt && !packWantsIt) {
+          contradictions.push(
+            `${name} on ${label}: the file gate requires ${field}, the pack does not ask for it`,
           );
         }
+        if (packWantsIt && !gateWantsIt) beyondTheGate.add(`${name}:${field}`);
       }
     }
   }
 
-  assert.deepEqual(disagreements, [], disagreements.join('\n'));
+  assert.deepEqual(contradictions, [], contradictions.join(' | '));
+
+  // The scope this test used to skip. Naming the three is what stops the skip
+  // being reintroduced by a helper that quietly narrows the loop again.
+  for (const field of ['police_report_ref', 'location', 'witness_name']) {
+    assert.ok(examined.has(field), `${field} was never compared, so the guard is blind again`);
+  }
+
+  assert.deepEqual(
+    [...beyondTheGate].sort(),
+    [
+      'kestrel:location',
+      'kestrel:police_report_ref',
+      'kestrel:witness_name',
+      'northwind:location',
+      'northwind:police_report_ref',
+    ],
+    'a pack asks for a field the file gate does not block filing on. That is allowed, and the file '
+      + 'panel has to say so, but it is not allowed to appear here without being written down.',
+  );
+});
+
+/**
+ * The requirement no field can answer has to be visible to a caller asking what
+ * the pack demands.
+ *
+ * packFieldDemands used to `continue` on any rule without satisfied_by.field, so
+ * roadside_collection, the sharpest requirement either pack states and the only
+ * one no patch from either side can close, was invisible to every reader of this
+ * function including the guard above it.
+ */
+test('packFieldDemands surfaces the rules no field answers, by id', () => {
+  const drivable = patch(createClaim(fixture), 'vehicle_drivable', true);
+  const stranded = patch(createClaim(fixture), 'vehicle_drivable', false);
+
+  for (const [name, pack] of PACKS) {
+    assert.deepEqual(packFieldDemands(pack, drivable).humanOnly, [], `${name} asks for one too early`);
+    assert.deepEqual(
+      packFieldDemands(pack, stranded).humanOnly,
+      ['roadside_collection'],
+      `${name} hides the requirement no field can close`,
+    );
+    // And it is not a field demand in disguise: nothing in `named` answers it.
+    assert.ok(!packFieldDemands(pack, stranded).named.includes('roadside_collection'));
+  }
 });
 
 // The gap is real and deliberate, so it is written down rather than left to be
@@ -371,4 +442,147 @@ test('a theft claim is not required to carry an impact position, and can clear o
 
 test('packFieldDemands insists on a pack', () => {
   assert.throws(() => packFieldDemands(null, createClaim(fixture)), TypeError);
+});
+
+// ---------------------------------------------------------------------------
+// The two panels have to be able to agree
+//
+// The file panel and the requirements panel are two statements about one draft,
+// and they were printed from two different inputs. The file panel was handed the
+// file gate's verdict alone, so on a draft where every required field was filled
+// and the insurer still asked for something it printed "The draft is complete"
+// three inches from "1 of 7 intake requirements are still open". Both sentences
+// were drawn from the same store on the same tick.
+//
+// The claim below is that state, reached the way a person reaches it: answer the
+// six required fields, say where the car is, then answer "still drivable" with no.
+// Northwind's clause RA-3.2 then asks for a roadside collection, and that rule has
+// no field at all, so no patch from either side can close it. Only the person
+// pressing the button on the page can.
+// ---------------------------------------------------------------------------
+
+function strandedDraft() {
+  let claim = createClaim(fixture);
+  claim = patch(claim, 'incident_date', '2026-08-20');
+  claim = patch(claim, 'incident_type', 'collision');
+  claim = patch(claim, 'damage_zone', 10);
+  claim = patch(claim, 'severity', 'dent');
+  claim = patch(claim, 'description', 'A delivery van reversed into the left front wing while it was parked.');
+  claim = patch(claim, 'location', 'Car park, Harbour Road');
+  claim = patch(claim, 'vehicle_drivable', false);
+  return claim;
+}
+
+function panelState(claim, pack) {
+  const entries = deriveRequirements(pack, claim, []);
+  const verdict = validateClaim(claim);
+  return {
+    ready: verdict.ready,
+    missing: verdict.missing,
+    outstanding: outstandingRequirements(entries),
+    insurer: pack.insurer,
+    requirementsKnown: true,
+    summary: summariseRequirements(entries),
+  };
+}
+
+test('the file panel never says complete while the intake still asks for something', () => {
+  const claim = strandedDraft();
+  const state = panelState(claim, northwind);
+
+  // The exact state from the audit, pinned so the test cannot drift off it.
+  assert.equal(state.ready, true, 'every required field is filled');
+  assert.deepEqual(state.missing, [], 'the file gate has nothing left to ask for');
+  assert.equal(state.outstanding.length, 1, `outstanding: ${state.outstanding.map((e) => e.id).join(', ')}`);
+  assert.equal(state.outstanding[0].id, 'roadside_collection');
+  assert.equal(state.outstanding[0].field, null, 'no field answers it, so no patch can close it');
+  assert.match(state.summary, /1 of 7 intake requirements are still open/);
+
+  const sentence = fileGateStatement(state);
+  assert.ok(
+    !/complete/i.test(sentence),
+    `the file panel called an incomplete draft complete: "${sentence}"`,
+  );
+  assert.match(sentence, /Every required field is filled/);
+  assert.ok(
+    sentence.includes(state.outstanding[0].label),
+    `the panel does not name what the insurer still asks for: "${sentence}"`,
+  );
+  assert.ok(sentence.includes(northwind.insurer), 'the panel does not say whose intake is asking');
+});
+
+test('the file panel says out loud that no patch can close a human action', () => {
+  const sentence = fileGateStatement(panelState(strandedDraft(), northwind));
+  assert.match(sentence, /no tool on this page reaches it/i);
+  assert.match(sentence, /No field answers/i);
+});
+
+test('the file panel still says complete when the intake is genuinely answered', () => {
+  const claim = patch(strandedDraft(), 'vehicle_drivable', true);
+  const state = panelState(claim, northwind);
+  assert.equal(state.outstanding.length, 0, 'a drivable car raises neither roadside rule');
+  assert.equal(fileGateStatement(state), 'The draft is complete. Filing is yours to do.');
+});
+
+test('an unfilled draft still names what is missing, and never claims completeness', () => {
+  const state = panelState(createClaim(fixture), northwind);
+  const sentence = fileGateStatement(state);
+  assert.equal(state.ready, false);
+  assert.match(sentence, /Still needed before you can file/);
+  assert.ok(!/complete/i.test(sentence), sentence);
+});
+
+test('a draft the rule pack cannot be read against does not claim completeness either', () => {
+  const claim = patch(strandedDraft(), 'vehicle_drivable', true);
+  const sentence = fileGateStatement({
+    ready: true,
+    missing: [],
+    outstanding: [],
+    insurer: null,
+    requirementsKnown: false,
+  });
+  assert.ok(!/complete/i.test(sentence), sentence);
+  assert.match(sentence, /rule pack did not load/i);
+  assert.equal(validateClaim(claim).ready, true, 'the file gate itself is still satisfied');
+});
+
+// The extraction is only worth having while the view keeps calling it. A second
+// copy of the sentence inside render.js would put the two panels back on two
+// inputs without a single test going red, which is how this defect shipped.
+// The colour beside the sentence is a claim of its own, so it is answered by the
+// same module rather than by the view reading `ready` on its own.
+test('the file panel is settled only when there is nothing left for anyone to do', () => {
+  const stranded = panelState(strandedDraft(), northwind);
+  assert.equal(fileGateIsSettled(stranded), false, 'the intake is still asking for something');
+
+  const answered = panelState(patch(strandedDraft(), 'vehicle_drivable', true), northwind);
+  assert.equal(fileGateIsSettled(answered), true);
+
+  assert.equal(fileGateIsSettled(panelState(createClaim(fixture), northwind)), false, 'not ready');
+  assert.equal(
+    fileGateIsSettled({ ready: true, missing: [], outstanding: [], requirementsKnown: false }),
+    false,
+    'a pack that never loaded is an unknown, not a clear answer',
+  );
+  assert.equal(fileGateIsSettled(null), false);
+
+  // And the two never disagree: settled is exactly the state the word complete is allowed in.
+  for (const state of [stranded, answered]) {
+    assert.equal(/complete/i.test(fileGateStatement(state)), fileGateIsSettled(state));
+  }
+});
+
+test('the view prints the file panel sentence from this module and holds no copy of it', () => {
+  const view = readFileSync(new URL('../../src/ui/render.js', import.meta.url), 'utf8');
+  assert.match(view, /import \{ fileGateStatement, fileGateIsSettled \} from '\.\.\/core\/requirements\.js';/);
+  assert.match(view, /text\(els\.fileReason, fileGateStatement\(state\)\);/);
+  assert.match(view, /classList\.toggle\('is-blocked', !fileGateIsSettled\(state\)\)/);
+  assert.ok(
+    !/The draft is complete/.test(view),
+    'render.js carries its own copy of the file panel sentence again',
+  );
+  assert.ok(
+    !/Still needed before you can file/.test(view),
+    'render.js carries its own copy of the missing fields sentence again',
+  );
 });

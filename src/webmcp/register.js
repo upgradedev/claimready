@@ -12,7 +12,7 @@
  * absent:
  *   1. Filing the claim. No tool here reaches it. The person on the page presses the button.
  *   2. Unpinning a field the person pinned. Pinning is how they say "I checked this one myself",
- *      so nothing an agent can call may release it.
+ *      so no tool on this surface releases it.
  *   3. Requesting roadside assistance. An agent can read the options and say what they are. The
  *      button is pressed by a person.
  * An agent that has been talked into something by a poisoned web page can therefore draft, read
@@ -238,13 +238,36 @@ export function textOfResult(result) {
  * Assemble a result that fits the output budget by dropping detail, never by dropping the lines
  * that tell the agent what to do next.
  *
- * The head and the tail are always kept whole. Body entries are added while they fit, and when
- * any are left over the caller's `more` line says how many, so a reader is never quietly given a
- * shorter list than the page actually holds. This is why the revision belongs in the head: the
- * one number the whole read then write protocol depends on can never be the thing that got cut.
+ * The head, the withheld notice and the tail are always kept whole. Body entries are added while
+ * they fit, and when any are left over the caller's `more` line says how many, so a reader is
+ * never quietly given a shorter list than the page actually holds. This is why the revision
+ * belongs in the head: the one number the whole read then write protocol depends on can never be
+ * the thing that got cut.
+ *
+ * THIS FUNCTION USED TO PROMISE THAT AND NOT KEEP IT, AND THE FAILURE WAS INVISIBLE. It measured
+ * the head and the tail, never checked that the two of them fit, and when they did not it handed
+ * back a string over the budget. toResult runs second and clips from the END, so the head survived
+ * whole and the tail, which is where read_claim_state keeps the baseRevision instruction and the
+ * filing boundary sentence, was cut off. Two functions disagreeing about which end is expendable,
+ * with the loser being exactly the lines this one exists to protect. On a valid claim with every
+ * free text field at the app's own cap it cost the entire body as well.
+ *
+ * So the arithmetic is now checked rather than assumed, in three places:
+ *   1. The head and the tail have to fit before anything else is considered. When they do not,
+ *      that is a bug in the head, not a result to be shortened, and it throws instead of returning
+ *      something quietly wrong. A head is code, so a head that cannot fit is a defect a test can
+ *      catch at authoring time. tests/unit/webmcp.test.js breaks one on purpose.
+ *   2. The room reserved for the withheld notice is measured from `more(body.length)`, the longest
+ *      notice this call could possibly print. Reserving for `more(dropped)` and then printing
+ *      `more(stillDropped)` reserves for the shorter of the two, and a single extra digit in the
+ *      count then pushed the result one character over.
+ *   3. The assembled string is measured before it is returned, and body entries are given back one
+ *      at a time until it fits. A `more` function is the caller's, so it can produce any length it
+ *      likes and no reservation computed in advance is proof.
  *
  * @param {{head?: string[], body?: string[], tail?: string[], limit?: number, more?: Function}} parts
  * @returns {string}
+ * @throws {RangeError} when the head and the tail cannot fit the budget between them
  */
 export function budgetedBlock(parts) {
   const head = (parts && parts.head) || [];
@@ -255,32 +278,56 @@ export function budgetedBlock(parts) {
 
   // One newline is charged per line, head and tail alike. That over reserves by a character or
   // two, which is the right direction to be wrong in.
-  const fixed = [...head, ...tail].reduce((sum, line) => sum + line.length + 1, 0);
+  const cost = (lines) => lines.reduce((sum, line) => sum + line.length + 1, 0);
+  const fixed = cost(head) + cost(tail);
+
+  if (fixed > limit) {
+    throw new RangeError(
+      `budgetedBlock cannot keep its promise: the head and tail come to ${fixed} characters and `
+      + `the budget is ${limit}. Move the lines that vary in length into body, where they can be `
+      + 'shortened and reported, and keep the head to what is always short.'
+    );
+  }
+
+  const assemble = (taken) => {
+    const dropped = body.length - taken.length;
+    const lines = [...head, ...taken];
+    if (dropped > 0) lines.push(more(dropped));
+    return [...lines, ...tail].join('\n');
+  };
 
   const fit = (reserve) => {
     let used = 0;
     const taken = [];
     for (const entry of body) {
-      const cost = entry.length + 1;
-      if (fixed + used + cost + reserve > limit) break;
+      const spend = entry.length + 1;
+      if (fixed + used + spend + reserve > limit) break;
       taken.push(entry);
-      used += cost;
+      used += spend;
     }
     return taken;
   };
 
   let taken = fit(0);
-  if (taken.length < body.length) {
-    const dropped = body.length - taken.length;
-    const moreLine = more(dropped);
-    taken = fit(moreLine.length + 1);
-    const stillDropped = body.length - taken.length;
-    const lines = [...head, ...taken];
-    if (stillDropped > 0) lines.push(more(stillDropped));
-    return [...lines, ...tail].join('\n');
+  if (taken.length === body.length) return assemble(taken);
+
+  // Something is being withheld, so the notice has to be paid for. Reserve for the longest one
+  // this call could print, then verify, because `more` belongs to the caller.
+  taken = fit(more(body.length).length + 1);
+  let out = assemble(taken);
+  while (out.length > limit && taken.length > 0) {
+    taken = taken.slice(0, taken.length - 1);
+    out = assemble(taken);
   }
 
-  return [...head, ...taken, ...tail].join('\n');
+  if (out.length > limit) {
+    throw new RangeError(
+      `budgetedBlock cannot keep its promise: the head and tail plus the withheld notice come to `
+      + `${out.length} characters and the budget is ${limit}. Shorten the notice or the head.`
+    );
+  }
+
+  return out;
 }
 
 /**

@@ -24,7 +24,7 @@
  *   { type: 'lock',   field }     human only, pins a field
  *   { type: 'unlock', field }     human only, releases it
  *   { type: 'file',   at }        human only
- *   { type: 'reset' }
+ *   { type: 'reset' }              restores the draft and advances the revision, never rewinds it
  *
  * `actor` defaults to 'human', because the page is the caller that can leave it
  * out. The tools layer passes actor 'agent' and the baseRevision the agent read,
@@ -120,7 +120,24 @@ export function createStore(initialState) {
     }
 
     if (type === 'reset') {
-      state = { claim: clone(initialClaim), lastError: null, lastCode: null };
+      // THE DRAFT GOES BACK. THE COUNTER DOES NOT.
+      //
+      // A revision number is a promise that a patch quoting it is patching the draft
+      // the quoter read. Sending the counter back to where it started broke that
+      // promise in a way nothing on the page could show: an agent read revision 0, a
+      // person edited the draft to revision 1, the reset put a different draft back at
+      // revision 0, and the agent's patch quoting 0 was then accepted against it. Two
+      // different drafts wore one number and the stale check waved the second one
+      // through, which is the one thing it exists to stop.
+      //
+      // So a reset is a change like any other and advances the counter past everything
+      // anybody has read. The claim is restored; the number keeps counting. That is
+      // also why there is no epoch here: the revision alone is what a patch quotes, and
+      // one monotonic number needs no second one to agree with it.
+      const restored = clone(initialClaim);
+      const previous = Number.isInteger(state.claim.revision) ? state.claim.revision : 0;
+      restored.revision = previous + 1;
+      state = { claim: restored, lastError: null, lastCode: null };
       notify();
       return { ok: true, error: null, code: null, applied: [], revision: state.claim.revision, state };
     }

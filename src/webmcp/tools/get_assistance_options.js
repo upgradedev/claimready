@@ -28,13 +28,23 @@
  *
  * NOTHING HERE BOOKS ANYTHING. Arranging the collection is a button a person presses on the page.
  * No tool on this page reaches it and none ever should, because a recovery truck arriving at
- * somebody's house is exactly the sort of thing an agent should not be able to cause on its own.
+ * somebody's house is exactly the sort of thing a typed call should not be able to cause. That is
+ * a statement about this tool surface and about nothing else: a browser driving agent clicks an
+ * ordinary DOM button like any other caller, and this file makes no claim that it cannot.
  */
 
 import { toResult, budgetedBlock, clip, packOf, NO_PACK_REASON } from '../register.js';
 import { deriveRequirements } from '../../core/requirements.js';
 
 const TRIGGER_FIELD = 'vehicle_drivable';
+
+/**
+ * How much of the insurer's name may reach the head line.
+ *
+ * budgetedBlock keeps the head whole and refuses loudly when it cannot, and the name is rule pack
+ * data with no length of its own, so this file gives it one.
+ */
+const INSURER_ROOM = 80;
 
 export default (ctx) => ({
   name: 'get_assistance_options',
@@ -106,8 +116,8 @@ export default (ctx) => ({
 
     return toResult(budgetedBlock({
       head: [
-        `${pack.insurer} options for a vehicle that cannot be driven, from the insurer's own rule `
-        + `pack. Amounts on this policy are in ${pack.currency}.`,
+        `${clip(String(pack.insurer), INSURER_ROOM)} options for a vehicle that cannot be driven, `
+        + `from the insurer's own rule pack. Amounts on this policy are in ${clip(String(pack.currency), 12)}.`,
       ],
       body,
       tail: [

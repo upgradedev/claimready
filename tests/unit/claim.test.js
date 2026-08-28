@@ -20,6 +20,7 @@ import {
   createClaim,
   hydrateClaim,
   applyPatch,
+  patchIsNoChange,
   lockField,
   unlockField,
   isLocked,
@@ -831,4 +832,174 @@ test('describeClaim states the revision an agent has to quote back', () => {
 
   const moved = patch(claim, 'severity', 'dent').claim;
   assert.match(describeClaim(moved), /revision 1/);
+});
+
+// ---------------------------------------------------------------------------
+// A batch is one revision, so what it requires is read off where it ENDS
+//
+// Turning a collision into a theft means two things at once: the type changes and
+// the impact position goes away, because a stolen car has no impact position and
+// both packs say so. Sent as the atomic patch this API exists for, it was refused
+// in BOTH orders, because pass one asked requiredFieldsFor about the claim on the
+// way IN, which was still a collision. The same two changes sent one after the
+// other were both accepted. The atomic path was strictly weaker than the
+// sequential one at the exact moment atomicity was worth having.
+// ---------------------------------------------------------------------------
+
+test('a batch that turns a collision into a theft may clear the impact position, in either order', () => {
+  const collision = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+  assert.equal(collision.incident_type, 'collision');
+  assert.equal(collision.damage_zone, 10);
+
+  const typeFirst = applyPatch(collision, [
+    { field: 'incident_type', value: 'theft' },
+    { field: 'damage_zone', value: null },
+  ]);
+  assert.equal(typeFirst.ok, true, `refused: ${typeFirst.error}`);
+  assert.equal(typeFirst.claim.incident_type, 'theft');
+  assert.equal(typeFirst.claim.damage_zone, null);
+  assert.equal(typeFirst.revision, collision.revision + 1, 'two changes, one revision');
+  assert.deepEqual([...typeFirst.applied].sort(), ['damage_zone', 'incident_type']);
+
+  const clearFirst = applyPatch(collision, [
+    { field: 'damage_zone', value: null },
+    { field: 'incident_type', value: 'theft' },
+  ]);
+  assert.equal(clearFirst.ok, true, `refused: ${clearFirst.error}`);
+  assert.equal(clearFirst.claim.damage_zone, null);
+
+  // The order the changes arrive in cannot change the answer.
+  assert.deepEqual(snapshot(typeFirst.claim), snapshot(clearFirst.claim));
+
+  // And the atomic path now agrees with the sequential one, which always worked.
+  const sequential = applyPatch(
+    applyPatch(collision, { field: 'incident_type', value: 'theft' }).claim,
+    { field: 'damage_zone', value: null },
+  ).claim;
+  assert.equal(sequential.damage_zone, null);
+  assert.equal(sequential.incident_type, 'theft');
+});
+
+test('a claim that is still a collision at the end of the patch keeps its impact position', () => {
+  const collision = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+
+  // On its own: nothing about the claim changed, so the field is still required.
+  const alone = patch(collision, 'damage_zone', null);
+  assert.equal(alone.ok, false);
+  assert.equal(alone.code, PATCH_CODES.value);
+  assert.match(alone.error, /damage_zone is required/);
+  assert.equal(alone.claim.damage_zone, 10, 'nothing was written');
+  assert.equal(alone.revision, collision.revision, 'a refused patch does not move the revision');
+
+  // Beside a change that leaves it a collision: still required, still refused.
+  const beside = applyPatch(collision, [
+    { field: 'severity', value: 'structural' },
+    { field: 'damage_zone', value: null },
+  ]);
+  assert.equal(beside.ok, false);
+  assert.equal(beside.code, PATCH_CODES.value);
+  assert.equal(beside.claim.severity, 'dent', 'the whole batch is refused, not part of it');
+  assert.equal(beside.claim.damage_zone, 10);
+
+  // Changing the type to another kind that is asked for a position: still refused.
+  const glass = applyPatch(collision, [
+    { field: 'incident_type', value: 'glass' },
+    { field: 'damage_zone', value: null },
+  ]);
+  assert.equal(glass.ok, false);
+  assert.equal(glass.code, PATCH_CODES.value);
+  assert.equal(glass.claim.incident_type, 'collision', 'nothing was written');
+
+  // And a theft claim going back to a collision cannot arrive without one either.
+  const theft = applyPatch(collision, [
+    { field: 'incident_type', value: 'theft' },
+    { field: 'damage_zone', value: null },
+  ]).claim;
+  const back = patch(theft, 'incident_type', 'collision');
+  assert.equal(back.ok, true, 'the type itself may change');
+  assert.deepEqual(validateClaim(back.claim).missing, ['damage_zone'], 'and the position is asked for again');
+});
+
+test('a required field can never be cleared by a batch, whatever else is in it', () => {
+  const collision = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+  for (const field of ['incident_date', 'severity', 'vehicle_drivable', 'description']) {
+    const result = applyPatch(collision, [
+      { field: 'incident_type', value: 'theft' },
+      { field, value: null },
+    ]);
+    assert.equal(result.ok, false, `${field} was cleared by a batch`);
+    assert.equal(result.code, PATCH_CODES.value);
+    assert.match(result.error, new RegExp(`${field} is required`));
+    assert.equal(result.claim.incident_type, 'collision', 'and nothing beside it landed either');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The same value, twice
+//
+// A page control can hand the store the same answer twice over: a keystroke timer
+// commits it, then the change event commits it again on the way out of the field.
+// Both are accepted, so the revision moves twice and the second one re-stamps
+// provenance over a draft nobody moved. patchIsNoChange is how a caller tells the
+// two apart without coercing anything itself.
+// ---------------------------------------------------------------------------
+
+test('patchIsNoChange sees through the coercions a patch would apply', () => {
+  const claim = applyPatch(createClaim(fixture), [
+    { field: 'damage_zone', value: 10 },
+    { field: 'severity', value: 'dent' },
+    { field: 'vehicle_drivable', value: true },
+    { field: 'description', value: 'A van reversed into the wing.' },
+  ]).claim;
+
+  assert.equal(patchIsNoChange(claim, { field: 'damage_zone', value: '10' }), true, 'a numeric string');
+  assert.equal(patchIsNoChange(claim, { field: 'severity', value: ' DENT ' }), true, 'case and padding');
+  assert.equal(patchIsNoChange(claim, { field: 'vehicle_drivable', value: 'yes' }), true, 'a boolean word');
+  assert.equal(
+    patchIsNoChange(claim, { field: 'description', value: '  A van reversed into the wing.  ' }),
+    true,
+    'the exact double commit a textarea produces',
+  );
+  assert.equal(
+    patchIsNoChange(claim, [{ field: 'damage_zone', value: '10' }, { field: 'severity', value: 'dent' }]),
+    true,
+  );
+
+  assert.equal(patchIsNoChange(claim, { field: 'damage_zone', value: 11 }), false, 'a real edit');
+  assert.equal(patchIsNoChange(claim, { field: 'location', value: 'Harbour Road' }), false, 'an empty field filled');
+  assert.equal(
+    patchIsNoChange(claim, [{ field: 'damage_zone', value: 10 }, { field: 'severity', value: 'scratch' }]),
+    false,
+    'one real change in a batch makes the batch a change',
+  );
+});
+
+test('patchIsNoChange keeps every refusal reachable', () => {
+  const claim = applyPatch(createClaim(fixture), { field: 'severity', value: 'dent' }).claim;
+
+  // A value the rules would refuse is not silence. The page has to dispatch it so
+  // the refusal is drawn beside the control.
+  assert.equal(patchIsNoChange(claim, { field: 'severity', value: 'catastrophic' }), false);
+  assert.equal(patchIsNoChange(claim, { field: 'damage_zone', value: 14 }), false);
+  assert.equal(patchIsNoChange(claim, { field: 'settlement_amount', value: 1 }), false);
+  assert.equal(patchIsNoChange(claim, { field: 'revision', value: 0 }), false);
+  assert.equal(patchIsNoChange(claim, []), false);
+
+  // Clearing a required field that already holds a value is a refusal, not silence.
+  assert.equal(patchIsNoChange(claim, { field: 'severity', value: null }), false);
+  // Clearing an empty optional field really does nothing.
+  assert.equal(patchIsNoChange(claim, { field: 'witness_name', value: null }), true);
+
+  // A pinned field and a filed claim both have something to say, so neither is silence.
+  const pinned = lockField(claim, 'severity').claim;
+  assert.equal(patchIsNoChange(pinned, { field: 'severity', value: 'dent' }), false);
+  assert.equal(patchIsNoChange({ ...claim, status: 'filed' }, { field: 'severity', value: 'dent' }), false);
+});
+
+test('patchIsNoChange never writes anything or moves the revision', () => {
+  const claim = applyPatch(createClaim(fixture), { field: 'severity', value: 'dent' }).claim;
+  const before = snapshot(claim);
+  patchIsNoChange(claim, { field: 'severity', value: 'dent' });
+  patchIsNoChange(claim, { field: 'severity', value: 'scratch' });
+  assert.deepEqual(snapshot(claim), before);
 });

@@ -1,20 +1,24 @@
 {
   "id": "07-human-files",
-  "title": "Filing is a decision, not a tool",
+  "title": "The two decisions that stay with a person",
   "kind": "owner",
-  "target_seconds": 12,
+  "target_seconds": 16,
   "take": "take.mp4",
   "record": {
     "surface": "the page, full width if you can, with Your decisions in shot",
     "prompts": [],
     "actions": [
-      "unpin nothing and change nothing else",
-      "press File this claim with the pointer, slowly enough to see"
+      "press Request roadside assistance first. It is the requirement beat 05 put on screen, the one the rule pack answers with a human action instead of a field, and get_assistance_options reads it out without being able to close it",
+      "then press File this claim with the pointer, slowly enough to see",
+      "unpin nothing, and change no field on the draft"
     ],
     "must_show": [
+      "the Request roadside assistance button being pressed by hand, and the line that replaces it naming the time you pressed it",
+      "the roadside collection entry in the requirements list closing once you have pressed it",
       "the File this claim button being pressed by hand",
       "the filed line that appears underneath it",
       "the sentence on the panel saying these buttons are never registered as agent tools"
-    ]
+    ],
+    "note": "The order is forced by the product, not by preference. assistanceApplies in src/ui/app.js requires claim.status !== 'filed', so the assistance button closes the moment the claim is filed. Press it first or it cannot be pressed at all. Whatever else the requirements panel still shows is left alone and is not staged: filing is gated on the required fields through validateClaim, not on this insurer's intake list, so the page allows a filing with an intake requirement open and the take should show whatever is true on the day."
   }
 }

@@ -27,11 +27,11 @@
  */
 
 import { createStore } from '../core/store.js';
-import { validateClaim, PATCHABLE_FIELDS } from '../core/claim.js';
+import { validateClaim, patchIsNoChange, PATCHABLE_FIELDS } from '../core/claim.js';
 import { checkCoverage } from '../core/coverage.js';
 import { estimateRepair } from '../core/estimate.js';
 import { loadPolicyPack, describePack } from '../core/policy.js';
-import { deriveRequirements, summariseRequirements } from '../core/requirements.js';
+import { deriveRequirements, outstandingRequirements, summariseRequirements } from '../core/requirements.js';
 
 import { createView } from './render.js';
 import {
@@ -142,6 +142,12 @@ async function boot() {
 
   let snapshot = snapshotOf(claimNow());
 
+  /* The commit a textarea has scheduled and not yet made. It lives out here because three things
+     have to be able to cancel it: the next keystroke, whichever event commits the field first, and
+     the reset. A pending commit that survives a reset writes the old account back over the draft
+     that replaced it. */
+  let pendingCommit = null;
+
   /* Requirement redraw bookkeeping. The panel is rebuilt only when the derived list actually moves,
      so a keystroke in the description does not replay the "just appeared" highlight, and nothing is
      marked new on the first draw or after a reset. */
@@ -182,12 +188,12 @@ async function boot() {
   view.renderCoverage(null);
   view.renderEstimate(null);
   view.renderLedger(ledger);
-  drawClaim([]);
+  redraw([]);
 
   await loadPacks();
   applyPack(activePackId);
   view.renderPackChoices(packChoices(), activePackId);
-  drawRequirements();
+  redraw([]);
 
   store.subscribe(() => {
     const state = store.getState();
@@ -207,8 +213,7 @@ async function boot() {
     snapshot = snapshotOf(next);
 
     view.renderRevision(next.revision);
-    drawClaim(changed);
-    drawRequirements();
+    redraw(changed);
 
     // A revision that moved no field cannot have moved an answer. Filing, pinning and unpinning
     // all advance the counter without touching a value, so those re-stamp the panels instead of
@@ -344,13 +349,41 @@ async function boot() {
 
   /* Drawing */
 
-  function drawClaim(changed) {
+  /**
+   * One redraw, one list of requirements.
+   *
+   * THE TWO PANELS ARE DRAWN FROM ONE INPUT BECAUSE THEY ARE TWO STATEMENTS ABOUT ONE DRAFT. They
+   * used to be worked out separately, and the file panel was never handed the requirements at all,
+   * so it printed "The draft is complete" over a draft the panel beside it was reporting as
+   * incomplete. Two panels that read two inputs cannot be made to agree by wording; they have to
+   * read the same answer, which is what this function is for.
+   *
+   * @param {string[]} changed the fields that moved since the last draw, for the row highlight
+   */
+  function redraw(changed) {
+    const entries = getRequirements();
+    drawClaim(changed, entries);
+    drawRequirements(entries);
+  }
+
+  function drawClaim(changed, entries) {
     const claim = claimNow();
     const verdict = validateClaim(claim);
+    const list = Array.isArray(entries) ? entries : [];
     view.renderClaim(claim, changed);
     view.renderActions({
       ready: Boolean(verdict.ready),
       missing: verdict.missing || [],
+      // What the insurer still asks for, which is a wider question than what the file gate blocks
+      // on. A rule with no field is the sharpest case: no patch from either side can close it.
+      outstanding: outstandingRequirements(list).map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        field: entry.field
+      })),
+      insurer: context.pack ? context.pack.insurer : null,
+      // Not the same as nothing being asked for, and never printed as though it were.
+      requirementsKnown: Boolean(context.pack),
       filed: claim.status === 'filed',
       filedAt: claim.filed_at,
       assistanceAt: ui.assistanceAt,
@@ -358,7 +391,7 @@ async function boot() {
     });
   }
 
-  function drawRequirements() {
+  function drawRequirements(entries) {
     if (!context.pack) {
       requirementIds = new Set();
       requirementSignature = null;
@@ -367,7 +400,6 @@ async function boot() {
       return;
     }
 
-    const entries = getRequirements();
     const signature = entries.map((entry) => `${entry.id}|${entry.satisfied}|${entry.why}|${entry.humanNote}`).join('~');
     if (signature === requirementSignature) return;
 
@@ -613,6 +645,12 @@ async function boot() {
 
   /* Human controls */
 
+  function cancelPendingCommit() {
+    if (pendingCommit === null) return;
+    clearTimeout(pendingCommit);
+    pendingCommit = null;
+  }
+
   function wireControls() {
     const onChange = (event) => {
       const control = event.target;
@@ -628,12 +666,18 @@ async function boot() {
       host.addEventListener('click', onClick);
     }
 
-    let descriptionTimer = null;
+    // A textarea commits on a pause in the typing so an agent watching the page sees the account
+    // as it is written. The timer belongs to the page, not to this function, because the reset
+    // has to be able to cancel it too: a commit that fires after the draft has been reloaded
+    // writes the old text back over the new one.
     view.els.fields.addEventListener('input', (event) => {
       const control = event.target;
       if (!control || control.tagName !== 'TEXTAREA') return;
-      clearTimeout(descriptionTimer);
-      descriptionTimer = setTimeout(() => commitControl(control), DESCRIPTION_DEBOUNCE_MS);
+      cancelPendingCommit();
+      pendingCommit = setTimeout(() => {
+        pendingCommit = null;
+        commitControl(control);
+      }, DESCRIPTION_DEBOUNCE_MS);
     });
 
     view.els.insurerSelect.addEventListener('change', (event) => {
@@ -650,16 +694,29 @@ async function boot() {
   function commitControl(control) {
     const field = control.getAttribute('data-field');
     if (!field) return;
+
+    // Whichever event got here first wins, and any commit still waiting on the typing timer is
+    // dropped. Without this the timer fired, the change event on the way out of the field fired
+    // too, and the same text was committed twice: two revisions for one edit, with the second one
+    // re-stamping provenance on a draft nobody had moved.
+    cancelPendingCommit();
     view.showFieldError('');
 
     // An empty control means clear. The rules allow that for an optional field and refuse it for a
     // required one, and they say so themselves.
     const raw = control.value === '' ? null : control.value;
 
+    // The rules decide whether this is a change; this file still coerces nothing. A commit that
+    // would store what is already stored is dropped rather than dispatched, because the store
+    // cannot tell a second commit of one edit from a real one and would move the revision for it.
+    // Anything the rules would refuse is NOT silence: patchIsNoChange answers false for a bad
+    // value, a pinned field and a filed claim, so every refusal still reaches the page.
+    if (patchIsNoChange(claimNow(), [{ field, value: raw }])) return;
+
     const result = store.dispatch({ type: 'patch', field, value: raw });
     if (!result.ok) {
       view.showFieldError(result.error || 'That value was not accepted.');
-      drawClaim([]);
+      redraw([]);
     }
   }
 
@@ -671,6 +728,11 @@ async function boot() {
   function togglePin(button) {
     const field = button.getAttribute('data-pin');
     if (!field) return;
+
+    // Pinning closes a field to every patch, so a commit already scheduled against it would be
+    // refused as locked a moment after the person pinned it on purpose.
+    cancelPendingCommit();
+
     const pinned = button.getAttribute('aria-pressed') === 'true';
     const result = store.dispatch({ type: pinned ? 'unlock' : 'lock', field });
     if (!result.ok) {
@@ -699,7 +761,7 @@ async function boot() {
 
     requirementSignature = null;
     requirementsPrimed = false;
-    drawRequirements();
+    redraw([]);
     view.announce(context.pack
       ? `Rules switched to ${context.pack.insurer}. The same tools now answer with that schedule.`
       : 'That rule pack could not be loaded.');
@@ -734,6 +796,11 @@ async function boot() {
   }
 
   function fileThisClaim() {
+    // Same hazard as the reset, one control over. A commit still waiting on the typing timer would
+    // land on a claim that is closed by the time it arrives, and the person who filed the draft
+    // would watch a refusal paint under it a moment later for something they had already finished.
+    cancelPendingCommit();
+
     const result = store.dispatch({ type: 'file', at: clockNow() });
     if (!result.ok) {
       view.showFieldError(result.error || 'The claim could not be filed.');
@@ -765,7 +832,7 @@ async function boot() {
     if (!assistanceApplies(claim)) {
       view.showFieldError('Roadside collection is for a vehicle that cannot be driven, and this '
         + 'draft does not say that. Answer whether the car still drives first.');
-      drawClaim([]);
+      redraw([]);
       return;
     }
 
@@ -775,8 +842,8 @@ async function boot() {
     recordHumanActions(getRequirements().filter((entry) => entry.humanOnly).map((entry) => entry.id));
 
     view.showFieldError('');
-    drawClaim([]);
-    drawRequirements();
+    redraw([]);
+
     view.announce('You requested roadside assistance. No tool on this page reaches that button.');
     // Pressing this changes nothing about the tool surface. The tool that reads out the assistance
     // options exists while the claim says the vehicle cannot be driven, which is a fact about the
@@ -784,6 +851,10 @@ async function boot() {
   }
 
   function startOver() {
+    // A commit the typing timer has scheduled would land after the reset and write the old account
+    // back over the reloaded draft, so it goes first of all.
+    cancelPendingCommit();
+
     // Page state first, then the draft. The subscriber redraws the moment the reset lands, and it
     // should not redraw against a roadside request that this reset has already cancelled.
     ui.coverage = null;
@@ -801,17 +872,21 @@ async function boot() {
     view.renderEstimate(null);
     view.renderLedger(ledger);
     view.showFieldError('');
-    drawClaim([]);
-    drawRequirements();
+    redraw([]);
 
-    // Said on the page as well as to the live region. On a draft nobody has touched yet the reset
-    // changes nothing anyone can see, the revision does not move so it does not flash, and without
-    // this line the button looks broken to the one visitor most likely to press it first.
+    // Said on the page as well as to the live region. On a draft nobody has touched yet, reloading
+    // it changes no answer a visitor can see, and without a word the button reads as broken to the
+    // one visitor most likely to press it first.
+    //
+    // The draft goes back and the counter does not, and the note says both. The revision is what a
+    // patch quotes, so sending it back to a number an agent had already read let a patch written
+    // against the draft that was just thrown away be accepted against the one that replaced it.
     const at = clockNow();
-    view.renderResetNote(`Synthetic incident loaded at ${at}. The draft is back at revision `
-      + `${claimNow().revision}, the ledger is empty and the panels are cleared.`);
-    view.announce('The synthetic incident was loaded again. The draft is back at revision '
-      + `${claimNow().revision}.`);
+    view.renderResetNote(`Synthetic incident loaded again at ${at}. The draft is back as it was, the `
+      + `ledger is empty and the panels are cleared. The revision has moved on to ${claimNow().revision}, `
+      + 'so a patch quoting an earlier one is refused rather than applied to this draft.');
+    view.announce('The synthetic incident was loaded again. The draft is back as it was and the '
+      + `revision has moved on to ${claimNow().revision}.`);
   }
 }
 

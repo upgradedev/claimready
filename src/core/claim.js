@@ -624,15 +624,6 @@ export function applyPatch(claim, changes, options = {}) {
     }
 
     if (value === null || value === undefined) {
-      // requiredFieldsFor, not the static list. A theft claim is not asked for an
-      // impact position, so clearing one has to be allowed rather than refused.
-      if (requiredFieldsFor(claim).includes(field)) {
-        return refusal(
-          claim,
-          PATCH_CODES.value,
-          `${field} is required, so it cannot be cleared. Send the corrected value instead of an empty one. Nothing was changed.`,
-        );
-      }
       staged.push({ field, value: null });
       continue;
     }
@@ -642,6 +633,36 @@ export function applyPatch(claim, changes, options = {}) {
       return refusal(claim, PATCH_CODES.value, `${checked.error} Nothing was changed.`);
     }
     staged.push({ field, value: checked.value });
+  }
+
+  // Pass one, part two: what this claim is required to answer is a fact about where
+  // the patch ENDS, not about where it started, so it is asked of the staged result
+  // rather than of the claim on the way in.
+  //
+  // A batch is one revision, and half of it cannot be true. Reading requiredFieldsFor
+  // off the incoming claim made "collision with an impact position" answer for a patch
+  // whose whole point was that the claim would no longer be a collision. Sending
+  // incident_type theft and damage_zone null together was refused in BOTH orders,
+  // while the same two changes sent one after the other were both accepted, so the
+  // atomic path was strictly weaker than the sequential one at the exact moment
+  // atomicity was worth having.
+  //
+  // Nothing here relaxes a refusal: the candidate is only consulted about which fields
+  // are required, and a claim that still requires the field it is clearing is refused
+  // exactly as before.
+  const candidate = { ...claim };
+  for (const { field, value } of staged) candidate[field] = value;
+  const requiredAtTheEnd = requiredFieldsFor(candidate);
+
+  for (const { field, value } of staged) {
+    if (value !== null) continue;
+    if (requiredAtTheEnd.includes(field)) {
+      return refusal(
+        claim,
+        PATCH_CODES.value,
+        `${field} is required, so it cannot be cleared. Send the corrected value instead of an empty one. Nothing was changed.`,
+      );
+    }
   }
 
   // Pass two: write. Everything below here is known to be valid.
@@ -658,6 +679,53 @@ export function applyPatch(claim, changes, options = {}) {
   next.revision = currentRevision(claim) + 1;
 
   return { claim: next, ok: true, error: null, code: null, applied, revision: next.revision };
+}
+
+/**
+ * Would this patch leave every field exactly where it already is?
+ *
+ * A PREDICATE, NOT A GATE. It refuses nothing and changes nothing. It exists so a
+ * caller that can be asked for the same value twice, which on a web page is any
+ * control with both a keystroke timer and a change event, can tell a second commit
+ * of the same text from a real edit WITHOUT coercing anything itself. The
+ * comparison runs through the same validators a patch runs through, so "  hello  "
+ * and "hello" are one answer here for the same reason they are one answer there.
+ *
+ * It answers false whenever the rules would have something to say. A value the
+ * validators refuse, a field a person pinned and a claim that has been filed are
+ * all changes as far as this function is concerned, so the caller still dispatches
+ * them and the refusal still reaches the page. Silence is only ever returned for a
+ * patch that would be accepted and would move nothing.
+ *
+ * applyPatch itself is deliberately NOT wired to this. Its result is read by the
+ * writing tool, which reports what it applied and the revision it reached, and an
+ * accepted patch that applied nothing would read strangely there. The page uses
+ * this instead, on the one path where the same value genuinely arrives twice.
+ *
+ * @param {object} claim
+ * @param {{field: string, value: *}|Array<{field: string, value: *}>} changes
+ * @returns {boolean} true when applying it would store nothing new
+ */
+export function patchIsNoChange(claim, changes) {
+  if (!claim || typeof claim !== 'object') return false;
+  if (claim.status === 'filed') return false;
+
+  const normalised = normaliseChanges(changes);
+  if (!normalised.ok) return false;
+
+  const locked = lockedList(claim);
+
+  return normalised.list.every(({ field, value }) => {
+    if (!PATCHABLE_FIELDS.includes(field)) return false;
+    if (locked.includes(field)) return false;
+
+    const current = claim[field] === undefined ? null : claim[field];
+    if (value === null || value === undefined) return current === null;
+
+    const checked = coerceField(field, value);
+    if (!checked.ok) return false;
+    return Object.is(current, checked.value);
+  });
 }
 
 /* -------------------------------------------------------------- lock, file */

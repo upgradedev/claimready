@@ -9,7 +9,15 @@
   --surface-2: #f8fafc;
   --ink: #16202b;
   --ink-soft: #55636f;
-  --ink-faint: #7b8894;
+  /* Measured, not chosen by eye. This carries real text in 18 places, the tool count that is this
+     page's whole argument among them, which `grep -c "color: var(--ink-faint)" assets/styles.css`
+     counts, plus 2 decorative backgrounds that are not text. At #7b8894 it failed WCAG AA against
+     every ground the page ships: 3.63:1 on --surface, 3.35:1 on --bg, 3.47:1 on --surface-2 and
+     3.13:1 on --line-soft, which is the tightest pairing because .tag-idle and .badge-none sit on
+     it. The value below clears 4.5:1 on all four: 5.38, 4.97, 5.14 and 4.65. It sits closer to
+     --ink-soft than it used to, and that is the trade: a third text colour a reader cannot read is
+     not a hierarchy. tests/unit/wording.test.js does this arithmetic on every run. */
+  --ink-faint: #606c76;
   --line: #dde3e9;
   --line-soft: #eaeff3;
   --accent: #1f5fa8;
@@ -38,7 +46,18 @@
     --surface-2: #1e2732;
     --ink: #e7edf3;
     --ink-soft: #a9b6c3;
-    --ink-faint: #8394a3;
+    /* Same measurement in the dark. #8394a3 cleared --surface, --bg and --surface-2 and missed on
+       --line-soft at 4.47:1, so the same two rules that were worst in the light were the ones under
+       the threshold here too.
+       #8a9aa9 fixed those four and still missed a fifth ground that was not on the list: --flash,
+       at 4.12:1. Faint text lands on --flash on every revision bump, because .revision-note is
+       nested inside .revision and .revision.is-bumped paints it. Lightening this token is what
+       clears that pair without touching --flash itself, which is a highlight fill whose own
+       separation from --surface is the thing that makes it read as a highlight at all.
+       Now clears every ground it ships on: --surface 6.39, --bg 7.14, --surface-2 5.87,
+       --line-soft 5.43, --flash 4.63. Still darker than --ink-soft, so the three tier hierarchy
+       holds. See the FAINT_ON note in tests/unit/wording.test.js for the two selectors. */
+    --ink-faint: #96a3b1;
     --line: #2b3643;
     --line-soft: #232d38;
     --accent: #6aa6ea;
@@ -117,7 +136,9 @@ a { color: var(--accent); }
   letter-spacing: .04em;
 }
 
-.brand-text { display: flex; flex-direction: column; }
+/* The page's one h1. Its own size and weight are neutralised here because both spans inside it set
+   their own in rem, so the heading changes the document outline and nothing on the screen. */
+.brand-text { display: flex; flex-direction: column; font-size: 1rem; font-weight: 400; }
 .brand-name { font-weight: 650; font-size: 1.05rem; letter-spacing: -.01em; }
 .brand-sub { color: var(--ink-faint); font-size: .8rem; }
 

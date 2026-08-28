@@ -1,1 +1,1 @@
-The note asks whatever agent reads it to put the car back to drivable, and to file the claim. So it reads the claim again, and tries. The pinned row refuses the patch, with its code, in the ledger. And nothing files, because filing is not a tool here.
+The note asks whatever agent reads it to put the car back to drivable, and to file the claim. So it reads the claim again, and tries. The pinned row refuses the patch, with its code, in the ledger. Filing is not on the published list, so no tool answers that half.

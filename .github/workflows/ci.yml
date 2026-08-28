@@ -2,17 +2,19 @@ name: CI
 
 # ClaimReady has zero dependencies. No job installs anything, ever.
 # If a step here ever needs a package manager, the change is wrong.
+#
+# THIS WORKFLOW IS ABOUT THE ENGINEERING AND NOTHING ELSE.
+# The readiness gate used to be a fourth job here, which meant the public CI badge went red on
+# every branch for a missing video while secret scan, style and tests were all green. Submission
+# readiness now has its own workflow and its own badge, .github/workflows/readiness.yml, and it is
+# not weaker for having moved: same script, same arguments, same triggers, and a missing mandatory
+# deliverable still fails it in every mode. Do not fold it back in here.
 
 on:
   push:
     branches: ["**"]
   pull_request:
   workflow_dispatch:
-    inputs:
-      require_live_url:
-        description: "Fail the readiness job if the live judge URL is not reachable"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -72,35 +74,3 @@ jobs:
             exit 1
           fi
           node --test tests/unit
-
-  readiness:
-    name: Readiness gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Prove the gate can fail before trusting it
-        run: node scripts/readiness.mjs --selftest
-
-      # The live check is mandatory once the repository variable CLAIMREADY_URL exists.
-      # Until then the LIVE row prints NOT DEPLOYED, which is never counted as a pass and is
-      # always reported as submission blocking. It is never quietly turned green.
-      - name: Readiness table
-        env:
-          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
-          REQUIRE_LIVE: ${{ inputs.require_live_url }}
-        run: |
-          if [ -n "${CLAIMREADY_URL}" ]; then
-            echo "CLAIMREADY_URL is set. The live judge URL will be fetched and a failure fails this job."
-            node scripts/readiness.mjs --ci
-          elif [ "${REQUIRE_LIVE}" = "true" ]; then
-            echo "Live check demanded by hand but CLAIMREADY_URL is not set as a repository variable."
-            node scripts/readiness.mjs --ci
-          else
-            echo "::warning title=Live URL not deployed::CLAIMREADY_URL is not set as a repository variable, so nothing was fetched and the live row proves nothing. Set it once the site is deployed."
-            node scripts/readiness.mjs --ci --allow-undeployed
-          fi

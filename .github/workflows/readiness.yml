@@ -1,0 +1,76 @@
+name: Readiness
+
+# SUBMISSION READINESS, SEPARATE FROM ENGINEERING CI ON PURPOSE.
+#
+# This job used to live inside ci.yml. That made one badge answer two questions at once, and the
+# answer it gave was the wrong one for both: the public CI badge read red on every branch because
+# a mandatory deliverable, the public video, does not exist yet, while every engineering job in
+# that workflow was green. A reader who checks a badge before reading a repository was told the
+# build was broken when nothing about the build was broken.
+#
+# So the two questions are now asked separately. ci.yml answers "does the engineering hold up".
+# This workflow answers "is this entry submittable", which is a question about deliverables and is
+# allowed to be red right up until the last one lands.
+#
+# NOTHING HERE IS WEAKER THAN WHAT IT REPLACED. The same script runs, with the same arguments, on
+# the same triggers, and a missing mandatory deliverable still fails the job in every mode,
+# --ci included. The self test still runs first, because a gate nobody has watched fail is not
+# evidence and this job must not report a table it has not proved can refuse.
+#
+# No job here installs anything. The gate is dependency free Node.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      require_live_url:
+        description: "Fail the readiness job if the live judge URL is not reachable"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Deliberately not the ci- group. Sharing a group with ci.yml would make each workflow cancel the
+  # other on the same ref, and the run that survived would be whichever started second.
+  group: readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  readiness:
+    name: Readiness gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Prove the gate can fail before trusting it
+        run: node scripts/readiness.mjs --selftest
+
+      # The live check is mandatory once the repository variable CLAIMREADY_URL exists.
+      # Until then the LIVE row prints NOT DEPLOYED, which is never counted as a pass and is
+      # always reported as submission blocking. It is never quietly turned green.
+      - name: Readiness table
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          REQUIRE_LIVE: ${{ inputs.require_live_url }}
+        run: |
+          if [ -n "${CLAIMREADY_URL}" ]; then
+            echo "CLAIMREADY_URL is set. The live judge URL will be fetched and a failure fails this job."
+            node scripts/readiness.mjs --ci
+          elif [ "${REQUIRE_LIVE}" = "true" ]; then
+            echo "Live check demanded by hand but CLAIMREADY_URL is not set as a repository variable."
+            node scripts/readiness.mjs --ci
+          else
+            echo "::warning title=Live URL not deployed::CLAIMREADY_URL is not set as a repository variable, so nothing was fetched and the live row proves nothing. Set it once the site is deployed."
+            node scripts/readiness.mjs --ci --allow-undeployed
+          fi
