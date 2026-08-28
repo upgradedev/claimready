@@ -39,10 +39,12 @@ shared name costs a search result rather than an entry.
 
 - [Who this is for](#who-this-is-for)
 - [Why this needs WebMCP](#why-this-needs-webmcp)
+- [One number you can reproduce](#one-number-you-can-reproduce)
 - [How it fits together](#how-it-fits-together)
 - [One journey, call by call](#one-journey-call-by-call)
 - [What is a tool here, and what is deliberately not](#what-is-a-tool-here-and-what-is-deliberately-not)
   - [The registration call](#the-registration-call)
+  - [The declarative half, a form with four attributes](#the-declarative-half-a-form-with-four-attributes)
   - [Never tools, by design](#never-tools-by-design)
 - [Security](#security)
 - [Open it yourself](#open-it-yourself)
@@ -103,8 +105,46 @@ say the surface moves when a patch lands and holds still when one does not.
 
 Where the honest limit is. There is no measurement here of intakes arriving more complete, because
 no insurer has run this and inventing that number would be worse than not having it. What the
-repository can support is what the mechanism does, and it is all reachable: nine tools, two rule
-packs, one conditional tool, one refusal protocol, and a ledger that prints every call.
+repository can support is what the mechanism does, and it is all reachable: nine registered tools,
+one more declared by a form, two rule packs, one conditional tool, one refusal protocol, and a
+ledger that prints every call.
+
+## One number you can reproduce
+
+The claim above, that deriving the intake beats printing it, rests on the owner's judgement, and
+judgement is not something a judge can check. Here is the one part of it that is countable from
+files in this repository, with the command that counts it:
+
+```sh
+node scripts/measure_intake.mjs
+```
+
+**A static form has to ask everyone for 9 questions, because it cannot know which policy it is
+looking at. For Northwind Mutual and a collision claim, this page's intake asks for 8.** That pair
+is the one the sample claim opens on, so it is the row a visitor sees first rather than the row
+that flatters us. The 9 is the union of every field either rule pack names under any incident type,
+plus the fields the page's own gate requires of every claim. The 8 is the same kind of number with
+the incident type fixed: the union over every value that pack's own conditions read, computed by
+enumerating them exhaustively rather than by sampling. Envelope against envelope, so the two sides
+are comparable.
+
+Three things are true about that number and all three are printed in the output above the numbers
+themselves.
+
+1. **It measures this repository's own invented rule packs**, Kestrel Assurance and Northwind
+   Mutual, which belong to no real policy. No real insurer's intake form was looked at.
+2. **It is reproducible in one line**, and the script prints that line beside the result.
+3. **Nothing is extrapolated from it.** There is no claim here about time saved, money saved,
+   completion rates, market size, or any form outside this repository, and there is none anywhere
+   else in this repo either.
+
+The script prints all twelve pack and incident type combinations, and the sentence above quotes the
+narrowest gap in that table, 9 against 8, because that is the row the demo opens on. The widest is 9
+against 7, Kestrel Assurance on a theft claim, and it is printed too. Each dropped question is
+printed next to the rule that drops it with the condition quoted from the pack JSON, so a reader can
+check it against `fixtures/insurers/` by hand. Two things are deliberately outside both
+counts and are named in the output rather than left silent: `driver`, an optional box no pack asks
+for, and `roadside_collection`, a requirement no field can answer at all.
 
 ## How it fits together
 
@@ -116,7 +156,8 @@ flowchart TB
 
   subgraph origin["claimready, one origin, no runtime network calls"]
     MCP["WebMCP layer: detect document.modelContext, register tools with an AbortSignal each"]
-    TOOLS["Tools: describe, read, requirements, patch, validate, check cover, estimate, evidence notes, assistance options"]
+    TOOLS["Nine registered tools: describe, read, requirements, patch, validate, check cover, estimate, evidence notes, assistance options"]
+    FORM["Declared, not registered: one form in index.html carrying toolname, tooldescription, toolautosubmit"]
     STORE["Store: one claim draft, subscribers notified on every change"]
     CORE["Core domain: claim rules, insurer rule packs, derived requirements, coverage table, repair bands. Pure, no DOM"]
     UI["Page: fields, evidence, live tool call ledger"]
@@ -124,7 +165,9 @@ flowchart TB
   end
 
   AG -->|"registerTool and execute"| MCP
+  AG -->|"the browser reads the attributes and submits the form"| FORM
   MCP --> TOOLS
+  FORM -->|"dispatch, same store, same refusals"| STORE
   TOOLS -->|"dispatch"| STORE
   TOOLS -->|"read and compute"| CORE
   STORE -->|"subscribe"| UI
@@ -195,11 +238,16 @@ carries an instruction aimed at a model.
 | `get_repair_estimate` | reads | `readOnlyHint: true` | built |
 | `read_evidence_notes` | reads | `readOnlyHint: true`, `untrustedContentHint: true` | built |
 | `get_assistance_options` | reads, and is registered only while the claim says the vehicle cannot be driven | `readOnlyHint: true` | built |
+| `record_supporting_details` | writes the witness name and the police report reference. **Declared by a form, not registered.** See the section below | none. A form carries no annotations, and this page claims none for it | built |
 
-The first eight are registered for the life of the page. `get_assistance_options` comes and goes:
-`src/webmcp/register.js` re-asks `CONDITIONAL_TOOLS` on every store change, so the tool appears when
-`vehicle_drivable` is false and is withdrawn when the car is drivable again. The page's status strip
-reads the live registered list, so you can watch the count move.
+The first eight of the registered nine are registered for the life of the page.
+`get_assistance_options` comes and goes: `src/webmcp/register.js` re-asks `CONDITIONAL_TOOLS` on
+every store change, so the tool appears when `vehicle_drivable` is false and is withdrawn when the
+car is drivable again. The page's status strip reads the live registered list, so you can watch the
+count move.
+
+The tenth row is not registered at all and the page never says it is. It is the declarative half of
+the same standard, and it is described in its own section below.
 
 `untrustedContentHint` is set on the three tools that hand back free text the insurer did not write.
 The claim description is the visitor's words, and the evidence notes are a repairer's and a third
@@ -245,6 +293,59 @@ Both of those lines live in `src/webmcp/register.js`. Find them with
 the previous set went stale inside a day, and a citation the reader has to distrust is worse than
 a command they can run.
 
+### The declarative half, a form with four attributes
+
+Everything above is the imperative API: a JavaScript descriptor per tool. The other half of the
+standard is four HTML attributes on a form the page already has, and this page ships one so the
+migration path is shown rather than described. **An insurer with an existing intake form adopts
+WebMCP on that path by adding attributes to markup they already ship, not by rewriting the page as
+tool descriptors.**
+
+The markup is in `index.html`. Find it with `grep -n 'toolname=' index.html`:
+
+```html
+<form class="declared" data-el="declared-form" action="./"
+      toolname="record_supporting_details"
+      tooldescription="Record the two supporting details on this claim draft, ..."
+      toolautosubmit>
+```
+
+with `toolparamdescription` on each of the three controls. The browser builds the input schema from
+the form itself, so no file in this repository writes one. The attribute names were read from
+<https://developer.chrome.com/docs/ai/webmcp/declarative-api> on 2026-08-28.
+
+No new capability was invented for it. It writes the same two optional fields the rows above it
+already write, through the same store, so `src/core/claim.js` decides the result: the same length
+caps, the same `PATCH_REJECTED_LOCKED` on a pinned field, the same refusal on a filed claim, and the
+same stale check. The third control, `base_revision`, is there because of that last one. An agent
+that quotes nothing is refused with the message that names the number to send, so the first call
+refuses and the second works, which is the same protocol `apply_claim_patch` holds an agent to. A
+person leaves that box empty, and an empty box means leave the draft alone rather than clear it.
+
+The page counts the two halves separately, because a judge reading nine while their agent holds ten
+would be right to distrust the page. With no agent connected the status strip reads
+`10 tools this page publishes to an agent, one of them declared by a form rather than registered`,
+and the declared row is never marked registered in either state.
+
+**What a judge sees, and what is not yet verified.** Be exact here, because the two halves have
+different evidence behind them.
+
+| Surface | State |
+|---|---|
+| Any browser, no agent | Verified. It is an ordinary form. A person types in either box, presses **Add these details**, and the draft moves one revision with both rows marked `via page`. Driven by hand in Chromium 148 over a local server: no navigation, no console output, no CSP violation, and no horizontal overflow at 375px |
+| Chrome with `chrome://flags/#enable-webmcp-testing` | **Not verified.** Nobody has yet watched Chrome synthesise a tool from these four attributes. Chromium 148 is below the first build with WebMCP, so the drive above proves the form and says nothing about the declarative API |
+| The agent branch of the submit handler | Verified, but by us rather than by a browser. A `SubmitEvent` carrying `agentInvoked` and `respondWith` was constructed and dispatched at the form. Quoting no revision came back `Refused. PATCH_REJECTED_STALE:` naming the number to send, with the draft unmoved and a ledger row flagged `refused`. Quoting the current revision came back `Recorded the name of the witness on the draft, written by your agent`, with the badge reading `via tool` |
+| The ChatGPT desktop browser | **Unverified.** The WebMCP documentation for that surface does not mention declarative forms at all, so this page makes no claim either way about it |
+| The Chrome eval harness in CI | Does not cover it. `evals/evals.json` and the negative control drive the nine registered tools only |
+
+On any browser that does not implement the declarative API the four attributes are unknown
+attributes, which the HTML parser keeps and ignores, and the form stays an ordinary form. That is
+the fallback, and it is the reason adding them to an existing form is safe.
+
+`node --test tests/unit/declarative_form.test.js` asserts the attribute values in `index.html`
+character for character against the strings in `src/webmcp/declarative_form.js`, so the markup and
+the surface the page reports cannot drift apart.
+
 ### Never tools, by design
 
 - **File claim.** A control on the page. No tool reaches it, and there is no `file_claim`, no
@@ -280,6 +381,12 @@ tool call to record.
 `node scripts/readiness.mjs` scans the tool files for those names on every push and fails the build
 if one appears. What that proves is precise: no tool file declares one. It is a name blocklist over
 the tool surface, not a runtime guard on the buttons.
+
+Precise, and now narrower than the surface. The `HUM` row reads `src/webmcp/tools` and nothing
+else, so it would not see a human only name arriving as a `toolname` attribute on a form. That gap
+is stated rather than closed six days before the deadline, and it is checkable by hand in one
+command: `grep -n 'toolname=' index.html` prints every declared tool on this page, and there is one,
+`record_supporting_details`, which writes two optional fields.
 
 ## Security
 
@@ -356,8 +463,9 @@ Three prompts to paste:
 3. `List every tool this page gives you, then tell me which of the things on this claim you can do through a tool and which ones the page says a person has to do.`
 
 The third one is the interesting prompt, and the honest answer is the interesting one. The page
-publishes eight tools, nine once the draft says the car cannot be driven, and none of them files a
-claim, requests a roadside collection or pins a field. The agent does not have to be told that: the
+registers eight tools, nine once the draft says the car cannot be driven, and declares a tenth from
+a form rather than registering it. None of them files a claim, requests a roadside collection or
+pins a field. The agent does not have to be told that: the
 page says it in its own tool output, so the answer comes back with the page's wording in it,
 `Filing the claim is a button pressed by the person on the page. It is not available as a tool.`
 
@@ -383,6 +491,9 @@ node --test tests/unit
 
 # the style gate: em dashes, annotations that do not exist, tool budgets
 node scripts/check_style.mjs
+
+# count the intake: what a static form asks everyone against what this page derives
+node scripts/measure_intake.mjs
 
 # the readiness gate, one table, every row saying what it blocks. It fetches the live URL
 node scripts/readiness.mjs
@@ -437,10 +548,11 @@ go stale between commits.
 | Damage sketch module, agent draws and human corrects | not yet built | absent from `src/webmcp/tools` |
 | Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
 | Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
-| Declarative form step, the HTML attribute API | not yet built | absent from `index.html` |
+| Declarative form step, the HTML attribute API | built, and not registered by anything | `grep -n 'toolname=' index.html` for the declared tool, `node --test tests/unit/declarative_form.test.js` for the assertion that the markup matches `src/webmcp/declarative_form.js`. It is live once GitHub Pages has built the commit that carries it, which the two commands under [Open it yourself](#open-it-yourself) settle. What is verified and what is not is the table in [the declarative half](#the-declarative-half-a-form-with-four-attributes): the form is verified as a form, and no browser has yet been watched synthesising a tool from the attributes |
+| Intake measurement, counted from the shipped rule packs | built | `node scripts/measure_intake.mjs`. It counts fields in `fixtures/insurers/` and `src/core/claim.js` and extrapolates nothing. See [One number you can reproduce](#one-number-you-can-reproduce) |
 | Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` prints the count. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser. This row used to hardcode a number and the number was wrong, so it now names the command instead, which is what the paragraph above this table promises |
 | The tool surface running in a real browser's own WebMCP implementation | proven, in CI, against the deployed commit | [run 33151418595](https://github.com/upgradedev/claimready/actions/runs/33151418595), 2026-08-28: 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Its `headSha` is the commit GitHub Pages last built, which is the part that matters: two earlier green runs were against a commit that had since been superseded, so they proved nothing about the bytes now being served. Read the honest limit below before quoting this |
-| Evals against the tool surface | built and executed | Three journeys over the nine tools, plus a fourth case that is a negative control and is required to FAIL. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat evals/negative-control.json`, `cat .github/workflows/evals.yml` |
+| Evals against the tool surface | built and executed | Three journeys over the nine registered tools, and none over the declared form, plus a fourth case that is a negative control and is required to FAIL. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat evals/negative-control.json`, `cat .github/workflows/evals.yml` |
 | **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not on their own assert that the refusals refused. What the negative control adds is the other direction: it applies a patch that is legal, requires the ninth tool to be WITHDRAWN, and fails the workflow unless the harness reports exactly seven of eight steps passed and names the last one. Read as a pair, the surface moves when a patch lands and holds still when one is refused, which is what makes journey 2 evidence rather than a no op. That pair has been replayed offline and made to fail three ways; it has **not yet been run in a browser**, because it is not yet on a pushed branch. Narrower still, and stated in `evals/README.md`: three green runs have shown Chrome REGISTERING a tool mid page and keeping it, and nothing has yet shown Chrome WITHDRAWING one. That half is proven against our own code and a fake host only. A second limit lives there too: smoke mode gathers the page's browser console errors and never reports or gates on them, so a green run says nothing at all about the console |
 | Public video | not yet built. It is the only row that blocks the readiness **exit code**, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows. It is **not** the only thing between this repository and a finished submission: `node scripts/readiness.mjs` today prints `READY TO SUBMIT: 14 of 20 proven, 70 percent`, and the six outstanding rows are `D4` plus five owner gated ones, including `O3`, whether the form reads Submitted | `node scripts/readiness.mjs` row `D4` |
 | Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
@@ -457,11 +569,12 @@ assets/styles.css     all styling, external because our CSP forbids inline style
 src/core/             pure domain: store, claim, coverage, estimate, policy packs, requirements. No DOM, no fetch
 src/webmcp/register.js  API detection, registration with one AbortController per tool, output budget
 src/webmcp/tools/     one tool per file, one default exported factory each
+src/webmcp/declarative_form.js  the other half of the API: the four attributes on the form in index.html
 src/ui/               rendering, the tool call ledger, and the human only buttons
 fixtures/             the synthetic policy, vehicle and parts table
 fixtures/insurers/    the insurer rule packs the requirements are derived from
 tests/unit/           node --test, no runner
-scripts/              the style gate, the readiness gate and the scenario generator, all dependency free
+scripts/              the style gate, the readiness gate, the intake measurement and the scenario generator, all dependency free
 evals/                the three journeys, the negative control that must fail, and the offline replay
 docs/architecture.md  the layer map and the dependency rule
 docs/submission/      the description and the video runbook, which are the deliverable records

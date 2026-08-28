@@ -352,6 +352,12 @@ a { color: var(--accent); }
 .tool.is-live { border-left-color: var(--agent); }
 .tool.is-conditional { border-left-style: dashed; }
 
+/* A declared tool is not registered and never will be, so it does not carry the live edge. It is
+   not idle either, so it does not carry the greyed name that says "the browser has not taken this
+   one". Its own edge, and its own tag, say which half of the API it comes from. */
+.tool.is-declared { border-left-style: dotted; border-left-color: var(--ink-soft); }
+.tool.is-declared .tool-name { color: var(--agent); }
+
 .tool-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .4rem; }
 
 .tool-name {
@@ -379,6 +385,7 @@ a { color: var(--accent); }
 .tag-untrusted { background: var(--stop-bg); color: var(--stop); }
 .tag-live { background: var(--agent-bg); color: var(--agent); }
 .tag-idle { background: var(--line-soft); color: var(--ink-faint); }
+.tag-declared { background: var(--surface); color: var(--ink-soft); border: 1px solid var(--line); }
 
 /* Clamped to two lines, for the reason the requirement reasons are clamped: nine sentences at full
    length is a wall of text sitting on top of the claim draft. An agent is handed the whole
@@ -657,6 +664,37 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
   padding: .45rem .6rem;
 }
 .field-error:empty { display: none; }
+
+/* The declarative form. An ordinary form, marked as the second route onto the same draft rather
+   than as a second panel, so it reads as part of the claim it writes to. */
+
+.declared {
+  margin-top: .85rem;
+  padding: .75rem .8rem .8rem;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  display: grid;
+  gap: .5rem;
+}
+.declared-title { font-size: .82rem; letter-spacing: .01em; margin: 0; }
+.declared-note { margin: 0; font-size: .76rem; color: var(--ink-soft); max-inline-size: 60ch; }
+.declared-row { display: grid; gap: .25rem; min-width: 0; }
+.declared-label { font-size: .76rem; font-weight: 600; color: var(--ink-soft); }
+.declared-hint { margin: 0; font-size: .72rem; color: var(--ink-faint); max-inline-size: 60ch; }
+.declared .btn { justify-self: start; width: auto; }
+.declared-result {
+  margin: 0;
+  font-size: .78rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: .45rem .6rem;
+  overflow-wrap: anywhere;
+}
+.declared-result:empty { display: none; }
+.declared .field-control[disabled] { opacity: .55; cursor: not-allowed; }
 
 /* Requirements. The deterministic half of the loop: an answer changes on the draft and this list
    is worked out again, with the reason attached to whatever just arrived. */

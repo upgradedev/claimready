@@ -137,6 +137,13 @@ export function createView(doc) {
     fieldsOptional: pick('fields-optional'),
     optionalDetails: pick('optional-details'),
     optionalNote: pick('optional-note'),
+    declaredForm: pick('declared-form'),
+    declaredWitness: pick('declared-witness'),
+    declaredPolice: pick('declared-police'),
+    declaredRevision: pick('declared-revision'),
+    declaredRevisionHint: pick('declared-revision-hint'),
+    declaredSubmit: pick('declared-submit'),
+    declaredResult: pick('declared-result'),
     claimNote: pick('claim-note'),
     fieldError: pick('field-error'),
     requirements: pick('requirements'),
@@ -286,11 +293,29 @@ export function createView(doc) {
       const available = Boolean(state && state.available);
       const live = new Set((state && state.registered) || []);
       const total = tools.length;
-      const liveCount = available ? tools.filter((tool) => live.has(tool.name)).length : 0;
+
+      // TWO HALVES OF ONE STANDARD, COUNTED SEPARATELY, because they arrive by different routes and
+      // one number covering both would be wrong whichever way it was read. A registered tool was
+      // handed to the browser by registerTool and the browser can say so. A declared one is four
+      // attributes on a form the browser reads off the markup, so it is never in the registered set
+      // and calling it "not registered" beside the others would read as a failure rather than as
+      // the other half of the API.
+      const declared = tools.filter((tool) => tool.declarative === true);
+      const registerable = tools.filter((tool) => tool.declarative !== true);
+      const liveCount = available ? registerable.filter((tool) => live.has(tool.name)).length : 0;
+
+      const alsoDeclared = declared.length === 0
+        ? ''
+        : (declared.length === 1
+          ? ', and one more declared by a form in the page'
+          : `, and ${declared.length} more declared by forms in the page`);
+      const ofWhichDeclared = declared.length === 0
+        ? ''
+        : `, ${declared.length === 1 ? 'one' : declared.length} of them declared by a form rather than registered`;
 
       text(els.toolsCount, available
-        ? `${liveCount} of ${total} tools registered with your agent`
-        : `${total} tools this page publishes to an agent`);
+        ? `${liveCount} of ${registerable.length} tools registered with your agent${alsoDeclared}`
+        : `${total} tools this page publishes to an agent${ofWhichDeclared}`);
 
       text(els.toolsNote, available
         ? `Your agent is connected through ${state.api}, and this is the live set. A row marked `
@@ -402,6 +427,49 @@ export function createView(doc) {
       text(els.claimNote, filed
         ? `Filed at ${claim.filed_at}. The draft is closed, so every control above is read only.`
         : '');
+    },
+
+    /**
+     * The declarative form, kept honest about two things and nothing else.
+     *
+     * IT CLOSES WITH THE REST OF THE DRAFT. A filed claim refuses a patch from either side, so
+     * leaving these controls open would offer a person a button whose only possible answer is a
+     * refusal. The reason is drawn beside them rather than left to the disabled state to imply.
+     *
+     * THE HINT CARRIES THE LIVE REVISION, because the number an agent has to quote is the number
+     * the draft is at, and a hint that named a stale one would be teaching the refusal it warns
+     * about. The revision box itself is never prefilled: an empty box reaches src/core as "no
+     * revision was quoted", which is the refusal that names the number to send, and prefilling it
+     * would hand an agent a number it had not read.
+     *
+     * @param {{filed?: boolean, revision?: number}} state
+     */
+    renderDeclaredForm(state) {
+      const filed = Boolean(state && state.filed);
+      const revision = Number.isInteger(state && state.revision) ? state.revision : 0;
+
+      for (const control of [els.declaredWitness, els.declaredPolice, els.declaredRevision]) {
+        control.disabled = filed;
+      }
+      els.declaredSubmit.disabled = filed;
+
+      text(els.declaredRevisionHint, filed
+        ? 'The claim is filed, so this form is closed along with the rows above it.'
+        : 'Leave this box empty. It is here for an agent, which has to quote the revision it read '
+          + 'so a change written against an older draft is refused rather than applied to this one. '
+          + `The draft is at revision ${revision} now.`);
+    },
+
+    /** What the last submission of that form did, in the words src/core used. */
+    renderDeclaredResult(message) {
+      text(els.declaredResult, message || '');
+    },
+
+    /** Empty the three boxes after a submission the rules accepted. */
+    clearDeclaredInputs() {
+      for (const control of [els.declaredWitness, els.declaredPolice, els.declaredRevision]) {
+        control.value = '';
+      }
     },
 
     /**
@@ -701,9 +769,14 @@ function requirementItem(doc, entry, isNew) {
  * registered about a tool that is not.
  */
 function toolItem(doc, tool, isLive) {
+  // A declared tool is never registered, in either state, because nothing registers it. The row
+  // says which half of the API it came from instead of reporting a registration that was never
+  // attempted.
+  const declared = tool.declarative === true;
   const item = doc.createElement('li');
   const classes = ['tool', isLive ? 'is-live' : 'is-idle'];
   if (tool.conditional) classes.push('is-conditional');
+  if (declared) classes.push('is-declared');
   item.className = classes.join(' ');
 
   const head = doc.createElement('div');
@@ -720,7 +793,12 @@ function toolItem(doc, tool, isLive) {
     tool.readOnly ? 'tag-read' : 'tag-write',
     tool.readOnly
       ? 'Read only. It carries readOnlyHint, so an agent is told it changes nothing.'
-      : 'The one tool that writes. It declares readOnlyHint false, and a write is refused unless it quotes the revision it read.'
+      : (declared
+        // No annotation is claimed here. readOnlyHint and untrustedContentHint belong to a tool
+        // registered from JavaScript, and a form carries neither, so the row says what the form
+        // does rather than what it declares.
+        ? 'It writes. A form carries no annotations, and a change through it is refused unless it quotes the revision the draft is at.'
+        : 'A tool that writes. It declares readOnlyHint false, and a write is refused unless it quotes the revision it read.')
   ));
 
   if (tool.untrustedContent) {
@@ -732,12 +810,20 @@ function toolItem(doc, tool, isLive) {
     ));
   }
 
-  head.append(toolTag(
-    doc,
-    isLive ? 'registered' : 'not registered',
-    isLive ? 'tag-live' : 'tag-idle',
-    null
-  ));
+  head.append(declared
+    ? toolTag(
+      doc,
+      'declared by a form',
+      'tag-declared',
+      'Declared by four attributes on a form in this page rather than registered from JavaScript. '
+      + 'The browser reads the tool, and the schema for it, off the markup.'
+    )
+    : toolTag(
+      doc,
+      isLive ? 'registered' : 'not registered',
+      isLive ? 'tag-live' : 'tag-idle',
+      null
+    ));
 
   item.append(head);
 

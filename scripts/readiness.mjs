@@ -678,15 +678,43 @@ const UNREACHABLE_HOST = 'https://claimready-selftest-host-that-does-not-exist.i
 /** Directories a sandbox copy does not need. Nothing here is read by any check. */
 const SANDBOX_SKIP = new Set(['.git', 'node_modules', '.vercel', 'tmp', 'video']);
 
+/**
+ * THE SKIP LIST WAS DEAD, AND A DEAD SKIP LIST HERE DESTROYS THE REPOSITORY.
+ *
+ * On Windows, Node hands this filter an extended length path, `\\?\C:\...`, while ROOT is a plain
+ * `C:\...`. `relative` between the two cannot find a common root, so it returned the whole absolute
+ * path, `rel.split('/')[0]` was that whole string, and `SANDBOX_SKIP.has` was false for every entry.
+ * Nothing was ever skipped. `.git`, `tmp`, `video` and `node_modules` were all copied into all
+ * seventeen sandboxes.
+ *
+ * That is not a tidiness bug. In a linked git worktree `.git` is a one line file pointing back at
+ * the real repository, so the copy pointed there too, and the D1 case, whose break step is
+ * `git remote remove origin`, deleted the ORIGIN REMOTE OF THE REAL REPOSITORY and then reported
+ * `ok D1` and exited 0. It was reproduced twice on 2026-08-28 and it is what removed this
+ * repository's own remote during that session.
+ *
+ * The prefix is stripped before comparing, and the result is asserted rather than trusted: if a
+ * skipped name survives into the sandbox this throws instead of running a destructive break step
+ * against whatever the copy is pointing at. A silent filter is how this got here.
+ */
 function makeSandbox(dest) {
   cpSync(ROOT, dest, {
     recursive: true,
     filter: (source) => {
-      const rel = relative(ROOT, source).split('\\').join('/');
+      const plain = String(source).replace(/^\\\\\?\\/, '');
+      const rel = relative(ROOT, plain).split('\\').join('/');
       if (rel === '') return true;
       return !SANDBOX_SKIP.has(rel.split('/')[0]);
     },
   });
+  for (const name of SANDBOX_SKIP) {
+    if (existsSync(join(dest, name))) {
+      throw new Error(
+        `selftest sandbox ${dest} still carries ${name}, so the skip filter is not working. `
+        + 'Refusing to run break steps against it: the D1 case would edit the real repository.',
+      );
+    }
+  }
   return dest;
 }
 

@@ -305,7 +305,17 @@ export function createDocumentDouble(options = {}) {
  * browser does and all that the wiring reads.
  */
 export function fireEvent(target, type, extra = {}) {
-  const event = { type: String(type), target, ...extra };
+  // preventDefault is container mechanics and decides nothing, so it lives here rather than in
+  // every caller. A submit handler has to be able to call it, and a double that left it off would
+  // fail the wiring for a reason that has nothing to do with what the wiring does. `extra` is
+  // spread last, so a test that wants to watch the call can still supply its own.
+  const event = {
+    type: String(type),
+    target,
+    defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+    ...extra,
+  };
   let node = target;
   while (node) {
     for (const handler of (node.listeners && node.listeners.get(String(type))) || []) {

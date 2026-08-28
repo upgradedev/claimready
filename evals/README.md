@@ -1,6 +1,6 @@
 # WebMCP evals
 
-Three journeys over the nine tools this page publishes, a fourth case that is a **negative control
+Three journeys over the nine tools this page registers, a fourth case that is a **negative control
 and is expected to fail**, an offline replay of all four, and a seeded generator of adversarial
 patch scenarios for the unit suite.
 

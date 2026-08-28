@@ -16,6 +16,7 @@ flowchart TB
   subgraph page["claimready, one origin, no network calls at runtime"]
     R["src/webmcp/register.js: detection, registration, output budget"]
     T["src/webmcp/tools: one tool per file"]
+    D["src/webmcp/declarative_form.js plus the form in index.html: four attributes, nothing registered"]
     S["src/core/store.js: state and subscribers"]
     C["src/core: claim, coverage, estimate. Pure"]
     U["src/ui: rendering and human only controls"]
@@ -23,7 +24,9 @@ flowchart TB
   end
 
   A -->|"document.modelContext.registerTool"| R
+  A -->|"the browser reads toolname off the form and submits it"| D
   R --> T
+  D -->|"dispatch"| S
   T -->|"dispatch"| S
   T -->|"read and compute"| C
   S -->|"subscribe"| U
@@ -144,8 +147,50 @@ Rules the readiness gate enforces on every file in this directory:
 - the name is not one of the human only actions listed below
 
 One tool per file is not tidiness. It is what makes the budget rule and the parameter description
-rule computable without parsing JavaScript, and it means a reviewer counting the tool surface counts
-files.
+rule computable without parsing JavaScript, and it means a reviewer counting the registered tools
+counts files. It does not count the whole published surface any more: the declarative form below is
+one more thing an agent can call and it is not a file in this directory, which is why the page
+reports the two halves as two numbers rather than one.
+
+### `src/webmcp/declarative_form.js`, the other half of the API
+
+Everything above is the imperative API, one JavaScript descriptor per tool. WebMCP has a second
+half: four HTML attributes on a form. `index.html` carries one form with `toolname`,
+`tooldescription`, `toolautosubmit` and a `toolparamdescription` on each control, and the browser
+builds the input schema from the form itself, so no module here writes one.
+
+That is the migration path stated as code rather than as a paragraph. An insurer already serving an
+intake form adopts WebMCP on it by adding attributes to markup they already ship, instead of
+rewriting the page as tool descriptors.
+
+```
+declarative_form.js   FORM_TOOL_NAME, FORM_TOOL_DESCRIPTION, FORM_CONTROLS
+                      describeDeclarativeForm() -> one surface entry, declarative: true
+                      planSubmission(input)     -> { changes, actor, baseRevision, empty, fields }
+                      describeOutcome(outcome)  -> the sentence handed back, refusals included
+```
+
+It is pure, like `src/core`, and it holds no rule of its own. The submit handler in `src/ui/app.js`
+dispatches through the same store as every other control, so `src/core/claim.js` decides the result
+and the refusals are identical on both paths. The one thing the form reads off the event to tell a
+person from an agent is `agentInvoked`, and a refusal is put back through `respondWith` in the words
+`src/core` used, clipped to the same output budget every tool answer is clipped to.
+
+Three consequences worth naming, because they are the ones a reviewer should check:
+
+1. **No annotation is claimed for it.** `readOnlyHint` and `untrustedContentHint` belong to a
+   registered descriptor. A form carries neither, so the page's own list marks the row declared
+   rather than registered and says what the form does instead of what it declares.
+2. **The revision protocol still holds.** A third control carries the revision an agent read.
+   Empty means no revision was quoted, which `src/core/claim.js` refuses with the message that names
+   the number to send, rather than an empty string that would coerce to a stale quote of revision 0.
+3. **It degrades to an ordinary form.** A browser with no declarative API sees four unknown
+   attributes, which the parser keeps and ignores. A person fills the boxes and presses the button
+   and nothing about the page depends on an agent being there.
+
+What has not been verified is in the README, in the table under `The declarative half`: the form has
+been driven by hand and the agent branch has been driven by a constructed `SubmitEvent`, and no
+browser has yet been watched synthesising a tool from the attributes.
 
 ### `src/ui`, rendering and the human only controls
 
@@ -172,6 +217,11 @@ The readiness gate treats the tool surface half as a testable claim rather than 
 fails if one appears. That is a name blocklist run over the tool files on every push. It proves no
 tool file declares one of those names. It is not a runtime guard on the buttons, and nothing here
 is.
+
+It is also narrower than the published surface since the declarative form landed. The row reads
+`src/webmcp/tools` only, so a human only name arriving as a `toolname` attribute in `index.html`
+would not be caught by it. `grep -n 'toolname=' index.html` lists every declared tool on the page, and
+there is one, `record_supporting_details`, which writes two optional claim fields.
 
 ## Constraints that reach across all three layers
 
@@ -227,10 +277,18 @@ directions rather than only on the happy path.
 
 ## The gates
 
-Three scripts, all dependency free, all runnable offline, and they live in three different workflows.
+Three gates, all dependency free, all runnable offline, and they live in three different workflows.
 `check_style.mjs` and the unit suite run in **CI**. `readiness.mjs` runs in **Readiness**, which is
 a separate workflow since 2026-08-28 precisely so that a missing deliverable stops turning the
 engineering badge red. `evals/replay.mjs` runs in **WebMCP evals**, ahead of anything that installs.
+
+A fourth script under `scripts/` is not a gate and is not in any workflow.
+`scripts/measure_intake.mjs` counts fields: how many distinct questions a static form would have to
+ask everyone, taken as the union over both rule packs in `fixtures/insurers/` and the required list
+in `src/core/claim.js`, against how many this page's derived intake asks for a given pack and
+incident type. It prints every combination, the rule that drops each question with the condition
+quoted from the pack JSON, and the command that produced the output. It measures this repository's
+own invented packs and extrapolates nothing beyond them.
 
 `scripts/check_style.mjs` reads every tracked text file and fails on em dash code points, on
 annotation names that WebMCP does not define, on the names of other projects, and on tool metadata

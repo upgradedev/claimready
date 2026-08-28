@@ -38,8 +38,16 @@ import {
   startToolSurface,
   textOfResult,
   registeredToolNames,
-  describeToolSurface
+  describeToolSurface,
+  clip,
+  MAX_TOOL_OUTPUT_CHARS
 } from '../webmcp/register.js';
+import {
+  FORM_TOOL_NAME,
+  describeDeclarativeForm,
+  describeOutcome,
+  planSubmission
+} from '../webmcp/declarative_form.js';
 
 const FIXTURE_URL = './fixtures/demo-collision.json';
 const LEDGER_LIMIT = 40;
@@ -72,6 +80,31 @@ boot();
 
 async function boot() {
   const view = createView(document);
+
+  /*
+   * THE FORM'S SUBMIT IS CAUGHT BEFORE ANYTHING IS AWAITED, AND THAT IS THE WHOLE REASON THIS PAIR
+   * EXISTS. The form carries an action, because both documented examples do, and a submit that
+   * reached the browser's default would navigate and take the draft with it. The handler that does
+   * the real work cannot be attached yet: it needs the store, and the store needs the sample file,
+   * which is a fetch. So the listener goes on now, in the same synchronous run as createView, and
+   * forwards to whatever is in this variable at the time. wireControls swaps in the real one.
+   *
+   * Nothing is silently dropped in between. A person is told the page is still coming up, and an
+   * agent that submitted inside that window is answered rather than left waiting on a promise that
+   * never resolves.
+   */
+  let onDeclaredSubmit = (event) => {
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    const said = 'The page is still loading the claim and the insurer rules, so nothing was '
+      + 'written. Nothing on the draft changed. Try again in a moment.';
+    view.renderDeclaredResult(said);
+    if (event && event.agentInvoked === true && typeof event.respondWith === 'function') {
+      try {
+        event.respondWith(Promise.resolve(said));
+      } catch (ignored) { /* a browser that refuses the response must not break the boot */ }
+    }
+  };
+  view.els.declaredForm.addEventListener('submit', (event) => onDeclaredSubmit(event));
 
   const loaded = await loadFixture();
   let fixture = loaded.fixture;
@@ -389,6 +422,9 @@ async function boot() {
       assistanceAt: ui.assistanceAt,
       assistanceAvailable: assistanceApplies(claim)
     });
+    // The declarative form is part of the draft, so it closes when the draft closes and its hint
+    // carries the revision an agent has to quote right now.
+    view.renderDeclaredForm({ filed: claim.status === 'filed', revision: claim.revision });
   }
 
   function drawRequirements(entries) {
@@ -601,8 +637,12 @@ async function boot() {
       fixtureError
     });
 
+    // BOTH HALVES OF THE API, IN ONE LIST, because a judge reading "nine tools" while their agent
+    // holds ten would be right to distrust the page. The nine are read from register.js, which is
+    // the same list it registers from. The tenth is the form in index.html, which nothing registers
+    // and which the view therefore marks as declared rather than as registered.
     view.renderToolSurface({
-      tools: describeToolSurface(context),
+      tools: [...describeToolSurface(context), describeDeclarativeForm()],
       available: toolStatus.available,
       api: toolStatus.api,
       registered
@@ -684,6 +724,10 @@ async function boot() {
       switchPack(event.target.value);
     });
 
+    // The listener is already on the form, from before the first await. This is where it stops
+    // saying "still loading" and starts writing to the draft.
+    onDeclaredSubmit = submitDeclaredForm;
+
     view.els.checkCoverageBtn.addEventListener('click', runCoverageByHand);
     view.els.checkEstimateBtn.addEventListener('click', runEstimateByHand);
     view.els.fileBtn.addEventListener('click', fileThisClaim);
@@ -717,6 +761,116 @@ async function boot() {
     if (!result.ok) {
       view.showFieldError(result.error || 'That value was not accepted.');
       redraw([]);
+    }
+  }
+
+  /**
+   * The declarative form, submitted. One handler, two callers, one store.
+   *
+   * A PERSON AND AN AGENT ARRIVE HERE THE SAME WAY. The person presses the button. An agent calls
+   * the tool the four attributes on the form declare, and the browser fills the controls and
+   * submits them, which is what toolautosubmit asks it to do. The only thing this function reads
+   * off the event to tell them apart is `agentInvoked`, which the WebMCP declarative API sets on
+   * the SubmitEvent, and everything downstream of that is the same dispatch every other control
+   * on this page makes.
+   *
+   * NOTHING IS FORKED. The changes go through store.dispatch, so src/core/claim.js decides them:
+   * the same coercion, the same length caps, the same refusal for a pinned field or a filed claim,
+   * the same stale check against the revision an agent quoted, and the same provenance recorded
+   * against the actor. There is no second rule anywhere on this path.
+   *
+   * A REFUSAL REACHES THE AGENT. It is put in respondWith, in the words src/core used, so a model
+   * is told what was wrong and, for a stale quote, which number to send next. It also lands in the
+   * on page ledger with its code, next to the submission that caused it, so a viewer watching the
+   * page sees the refusal at the same moment the agent does.
+   *
+   * FEATURE DETECTED THROUGHOUT. preventDefault and respondWith are both called only after they are
+   * found to be functions, and a browser with no declarative API never sets agentInvoked, so this
+   * is an ordinary submit handler there and the form is an ordinary form.
+   */
+  function submitDeclaredForm(event) {
+    // Always, on both paths. This page commits through the store and never navigates, and on the
+    // agent path the documentation requires preventDefault before respondWith.
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+
+    const agentInvoked = Boolean(event && event.agentInvoked === true);
+
+    // Same hazard as filing and resetting: a commit still waiting on the typing timer would land
+    // after this one and write an older account over the draft this submission just moved.
+    cancelPendingCommit();
+
+    const plan = planSubmission({
+      witnessName: view.els.declaredWitness.value,
+      policeReportRef: view.els.declaredPolice.value,
+      baseRevision: view.els.declaredRevision.value,
+      agentInvoked
+    });
+
+    const at = clockNow();
+    const buffer = [];
+    let outcome;
+
+    if (plan.empty) {
+      outcome = { empty: true, ok: false, revision: claimNow().revision };
+    } else if (!agentInvoked && patchIsNoChange(claimNow(), plan.changes)) {
+      // The human path only, exactly as commitControl does it. An agent submission is always
+      // dispatched, because the stale check is a rule about the agent rather than about the value
+      // and short circuiting here would let a quote of an older revision through unexamined.
+      outcome = { unchanged: true, ok: true, revision: claimNow().revision };
+    } else {
+      // Whatever the rules refuse while this submission is on the stack belongs to it, and the
+      // ledger shows it beside the call. Same buffer the instrumented tool calls use.
+      const outer = refusalBuffer;
+      if (agentInvoked) {
+        refusalBuffer = buffer;
+        agentDepth += 1;
+      }
+      try {
+        outcome = store.dispatch({
+          type: 'patch',
+          changes: plan.changes,
+          actor: plan.actor,
+          baseRevision: plan.baseRevision
+        });
+      } finally {
+        if (agentInvoked) {
+          agentDepth -= 1;
+          refusalBuffer = outer;
+        }
+      }
+    }
+
+    const message = describeOutcome({ ...outcome, agentInvoked });
+
+    view.renderDeclaredResult(message);
+    if (outcome.ok === true && outcome.unchanged !== true) view.clearDeclaredInputs();
+
+    if (agentInvoked) {
+      addLedgerEntry({
+        at,
+        name: FORM_TOOL_NAME,
+        args: safeArgs({
+          witness_name: view.els.declaredWitness.value,
+          police_report_ref: view.els.declaredPolice.value,
+          base_revision: view.els.declaredRevision.value
+        }),
+        text: message,
+        error: false,
+        refusals: buffer
+      });
+
+      view.announce(buffer.length
+        ? `Your agent submitted the supporting details form. The page refused it: ${buffer[0].code}.`
+        : `Your agent submitted the supporting details form. The draft is at revision ${claimNow().revision}.`);
+
+      // The result the model is handed, held inside the same output budget every tool answer is
+      // held inside. A browser that offers agentInvoked without respondWith still gets the page
+      // updated above, and must not be broken by calling something that is not there.
+      if (event && typeof event.respondWith === 'function') {
+        try {
+          event.respondWith(Promise.resolve(clip(message, MAX_TOOL_OUTPUT_CHARS)));
+        } catch (ignored) { /* a browser that refuses the response must not break the page */ }
+      }
     }
   }
 
@@ -903,6 +1057,11 @@ async function boot() {
     view.renderEstimate(null);
     view.renderLedger(ledger);
     view.showFieldError('');
+    // The declarative form is a control on this draft like any other, so the boxes and the sentence
+    // under them go back with it. Leaving the last result there would have it describing a draft
+    // that no longer exists.
+    view.clearDeclaredInputs();
+    view.renderDeclaredResult('');
     redraw([]);
 
     // Said on the page as well as to the live region. On a draft nobody has touched yet, reloading

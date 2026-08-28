@@ -165,9 +165,19 @@ function guardedFiles() {
   // register.js was carved out of this list while another agent owned it, and the carve-out
   // outlived the reason: its header held two sentences of exactly the class this rule exists to
   // catch, in the module a reviewer opens first to see how registration works. It is guarded now.
-  const files = ['index.html', 'src/ui/app.js', 'src/ui/render.js', 'src/webmcp/register.js'];
+  //
+  // THE WEBMCP LAYER IS READ AS A DIRECTORY, NOT LISTED BY NAME, and that change has a reason.
+  // register.js was the only file from that directory on this list, so a NEW module beside it
+  // would have been outside every rule here without anything reporting it. That is the failure
+  // this file already documents one directory over: coverage chosen by naming files stops covering
+  // the file somebody adds next. Both directories under src are walked now, so a module cannot
+  // join the page and miss the guard.
+  const files = ['index.html', 'src/ui/app.js', 'src/ui/render.js'];
   for (const name of readdirSync(new URL('src/core/', ROOT))) {
     if (name.endsWith('.js')) files.push(`src/core/${name}`);
+  }
+  for (const name of readdirSync(new URL('src/webmcp/', ROOT))) {
+    if (name.endsWith('.js')) files.push(`src/webmcp/${name}`);
   }
   for (const name of readdirSync(new URL('src/webmcp/tools/', ROOT))) {
     if (name.endsWith('.js')) files.push(`src/webmcp/tools/${name}`);
@@ -181,6 +191,8 @@ test('the guarded surface is the whole page, the wiring and every tool module', 
   assert.ok(files.includes('src/ui/render.js'), 'the view prints most of these sentences');
   assert.ok(files.includes('src/webmcp/tools/apply_claim_patch.js'));
   assert.ok(files.includes('src/webmcp/tools/validate_claim.js'));
+  assert.ok(files.includes('src/webmcp/register.js'), 'the whole webmcp layer is walked, not listed');
+  assert.ok(files.includes('src/webmcp/declarative_form.js'), 'a module added beside register.js is guarded too');
   assert.ok(files.length >= 13, `only ${files.length} files are guarded`);
 });
 

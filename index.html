@@ -124,6 +124,65 @@
     </details>
 
     <p class="field-error" data-el="field-error" role="alert"></p>
+
+    <!--
+      THE DECLARATIVE HALF OF WEBMCP. Everything else on this page publishes its tools from
+      JavaScript, one descriptor per tool. This is the other half of the same standard: an ordinary
+      HTML form, plus four attributes.
+
+        toolname              the name an agent calls
+        tooldescription       what it does
+        toolautosubmit        an agent's call fills these controls and submits them
+        toolparamdescription  the description of one property in the schema
+
+      The browser builds the input schema from the form itself, so nothing here writes one. That is
+      the migration path an insurer with an existing intake form actually has: four attributes on
+      markup they already ship. On a browser that does not implement the declarative API the four
+      are unknown attributes, which the parser keeps and ignores, and this stays an ordinary form
+      that a person fills in and submits with no agent anywhere.
+
+      The submit handler is in src/ui/app.js. It goes through the same store as every other control
+      on this page, so the revision, the provenance and the refusals are identical on both paths.
+      See src/webmcp/declarative_form.js for the attribute values, which are asserted against this
+      markup by tests/unit/declarative_form.test.js.
+    -->
+    <form class="declared" data-el="declared-form" action="./"
+          toolname="record_supporting_details"
+          tooldescription="Record the two supporting details on this claim draft, the name of a witness and the police report reference. Every change goes through the insurer rules on this page, so a pinned field, a filed claim or a revision that has moved is refused."
+          toolautosubmit>
+      <h3 class="declared-title">Supporting details</h3>
+      <p class="declared-note">An ordinary form, and the second way onto this draft. Fill in either
+        box and press the button. It writes the same two answers as the rows above, through the same
+        rules, and an empty box leaves what is already on the draft alone.</p>
+
+      <div class="declared-row">
+        <label class="declared-label" for="declared-witness">Name of the witness</label>
+        <input class="field-control" type="text" id="declared-witness" name="witness_name"
+               data-el="declared-witness" maxlength="80" autocomplete="off"
+               toolparamdescription="The name of a witness to the incident. Leave it out to keep the name already on the draft.">
+      </div>
+
+      <div class="declared-row">
+        <label class="declared-label" for="declared-police">Police report reference</label>
+        <input class="field-control" type="text" id="declared-police" name="police_report_ref"
+               data-el="declared-police" maxlength="40" autocomplete="off"
+               toolparamdescription="The police report reference for this incident. Leave it out to keep the reference on the draft.">
+      </div>
+
+      <div class="declared-row">
+        <label class="declared-label" for="declared-revision">Draft revision your agent read</label>
+        <input class="field-control" type="number" id="declared-revision" name="base_revision"
+               data-el="declared-revision" min="0" step="1" inputmode="numeric"
+               aria-describedby="declared-revision-hint"
+               toolparamdescription="The draft revision you read, from read_claim_state. A change quoting an older revision is refused.">
+        <p class="declared-hint" id="declared-revision-hint" data-el="declared-revision-hint">Leave
+          this box empty. It is here for an agent, which has to quote the revision it read so a
+          change written against an older draft is refused rather than applied to this one.</p>
+      </div>
+
+      <button type="submit" class="btn btn-quiet" data-el="declared-submit">Add these details</button>
+      <p class="declared-result" data-el="declared-result" role="status"></p>
+    </form>
   </section>
 
   <div class="col">
