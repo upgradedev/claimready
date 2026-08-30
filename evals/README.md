@@ -8,7 +8,7 @@ patch scenarios for the unit suite.
 |---|---|
 | `evals.json` | the three journeys. Every step must pass |
 | `negative-control.json` | one case that must fail at its last step, and only there |
-| `replay.mjs` | the same four cases replayed offline against a fake host, with mutations that must break the control |
+| `replay.mjs` | the same four cases replayed offline against a fake host, plus one result screen the harness does not have, with mutations that must break the suite they belong to |
 | `../scripts/gen_scenarios.mjs` | the seeded patch corpus for the unit suite |
 
 Read the status section first. One of the two run modes has now been observed to run green on a
@@ -408,8 +408,22 @@ find out whether a gate has teeth, and you can break a replay of it.
 
 It copies three behaviours from the pinned `smokeEvaluator.ts` so it cannot report a verdict the
 real run could not reach: the tool list is re read before every step, a missing tool is polled for
-and then fails the case, and `explicitToolFailure` is copied verbatim rather than approximated, so
-the replay is exactly as blind to the `result` field as the harness is.
+and then fails the case, and `explicitToolFailure` is copied verbatim rather than approximated.
+
+**And it adds one screen of its own, which the harness does not have.** Corrected 2026-08-30. Being
+exactly as blind to the `result` field as the harness turned out to cost a real defect: `buildContext`
+read `policy.sections`, the page decides that question on `policy.coverages` in `hasSchedule` in
+`src/ui/app.js`, so `hasPolicySchedule` was false on every replay that had ever run. `check_coverage`
+answered *The sample policy schedule did not load*, and the suite printed `Passed steps: 16/16`.
+
+`degradedAnswer` in `evals/replay.mjs` is that added screen. It refuses one thing and says which:
+an answer in which the page has told the caller its own data did not load, or an answer with no text
+in it. It does **not** refuse a refusal, because a refusal is the product working and journey 2
+requires one at step 5. Each screened sentence is read from the constant that produces it,
+`NO_PACK_REASON` from `src/webmcp/register.js` and the `noScheduleReason` mirror held to
+`src/ui/app.js` by `tests/unit/replay_oracle.test.js`, so a reworded sentence cannot quietly leave
+the screen. **It is stronger than the harness and is not a claim about any browser.** A step that
+fails only on it says `the replay screen:` in its own error text.
 
 Measured on 2026-08-28 at commit `4023446e7916b867f1365f871b08885d5cb45655`:
 
@@ -420,18 +434,28 @@ Measured on 2026-08-28 at commit `4023446e7916b867f1365f871b08885d5cb45655`:
 | `... --mutate applied-patch-refused` | `Passed steps: 8/8 across 1 case(s).` | NOT PROVEN | 1 |
 | `... --mutate withdrawal-ignored` | `Passed steps: 8/8 across 1 case(s).` | NOT PROVEN | 1 |
 | `... --mutate ninth-tool-never-registered` | `Passed steps: 3/8 across 1 case(s).` | NOT PROVEN | 1 |
+| `node evals/replay.mjs --mutate schedule-field-drift` | fails at case 1 step 4 on the added screen | the journeys did not replay clean | 1 |
+| `node evals/replay.mjs --selftest` | every mutation ran against its own suite and every one refused | selftest passed | 0 |
+
+The last two rows were added on 2026-08-30. `schedule-field-drift` puts the wrong field name back,
+which is the defect this file shipped with, and the journeys now refuse it at case 1 step 4 instead
+of reporting `16/16`. `--selftest` iterates the mutation registry in `evals/replay.mjs`, picks each
+mutation's declared suite and requires every one of them to exit non zero.
 
 The first row matches the browser run's `16/16` exactly, which is the only thing the replay is
 allowed to be believed about: it agrees with the harness on the cases the harness has run.
 
-The three mutations are what make the control a control. `applied-patch-refused` makes the store
+The mutations are what make the control a control. `applied-patch-refused` makes the store
 refuse the legal patch. `withdrawal-ignored` makes the fake host keep a tool after its AbortSignal
 fires. `ninth-tool-never-registered` makes the host refuse the tool outright, and it is the most
 useful of the three because it produces the **same error sentence at a different step**, and the
 control still says NOT PROVEN. A looser assertion would have read that as a pass.
 
-The workflow runs all five of those commands as a pre flight, before it installs anything, and
-fails if any mutation survives.
+The workflow runs the journeys, the control and then `--selftest` as a pre flight, before it
+installs anything, and fails if any mutation survives. It used to loop the three mutation names
+typed out in the shell, which made the registry and the list CI ran two copies of one thing: the
+fourth mutation would have been registered and executed by nothing.
+`tests/unit/replay_oracle.test.js` asserts the workflow still calls `--selftest`.
 
 ---
 
@@ -442,9 +466,13 @@ fails if any mutation survives.
 # that a change has broken the lifecycle the journeys assume.
 node evals/replay.mjs
 node evals/replay.mjs --negative-control
+node evals/replay.mjs --selftest                                              # every mutation must exit 1
+
+# Or one at a time. Each mutation belongs to one suite and the runner refuses the other pairing.
 node evals/replay.mjs --negative-control --mutate applied-patch-refused        # must exit 1
 node evals/replay.mjs --negative-control --mutate withdrawal-ignored           # must exit 1
 node evals/replay.mjs --negative-control --mutate ninth-tool-never-registered  # must exit 1
+node evals/replay.mjs --mutate schedule-field-drift                            # must exit 1
 ```
 
 The published `webmcp-evals` package cannot run the deterministic mode. npm carries 0.0.1, 0.0.2 and
@@ -477,7 +505,8 @@ node "$EVALS_BIN" browser \
 ```
 
 In CI: `.github/workflows/evals.yml`, on manual dispatch and daily at 06:17 UTC. In order, it
-replays everything offline and fails if any mutation survives, fails when the repository variable
+replays the journeys, replays the negative control, runs `--selftest` over the whole mutation
+registry and fails if any mutation survives, fails when the repository variable
 `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, builds the harness from the
 pinned commit, runs the three journeys, runs the negative control and requires it to fail in the one
 shape described above, and uploads both logs and any `.evals` report as an artifact.
@@ -611,6 +640,7 @@ node evals/replay.mjs --negative-control                                       #
 node evals/replay.mjs --negative-control --mutate applied-patch-refused        # NOT PROVEN, exit 1
 node evals/replay.mjs --negative-control --mutate withdrawal-ignored           # NOT PROVEN, exit 1
 node evals/replay.mjs --negative-control --mutate ninth-tool-never-registered  # NOT PROVEN, exit 1
+node evals/replay.mjs --selftest                                               # all four, exit 0
 ```
 
 The unmutated run prints, in full:

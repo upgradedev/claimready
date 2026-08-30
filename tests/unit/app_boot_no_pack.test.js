@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { fireEvent } from '../support/dom_double.mjs';
-import { bootApp } from '../support/boot_app.mjs';
+import { bootApp, rowFor } from '../support/boot_app.mjs';
 
 const { doc } = await bootApp({ fail: /insurers\// });
 
@@ -28,6 +28,33 @@ test('the page still draws without any insurer rules', () => {
 test('an intake it cannot read is said to be unknown, never drawn as empty', () => {
   assert.match(doc.el('req-summary').textContent, /did not load|cannot say/);
   assert.equal(doc.el('requirements').children.length, 0);
+});
+
+// FAIL CLOSED ON THE PAGE, NOT ONLY IN THE DOMAIN. With every required field answered and no rules
+// to read the intake against, the old gate opened the button: it was disabled on the static list
+// alone, and that list is satisfied. The page cannot say the intake is finished with this draft, so
+// it does not open the control that says it is.
+test('with no insurer rules the File button stays closed, and says why', () => {
+  for (const [field, value] of Object.entries({
+    damage_zone: '10',
+    severity: 'dent',
+    vehicle_drivable: 'true',
+    description: 'A car came out of a side road and hit the left front wing.',
+  })) {
+    const found = rowFor(doc, field);
+    found.control.value = value;
+    fireEvent(found.control, 'change');
+  }
+
+  assert.equal(doc.el('file-btn').disabled, true);
+  assert.match(doc.el('file-reason').textContent, /^The insurer rule pack did not load/);
+  assert.match(doc.el('file-reason').textContent, /filing stays closed until it does/);
+  assert.equal(doc.el('file-reason').classList.contains('is-blocked'), true);
+
+  const held = doc.el('revision').textContent;
+  fireEvent(doc.el('file-btn'), 'click');
+  assert.equal(doc.el('file-result').textContent, '', 'nothing was filed');
+  assert.equal(doc.el('revision').textContent, held, 'a refused filing moves no revision');
 });
 
 test('the cover cannot be checked, and the page says that rather than saying not covered', () => {

@@ -33,7 +33,7 @@ import {
   provenanceOf
 } from '../core/claim.js';
 import { exclusionLabels } from '../core/coverage.js';
-import { fileGateStatement, fileGateIsSettled, optionalDetailsNote } from '../core/requirements.js';
+import { optionalDetailsNote } from '../core/requirements.js';
 
 const HIGHLIGHT_MS = 1500;
 
@@ -103,8 +103,8 @@ const BADGE_TITLES = {
 
 const BADGE_CLASSES = ['badge-agent', 'badge-you', 'badge-policy', 'badge-derived', 'badge-none'];
 
-const PIN_HINT = 'Pinned by you. No patch can move this field, from an agent or from this page, '
-  + 'until you unpin it.';
+const PIN_HINT = 'Pinned via the page. No patch can move this field, from an agent or from this page, '
+  + 'until it is unpinned here.';
 
 const ARGS_LIMIT = 140;
 const RESULT_LIMIT = 240;
@@ -528,35 +528,52 @@ export function createView(doc) {
       els.ledger.replaceChildren(...list.map((entry) => ledgerItem(doc, entry)));
     },
 
+    /**
+     * THE BUTTON, THE SENTENCE AND THE COLOUR ALL COME OFF ONE DECISION, AND THIS FILE MAKES NONE.
+     *
+     * `state.decision` is what src/core/filing.js answered for this draft, and it is the same
+     * object src/core/claim.js refuses a filing on. This used to disable the button on a separate
+     * `ready` flag, which is the static required list and knows nothing an insurer derives, so the
+     * button was open beside a sentence naming an open intake requirement and pressing it filed
+     * the claim. There is nothing left here to disagree with the domain: no second question is
+     * asked and no branch reads anything but the decision.
+     *
+     * @param {{decision: {ok: boolean, reason: string, outstanding: object[], insurer: (string|null),
+     *                     requirementsKnown: boolean},
+     *          filed: boolean, filedAt: (string|null), assistanceAt: (string|null),
+     *          assistanceAvailable: boolean}} state
+     */
     renderActions(state) {
-      els.fileBtn.disabled = Boolean(state.filed) || !state.ready;
+      const decision = state.decision;
+      els.fileBtn.disabled = Boolean(state.filed) || decision.ok !== true;
 
-      // Drawn here, from this state, because it is a third statement about the same draft. The
+      // Drawn from the decision too, because it is a third statement about the same draft. The
       // note above the optional group used to say those fields were not wanted before filing while
       // the loaded pack was asking for two of them. It is composed by src/core from the same
       // outstanding list the file panel reads, so the two cannot say different things.
-      text(els.optionalNote, optionalDetailsNote(state));
+      text(els.optionalNote, optionalDetailsNote(decision));
 
       if (state.filed) {
         text(els.fileReason, 'This claim has been filed. Load the synthetic incident again to run the demonstration from the start.');
         els.fileReason.classList.remove('is-blocked');
-        // What is true here is a fact about the tool surface, not about what a browser can click.
-        // This line is printed by the very click that filed the claim, so a sentence about who is
-        // able to press a button would be answered by its own existence.
-        text(els.fileResult, `Filed by you at ${state.filedAt}. No tool on this page reaches this button.`);
+        // What is true here is a fact about the surface the filing arrived on, not about who was
+        // at the keyboard and not about what a browser can click. This line is printed by the very
+        // click that filed the claim, so a sentence naming the presser would be answered by its
+        // own existence.
+        text(els.fileResult, `Filed via the page at ${state.filedAt}. Filing is not exposed as a WebMCP tool.`);
       } else {
         text(els.fileResult, '');
-        // Both halves of what the panel says come from src/core, the sentence and whether it is a
-        // clear answer, so the colour beside the words cannot claim something the words do not.
-        text(els.fileReason, fileGateStatement(state));
-        els.fileReason.classList.toggle('is-blocked', !fileGateIsSettled(state));
+        // Both halves come from the one decision, the sentence and whether it is a clear answer,
+        // so the colour beside the words cannot claim something the words do not.
+        text(els.fileReason, decision.reason);
+        els.fileReason.classList.toggle('is-blocked', decision.ok !== true);
       }
 
       // Three states, and every one of them draws a reason. A control that is closed with nothing
       // beside it reads as a control that is broken, and this one used to be open from the first
       // paint on a draft that had not said whether the car could still be driven.
       if (state.assistanceAt) {
-        text(els.assistanceState, `Roadside assistance requested by you at ${state.assistanceAt}. In a live deployment the insurer's dispatch desk would pick this up.`);
+        text(els.assistanceState, `Roadside assistance requested via the page at ${state.assistanceAt}. In a live deployment the insurer's dispatch desk would pick this up.`);
         els.assistanceBtn.disabled = true;
       } else if (!state.assistanceAvailable) {
         text(els.assistanceState, state.filed
@@ -1043,9 +1060,13 @@ function revisionText(entry) {
 function sourceTag(doc, entry) {
   const node = doc.createElement('p');
   node.className = 'source-tag';
+  // NAMES THE SURFACE THE RUN ARRIVED ON, NOT WHO ASKED FOR IT. 'agent' here means the panel was
+  // published from a registered tool call, and anything else means it was published from a control
+  // on this page. An agent that drives the page rather than calling a tool arrives the second way,
+  // so a tag reading "you" would be a claim about the keyboard that this page cannot make.
   node.textContent = entry.source === 'agent'
-    ? `Run by your agent at ${entry.at}.`
-    : `Run by you at ${entry.at}.`;
+    ? `Run via a WebMCP tool at ${entry.at}.`
+    : `Run via the page at ${entry.at}.`;
   return node;
 }
 

@@ -24,6 +24,7 @@
 
 import { toResult, budgetedBlock, packOf } from '../register.js';
 import { PATCHABLE_FIELDS, REQUIRED_FIELDS, validateClaim } from '../../core/claim.js';
+import { canFile } from '../../core/filing.js';
 import { deriveRequirements, summariseRequirements } from '../../core/requirements.js';
 
 /**
@@ -58,8 +59,8 @@ export default (ctx) => ({
     + 'revision. Call read_claim_state first and send the revision it reported as baseRevision: if '
     + 'the person on the page has corrected something since you read, the patch is refused and '
     + 'nothing changes, so read again. Dates are YYYY-MM-DD, damage_zone is a clock position 1 to '
-    + '12, vehicle_drivable is true or false. Filing the finished claim is a button on the page, '
-    + 'and is deliberately not available as a tool.',
+    + '12, vehicle_drivable is true or false. Filing the finished claim is a control on this page '
+    + 'and is not exposed as a WebMCP tool.',
 
   inputSchema: {
     type: 'object',
@@ -135,6 +136,14 @@ export default (ctx) => ({
 
     const claim = ctx.store.getState().claim;
     const verdict = validateClaim(claim);
+    const pack = packOf(ctx);
+
+    // THE SAME DECISION THE PAGE AND validate_claim REPORT. This tool used to say "the person on
+    // the page can press File this claim now" the moment the required fields were full, which is
+    // the static list and knows nothing the insurer derives. It printed that sentence directly
+    // above its own line saying an intake requirement was still open, and the button it named was
+    // one the page would have refused.
+    const decision = canFile(pack, claim, ctx.humanActions);
     const applied = Array.isArray(result.applied) ? result.applied : [];
 
     const head = [
@@ -145,13 +154,16 @@ export default (ctx) => ({
     const body = [];
     body.push(verdict.missing && verdict.missing.length
       ? `Still missing: ${verdict.missing.join(', ')}.`
-      : 'Nothing required is missing. The person on the page can press File this claim now.');
+      : 'Nothing required is missing.');
+
+    body.push(decision.ok
+      ? 'The draft can be filed now. Tell the person on the page that they can press File this claim.'
+      : `The draft cannot be filed yet: ${decision.code}. Call validate_claim for the reason in full.`);
 
     if (Array.isArray(verdict.warnings) && verdict.warnings.length) {
       body.push(`Warnings: ${verdict.warnings.join(' ')}`);
     }
 
-    const pack = packOf(ctx);
     if (pack) {
       body.push(summariseRequirements(deriveRequirements(pack, claim, ctx.humanActions)));
       body.push('Call get_requirements if that list has changed since you last looked.');

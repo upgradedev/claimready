@@ -576,12 +576,18 @@ test('the file panel is settled only when there is nothing left for anyone to do
 
 test('the view prints the file panel sentence from this module and holds no copy of it', () => {
   const view = readFileSync(new URL('../../src/ui/render.js', import.meta.url), 'utf8');
-  assert.match(
-    view,
-    /import \{ fileGateStatement, fileGateIsSettled, optionalDetailsNote \} from '\.\.\/core\/requirements\.js';/,
+  assert.match(view, /import \{ optionalDetailsNote \} from '\.\.\/core\/requirements\.js';/);
+
+  // THE SENTENCE AND THE COLOUR NOW COME OFF ONE DECISION OBJECT, which src/core/filing.js
+  // composes with fileGateStatement. The view asks nothing and decides nothing: it prints the
+  // reason it was handed and colours it by the same ok flag the domain refuses a filing on.
+  assert.match(view, /text\(els\.fileReason, decision\.reason\);/);
+  assert.match(view, /classList\.toggle\('is-blocked', decision\.ok !== true\)/);
+  assert.match(view, /els\.fileBtn\.disabled = Boolean\(state\.filed\) \|\| decision\.ok !== true;/);
+  assert.ok(
+    !/canFile/.test(view),
+    'render.js works the filing decision out for itself again, instead of drawing the one it is handed',
   );
-  assert.match(view, /text\(els\.fileReason, fileGateStatement\(state\)\);/);
-  assert.match(view, /classList\.toggle\('is-blocked', !fileGateIsSettled\(state\)\)/);
   assert.ok(
     !/The draft is complete/.test(view),
     'render.js carries its own copy of the file panel sentence again',
@@ -594,7 +600,7 @@ test('the view prints the file panel sentence from this module and holds no copy
   // The third sentence about the same draft, held to the same rule. The note above the optional
   // group is composed here and drawn there, from the state the file panel already receives, so a
   // copy of it in the view would be a second answer waiting to disagree with this one.
-  assert.match(view, /text\(els\.optionalNote, optionalDetailsNote\(state\)\);/);
+  assert.match(view, /text\(els\.optionalNote, optionalDetailsNote\(decision\)\);/);
   assert.ok(
     !/Not needed to file/.test(view),
     'render.js carries its own copy of the optional details sentence again',

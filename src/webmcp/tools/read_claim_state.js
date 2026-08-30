@@ -38,9 +38,19 @@ import { deriveRequirements, outstandingRequirements } from '../../core/requirem
 
 const FREE_TEXT_LIMIT = 160;
 
+/**
+ * What the claim's provenance value means, said as a surface rather than as an author.
+ *
+ * THE PAGE CANNOT KNOW WHO WAS AT THE KEYBOARD. A value typed into a control is recorded as human
+ * whoever moved the control, so an agent driving this page the way any browser automation drives a
+ * page is recorded as human too. These used to read "set by the person on the page" and "set by
+ * you", which are claims about the author. What the claim genuinely records is the route the
+ * answer took, so that is what these say, and src/ui/render.js badges the same two values with the
+ * same distinction in its own words.
+ */
 const SET_BY = {
-  human: ' (set by the person on the page)',
-  agent: ' (set by you)',
+  human: ' (arrived through a control on this page)',
+  agent: ' (arrived through a WebMCP tool call)',
   policy: ' (already on file when the page opened)',
   derived: ' (worked out by the page)',
 };
@@ -109,7 +119,7 @@ export default (ctx) => ({
       : 'Nothing required is missing.');
 
     if (pinned.length) {
-      body.push(`Pinned by the person on the page: ${clip(pinned.join(', '), 260)}. apply_claim_patch refuses any change to a pinned field until they unpin it, and no tool on this page unpins one.`);
+      body.push(`Pinned through this page: ${clip(pinned.join(', '), 260)}. apply_claim_patch refuses any change to a pinned field until it is unpinned there, and no tool on this page unpins one.`);
     }
 
     if (Array.isArray(verdict.warnings) && verdict.warnings.length) {
@@ -141,7 +151,7 @@ export default (ctx) => ({
 
     const tail = [
       `Quote revision ${claim ? claim.revision : 'unknown'} as baseRevision when you call apply_claim_patch. If it has moved, your patch is refused and nothing changes.`,
-      'Filing the claim is a button pressed by the person on the page. It is not available as a tool.',
+      'Filing the claim is a control on this page and is not exposed as a WebMCP tool.',
     ];
 
     // The clock face only needs explaining while the answer is still open. Once it is filled in,

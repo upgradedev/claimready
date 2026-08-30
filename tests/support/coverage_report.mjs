@@ -38,15 +38,28 @@ const SRC = join(ROOT, 'src');
  * A threshold invented above what the code achieves fails the build on the day it lands and gets
  * widened by the next person, and a widened gate is worth nothing. These sit a little under the
  * measured figures so ordinary movement does not trip them, and they are the numbers to RAISE when
- * coverage improves, never to lower when it drops. Measured on the run these were set from, over
- * the 18 files under src: line 97.74, branch 83.42, function 97.14. Each floor sits between
- * one and two points under its measurement, which is room for ordinary movement and nothing more.
+ * coverage improves, never to lower when it drops.
  *
- * The branch floor is the lowest of the three because branch coverage is genuinely the weakest
- * column here, not because it was relaxed to fit. The gap is named in the handover: the deepest
- * remaining holes are src/webmcp/register.js at 68.67% and src/ui/app.js at 68.46% branch.
+ * RAISED 2026-08-30, from line 96, branch 82, function 95.
+ *
+ * The branch floor was the one that mattered. `_submission_kit/STANDARDS.md` row C1 reads
+ * "Coverage above 85%", "enforced in CI, not reported", and a floor of 82 did not enforce it: the
+ * build would have stayed green all the way down to 82 while the standard said 85. It is now 86,
+ * which is above the standard rather than at it.
+ *
+ * MEASURED, THREE TIMES, ON THE RUN THESE WERE SET FROM, over the 20 files under src:
+ *   line     98.34, 98.34, 98.34
+ *   branch   87.70, 87.80, 87.80
+ *   function 97.60, 97.60, 97.60
+ * The branch column moves by about a tenth of a point between runs and the other two do
+ * not. That is not noise in the measurement, it is src/ui/app.js: the page boots asynchronously
+ * and register.js queues its reconciles, so a handful of branches in app.js are reached or not
+ * depending on how the ticks fall. It is recorded here rather than smoothed over, because a floor
+ * set flush against a wobbling number is a flaky build waiting to happen. Each floor sits between
+ * one and two points under the LOWEST of the three readings, which is room for the wobble and for
+ * ordinary movement, and nothing more.
  */
-const FLOORS = { line: 96, branch: 82, function: 95 };
+const FLOORS = { line: 97, branch: 86, function: 96 };
 
 /** Every .js file the product ships, read off disk so the list cannot go stale. */
 function shippedSourceFiles(dir = SRC) {

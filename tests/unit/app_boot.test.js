@@ -124,7 +124,7 @@ test('pinning a field from the page closes its control and prints the reason', (
   const after = rowFor(doc, 'incident_type');
   assert.equal(after.row.classList.contains('is-pinned'), true);
   assert.equal(after.control.disabled, true);
-  assert.match(after.hint.textContent, /Pinned by you/);
+  assert.match(after.hint.textContent, /Pinned via the page/);
   assert.equal(after.pin.getAttribute('aria-pressed'), 'true');
 
   // And back again, because a pin nobody can undo is a trap.
@@ -141,7 +141,7 @@ test('checking the cover by hand answers the panel, and leaves the tool ledger a
   const body = doc.el('coverage-body').textContent;
   assert.doesNotMatch(body, /Not checked yet/, 'the panel should have been answered');
   assert.match(body, /draft revision \d+/, 'an answer must name the draft it belongs to');
-  assert.match(body, /Run by you at /, 'who ran it is part of the answer');
+  assert.match(body, /Run via the page at /, 'which surface ran it is part of the answer');
 
   // THE LEDGER IS FOR TOOL CALLS AND ONLY FOR TOOL CALLS. A button on the page runs the same
   // domain function directly, without going through the published surface, so nothing is ledgered.
@@ -216,7 +216,7 @@ test('roadside assistance opens only once the draft says the car cannot be drive
   // dispatch could be deleted from requestAssistance and every test here stayed green.
   const revisionBefore = Number(doc.el('revision').textContent);
   fireEvent(doc.el('assistance-btn'), 'click');
-  assert.match(doc.el('assistance-state').textContent, /Roadside assistance requested by you at /);
+  assert.match(doc.el('assistance-state').textContent, /Roadside assistance requested via the page at /);
   assert.equal(doc.el('assistance-btn').disabled, true, 'it cannot be requested twice');
   assert.equal(Number(doc.el('revision').textContent), revisionBefore + 1,
     'a human action that closes a requirement changes what every tool answers, so it must move the '
@@ -277,31 +277,68 @@ test('loading the synthetic incident again says so, and moves the revision on ra
   assert.equal(doc.el('ledger').children.length, 0, 'the ledger is cleared with the draft');
 });
 
+/** Set one row on the page the way a visitor does, and commit it. */
+function setField(field, value) {
+  const found = rowFor(doc, field);
+  found.control.value = value;
+  fireEvent(found.control, 'change');
+}
+
 // Filing is last, because it is the one action the page cannot be reloaded out of within a test
 // that follows it without depending on reset to reopen a closed draft.
-test('filing is refused until the draft is complete, and closes the draft when it lands', () => {
+//
+// THIS IS THE PAGE HALF OF THE FILE GATE, AND IT IS THE DEFECT THAT PROMPTED THE MODULE. The
+// button was disabled on the static required list alone, so the moment those six fields were full
+// it opened, over a requirements panel that was still naming an open intake requirement, and
+// pressing it filed the claim. Every step below is now decided by src/core/filing.js.
+test('filing waits for the insurer intake, not only for the required fields', () => {
   reload();
+
+  // Pinned rather than inherited. The reset restores the draft and not the rule pack, so without
+  // this the gate under test would be whichever insurer an earlier test happened to leave loaded.
+  const picker = doc.el('insurer-select');
+  picker.value = 'northwind';
+  fireEvent(picker, 'change');
+
   assert.equal(doc.el('file-btn').disabled, true, 'an incomplete draft cannot be filed');
 
   fireEvent(doc.el('file-btn'), 'click');
   assert.equal(doc.el('file-result').textContent, '',
     'a disabled button that filed anyway would be the whole defect');
 
-  const fill = { damage_zone: '10', severity: 'dent', vehicle_drivable: 'false' };
-  for (const [field, value] of Object.entries(fill)) {
-    const found = rowFor(doc, field);
-    found.control.value = value;
-    fireEvent(found.control, 'change');
-  }
-  const description = rowFor(doc, 'description');
-  description.control.value = 'A car came out of a side road and hit the left front wing.';
-  fireEvent(description.control, 'change');
+  // Every required field answered, and the car cannot be driven, which is what raises this
+  // insurer's roadside collection rule and its collection address rule.
+  setField('damage_zone', '10');
+  setField('severity', 'dent');
+  setField('vehicle_drivable', 'false');
+  setField('description', 'A car came out of a side road and hit the left front wing.');
 
-  assert.equal(doc.el('file-btn').disabled, false, 'a complete draft is the visitor to file');
+  assert.match(doc.el('req-summary').textContent, /intake requirements are still open/,
+    'the panel beside the button says the intake is still asking');
+  assert.equal(doc.el('file-btn').disabled, true,
+    'the button stayed open over an open intake requirement, which is the defect this guards');
+  assert.match(doc.el('file-reason').textContent, /still asks for/);
+  assert.equal(doc.el('file-reason').classList.contains('is-blocked'), true);
+
+  // Pressing it anyway changes nothing: the domain refuses the same decision the button drew.
+  const held = doc.el('revision').textContent;
+  fireEvent(doc.el('file-btn'), 'click');
+  assert.equal(doc.el('file-result').textContent, '', 'nothing was filed');
+  assert.equal(doc.el('revision').textContent, held, 'a refused filing moves no revision');
+
+  // Answer the question that raised them, and both requirements go with it.
+  setField('vehicle_drivable', 'true');
+  assert.match(doc.el('req-summary').textContent, /intake requirements are answered/);
+  assert.equal(doc.el('file-btn').disabled, false, 'a draft the intake is finished with is the visitor to file');
+  assert.equal(doc.el('file-reason').textContent, 'The draft is complete. Filing is yours to do.');
+
   fireEvent(doc.el('file-btn'), 'click');
 
-  assert.match(doc.el('file-result').textContent, /Filed by you at /);
-  assert.match(doc.el('file-result').textContent, /No tool on this page reaches this button/);
+  // The line names the surface the filing arrived on. It is printed by the very click that filed
+  // the claim, and the page cannot know whether a person or a browser driving agent made it.
+  assert.match(doc.el('file-result').textContent, /Filed via the page at /);
+  assert.doesNotMatch(doc.el('file-result').textContent, /by you/);
+  assert.match(doc.el('file-result').textContent, /not exposed as a WebMCP tool/);
   assert.match(doc.el('claim-note').textContent, /The draft is closed/);
   assert.equal(rowFor(doc, 'severity').control.disabled, true);
 
@@ -311,4 +348,8 @@ test('filing is refused until the draft is complete, and closes the draft when i
   severity.control.value = 'structural';
   fireEvent(severity.control, 'change');
   assert.equal(doc.el('revision').textContent, revision, 'a filed claim is closed to changes');
+
+  // A second press of a button the page has already closed files nothing twice.
+  fireEvent(doc.el('file-btn'), 'click');
+  assert.equal(doc.el('revision').textContent, revision, 'a filed claim cannot be filed again');
 });

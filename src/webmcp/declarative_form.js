@@ -44,6 +44,32 @@ import { FIELD_LABELS } from '../core/claim.js';
 export const FORM_TOOL_NAME = 'record_supporting_details';
 
 /**
+ * The refusal code for a submission that carried no value at all.
+ *
+ * A SUBMISSION OF NOTHING IS A REFUSAL AND HAS TO LOOK LIKE ONE. It used to be answered with a
+ * sentence and nothing else: no code for a model to branch on, a ledger row with no refusal
+ * attached, and an announcement that read "Your agent submitted the supporting details form. The
+ * draft is at revision 3", which is what the page says when something worked. Three of the four
+ * surfaces a viewer or a model reads called an empty submission a success.
+ *
+ * It is a FORM code and deliberately not one of the PATCH_REJECTED family in src/core/claim.js:
+ * nothing is dispatched on this path, so no rule in core refused anything, and borrowing a core
+ * code would say a rule fired that never ran.
+ */
+export const FORM_REFUSED_EMPTY = 'FORM_REFUSED_EMPTY';
+
+/**
+ * What an empty submission is told, in one place.
+ *
+ * src/ui/app.js puts this on the ledger row beside the code, and describeOutcome below puts it in
+ * the sentence the page prints and the model is handed. One string, three readers, so the row and
+ * the sentence cannot come to say different things about one submission.
+ */
+export const EMPTY_SUBMISSION_REASON =
+  'Nothing was submitted. Fill in the name of the witness, the police report reference, or both, '
+  + 'and send it again.';
+
+/**
  * What the form tells an agent it does. This string is asserted, character for character, against
  * the tooldescription attribute in index.html by tests/unit/declarative_form.test.js, so the page
  * and the surface the page reports cannot drift apart.
@@ -172,9 +198,12 @@ export function planSubmission(input = {}) {
 export function describeOutcome(outcome = {}) {
   const revision = Number.isInteger(outcome.revision) ? outcome.revision : 0;
 
+  // A REFUSAL, IN THE SAME SHAPE AS EVERY OTHER REFUSAL. This used to be a sentence with no code
+  // in front of it, so a model had nothing to branch on and the page had nothing to badge the
+  // ledger row with. Nothing was dispatched, so the code is this module's own rather than one of
+  // core's, and the wording says plainly that the draft did not move.
   if (outcome.empty) {
-    return 'Nothing was submitted. Fill in the name of the witness, the police report reference, '
-      + `or both, and send it again. The draft is at revision ${revision}.`;
+    return refused(FORM_REFUSED_EMPTY, EMPTY_SUBMISSION_REASON, revision);
   }
 
   // Storing what is already stored would move the revision for an edit nobody made, and every
@@ -185,9 +214,7 @@ export function describeOutcome(outcome = {}) {
   }
 
   if (outcome.ok !== true) {
-    const code = outcome.code ? `${outcome.code}: ` : '';
-    const said = outcome.error || 'The rules refused this change.';
-    return `Refused. ${code}${said} Nothing on the draft changed, and it is at revision ${revision}.`;
+    return refused(outcome.code, outcome.error || 'The rules refused this change.', revision);
   }
 
   // Said out loud through FIELD_LABELS, the one place this repository keeps the words for a field,
@@ -195,8 +222,24 @@ export function describeOutcome(outcome = {}) {
   const applied = Array.isArray(outcome.applied) ? outcome.applied : [];
   const said = applied.map((field) => FIELD_LABELS[field] || field);
   const written = said.length === 1 ? said[0] : said.join(' and ');
-  const who = outcome.agentInvoked === true ? 'your agent' : 'you';
-  return `Recorded ${written} on the draft, written by ${who}. The draft is now at revision ${revision}.`;
+  // THE SURFACE, NOT THE AUTHOR. `agentInvoked` is set by the browser on a declarative tool call
+  // and is the one thing here that is actually known: it says the submission arrived as a tool
+  // call rather than through the form's own button. It does not say who pressed that button, and
+  // a browser driving agent presses it like anyone else, so this names the route and stops there.
+  const route = outcome.agentInvoked === true ? 'the WebMCP tool call' : 'the page UI';
+  return `Recorded ${written} on the draft, submitted through ${route}. The draft is now at revision ${revision}.`;
+}
+
+/**
+ * One refusal sentence, one shape, whoever refused.
+ * @param {(string|null)} code
+ * @param {string} said
+ * @param {number} revision
+ * @returns {string}
+ */
+function refused(code, said, revision) {
+  const tag = code ? `${code}: ` : '';
+  return `Refused. ${tag}${said} Nothing on the draft changed, and it is at revision ${revision}.`;
 }
 
 function trimmed(value) {

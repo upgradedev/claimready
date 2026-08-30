@@ -12,7 +12,7 @@
   "shared_state": {
     "one_draft": "The person on the page and the agent write to the same claim object. Neither has a private copy.",
     "revision": "A whole number that advances by exactly one on every accepted change, whatever the change carried. Lock, unlock and file advance it too.",
-    "provenance": "Per field, one of: human, agent, policy, derived. The page keeps it, and a read tool reports it, so a claimant can see which answers an agent supplied.",
+    "provenance": "Per field, one of: human, agent, policy, derived. It records the SURFACE a value arrived through, a control on the page or a WebMCP tool call, and not who was at the keyboard: an agent that drives the page rather than calling a tool is recorded the same way a person is. The page keeps it and a read tool reports it.",
     "locked": "Field names the person pinned on the page. No patch moves a pinned field until a person unpins it. There is no tool for pinning and there should never be one.",
     "status": "draft or filed. A filed claim is closed to every change."
   },

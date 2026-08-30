@@ -235,7 +235,7 @@ test('the guard leaves the true statement about the tool surface alone', () => {
     'No tool this page publishes reaches any of them.',
     'you can pin a row so no patch can move it',
     'No agent detected in this browser, so nothing is driving the page but you.',
-    'A collection is arranged by the person on the page pressing the button.',
+    'A collection is arranged by pressing that button on this page, which is not exposed as a WebMCP tool.',
   ];
   for (const sentence of honest) {
     const caught = FALSE_ABSOLUTES.filter((rule) => rule.pattern.test(sentence));

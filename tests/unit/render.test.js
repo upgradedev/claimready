@@ -13,18 +13,44 @@
  *
  * WHERE THE DATA COMES FROM. Claims are built with the real createClaim and moved with the real
  * applyPatch, so provenance on a badge is provenance the domain actually recorded rather than a
- * literal written next to the assertion that reads it. The file panel sentences come from the real
- * fileGateStatement. Nothing in this file restates a rule, so no assertion here can pass because
- * of something written in the test.
+ * literal written next to the assertion that reads it. Nothing in this file restates a rule, so no
+ * assertion here can pass because of something written in the test.
+ *
+ * THE FILE PANEL IS DRIVEN BY THE REAL DECISION, AND THAT CHANGED HERE. These tests used to hand
+ * renderActions a state assembled by hand: a `ready` flag, an outstanding list and a
+ * requirementsKnown flag, each written next to the assertion that read it. The view then decided
+ * the button from `ready` alone, so a hand written state could not catch the defect that shipped,
+ * which was the button staying open over an intake requirement the very same state described as
+ * open. Every case below now builds a real claim, reads it against a shipped insurer pack through
+ * the real canFile, and hands the view what the page hands it.
  */
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { createDocumentDouble, hookNamesFromIndexHtml, installClockDouble } from '../support/dom_double.mjs';
 import { createView, clockLabel } from '../../src/ui/render.js';
 import { createClaim, applyPatch, lockField, fileClaim, PATCHABLE_FIELDS } from '../../src/core/claim.js';
-import { fileGateStatement } from '../../src/core/requirements.js';
+import { canFile } from '../../src/core/filing.js';
+import { loadPolicyPack } from '../../src/core/policy.js';
+
+/** A shipped insurer pack, so the file panel is drawn against rules the page really loads. */
+const northwind = loadPolicyPack(JSON.parse(readFileSync(
+  new URL('../../fixtures/insurers/northwind.json', import.meta.url), 'utf8',
+)));
+
+/** What the page hands renderActions, built the way src/ui/app.js builds it. */
+function actionState(claim, pack, extra = {}) {
+  return {
+    decision: canFile(pack, claim, extra.humanActions || []),
+    filed: claim.status === 'filed',
+    filedAt: claim.filed_at,
+    assistanceAt: null,
+    assistanceAvailable: false,
+    ...extra,
+  };
+}
 
 /**
  * A view over a fresh document double, with the clock swapped out.
@@ -70,6 +96,19 @@ function readyClaim(actor = 'human') {
   return claim;
 }
 
+/**
+ * The same claim with the car still drivable.
+ *
+ * readyClaim says the car cannot be driven, which is what raises the two collection rules in both
+ * shipped packs, so it is the draft with something still open. Answering yes is what leaves the
+ * intake with nothing to ask for, and it is the only draft the word complete is allowed on.
+ */
+function drivableClaim() {
+  const result = applyPatch(readyClaim(), { field: 'vehicle_drivable', value: true });
+  assert.equal(result.ok, true, `the drivable patch must apply: ${result.error}`);
+  return result.claim;
+}
+
 /* The page and the view must agree on every hook */
 
 test('every hook createView resolves is present in the shipped index.html', () => {
@@ -110,21 +149,12 @@ test('a hook missing from the page is refused at start up, by name', () => {
 
 test('the file panel names what is still needed while the draft is incomplete', () => {
   withView({}, ({ doc, view }) => {
-    const state = {
-      ready: false,
-      missing: ['incident_type', 'severity'],
-      outstanding: [],
-      insurer: 'Northwind',
-      requirementsKnown: true,
-      filed: false,
-      assistanceAvailable: false,
-      assistanceAt: null,
-    };
+    const state = actionState(createClaim({ policy: { id: 'MTR-2026-0417' } }), northwind);
     view.renderActions(state);
 
     assert.equal(doc.el('file-btn').disabled, true, 'an incomplete draft cannot be filed');
     // The sentence is the domain's, drawn word for word.
-    assert.equal(doc.el('file-reason').textContent, fileGateStatement(state));
+    assert.equal(doc.el('file-reason').textContent, state.decision.reason);
     assert.match(doc.el('file-reason').textContent, /Still needed before you can file/);
     assert.equal(doc.el('file-reason').classList.contains('is-blocked'), true);
     assert.equal(doc.el('file-result').textContent, '');
@@ -133,39 +163,32 @@ test('the file panel names what is still needed while the draft is incomplete', 
 
 test('a draft with every field filled but the intake still asking is not called complete', () => {
   withView({}, ({ doc, view }) => {
-    const state = {
-      ready: true,
-      missing: [],
-      outstanding: [{ id: 'police-report', label: 'A police report reference' }],
-      insurer: 'Northwind',
-      requirementsKnown: true,
-      filed: false,
-      assistanceAvailable: false,
-      assistanceAt: null,
-    };
+    // Every required field is answered and the car cannot be driven, which is what raises this
+    // insurer's two collection rules. The draft is ready by the static list and not by the intake.
+    const state = actionState(readyClaim(), northwind);
+    assert.deepEqual(state.decision.missing, [], 'the static file gate has nothing left to ask for');
+    assert.ok(state.decision.outstanding.length > 0, 'the intake is still asking for something');
     view.renderActions(state);
 
     const said = doc.el('file-reason').textContent;
-    assert.equal(said, fileGateStatement(state));
+    assert.equal(said, state.decision.reason);
     assert.doesNotMatch(said, /The draft is complete/, 'the intake is still asking, so it is not complete');
-    assert.match(said, /A police report reference/);
+    assert.match(said, /Roadside collection for a car that cannot be driven/);
     // Not settled, so the colour beside the words must not read as a clear answer.
     assert.equal(doc.el('file-reason').classList.contains('is-blocked'), true);
+
+    // THE DEFECT THIS WHOLE CHANGE EXISTS FOR. The sentence above said the insurer was still
+    // asking and the button beside it was open, because the view disabled it on the static list
+    // alone. A panel and a button that describe one draft cannot be allowed to disagree.
+    assert.equal(doc.el('file-btn').disabled, true,
+      'the button cannot be open while the sentence beside it names an open requirement');
   });
 });
 
 test('the file panel says filing is yours only when nothing is outstanding', () => {
   withView({}, ({ doc, view }) => {
-    const state = {
-      ready: true,
-      missing: [],
-      outstanding: [],
-      insurer: 'Northwind',
-      requirementsKnown: true,
-      filed: false,
-      assistanceAvailable: false,
-      assistanceAt: null,
-    };
+    const state = actionState(drivableClaim(), northwind);
+    assert.deepEqual(state.decision.outstanding, [], 'a drivable car raises neither collection rule');
     view.renderActions(state);
 
     assert.equal(doc.el('file-btn').disabled, false);
@@ -176,40 +199,29 @@ test('the file panel says filing is yours only when nothing is outstanding', () 
 
 test('a rule pack that never loaded is drawn as an unknown, not as a clear answer', () => {
   withView({}, ({ doc, view }) => {
-    const state = {
-      ready: true,
-      missing: [],
-      outstanding: [],
-      insurer: null,
-      requirementsKnown: false,
-      filed: false,
-      assistanceAvailable: false,
-      assistanceAt: null,
-    };
-    view.renderActions(state);
+    view.renderActions(actionState(drivableClaim(), null));
     assert.match(doc.el('file-reason').textContent, /did not load/);
     assert.equal(doc.el('file-reason').classList.contains('is-blocked'), true);
+
+    // FAIL CLOSED IN THE VIEW TOO. Every required field is filled, so the old gate opened the
+    // button on a draft nothing on this page could say the intake was finished with.
+    assert.equal(doc.el('file-btn').disabled, true,
+      'a draft whose rules never loaded is an unknown, and an unknown does not open the button');
   });
 });
 
 test('a filed claim says so, and says filing is not on the tool surface', () => {
   withView({}, ({ doc, view }) => {
-    view.renderActions({
-      ready: true,
-      missing: [],
-      outstanding: [],
-      insurer: 'Northwind',
-      requirementsKnown: true,
-      filed: true,
-      filedAt: '11:04:22',
-      assistanceAvailable: false,
-      assistanceAt: null,
-    });
+    const filed = fileClaim(drivableClaim(), { at: '11:04:22', pack: northwind });
+    assert.equal(filed.ok, true, filed.error);
+    view.renderActions(actionState(filed.claim, northwind));
 
     assert.equal(doc.el('file-btn').disabled, true);
-    assert.match(doc.el('file-result').textContent, /Filed by you at 11:04:22/);
-    // The true claim is about the tool surface, never about what a browser can click.
-    assert.match(doc.el('file-result').textContent, /No tool on this page reaches this button/);
+    // NAMES THE SURFACE, NOT THE PRESSER. This line is printed by the very click that filed the
+    // claim, and the page cannot know whether a person or a browser driving agent made it.
+    assert.match(doc.el('file-result').textContent, /Filed via the page at 11:04:22/);
+    assert.doesNotMatch(doc.el('file-result').textContent, /by you/);
+    assert.match(doc.el('file-result').textContent, /not exposed as a WebMCP tool/);
     assert.equal(doc.el('file-reason').classList.contains('is-blocked'), false);
   });
 });
@@ -222,7 +234,7 @@ test('all three roadside assistance states draw a reason beside the button', () 
       what: 'already requested',
       state: { assistanceAt: '11:09:00', assistanceAvailable: false, filed: false },
       disabled: true,
-      says: /Roadside assistance requested by you at 11:09:00/,
+      says: /Roadside assistance requested via the page at 11:09:00/,
     },
     {
       what: 'the car is still drivable',
@@ -246,10 +258,7 @@ test('all three roadside assistance states draw a reason beside the button', () 
 
   for (const item of cases) {
     withView({}, ({ doc, view }) => {
-      view.renderActions({
-        ready: true, missing: [], outstanding: [], insurer: 'Northwind', requirementsKnown: true,
-        ...item.state,
-      });
+      view.renderActions(actionState(drivableClaim(), northwind, item.state));
       assert.equal(doc.el('assistance-btn').disabled, item.disabled, item.what);
       const reason = doc.el('assistance-state').textContent;
       assert.match(reason, item.says, item.what);
@@ -270,7 +279,7 @@ test('a pinned field closes its control and prints why, and so does a filed clai
     const control = row.descendants().find((node) => node.classList.contains('field-control'));
     assert.equal(control.disabled, true, 'a pinned field is closed to a patch, so the control closes too');
     const hint = row.descendants().find((node) => node.classList.contains('field-hint'));
-    assert.match(hint.textContent, /Pinned by you/, 'a closed control with no reason is a dead end');
+    assert.match(hint.textContent, /Pinned via the page/, 'a closed control with no reason is a dead end');
 
     const pin = row.descendants().find((node) => node.classList.contains('pin'));
     assert.equal(pin.getAttribute('aria-pressed'), 'true');
@@ -311,7 +320,7 @@ test('every row puts its control before its pin, in document order, not only on 
   });
 
   withView({}, ({ doc, view }) => {
-    const filed = fileClaim(readyClaim()).claim;
+    const filed = fileClaim(drivableClaim(), { pack: northwind }).claim;
     view.renderClaim(filed, []);
     for (const field of PATCHABLE_FIELDS) {
       const row = doc.el('fields').descendants().concat(doc.el('fields-optional').descendants())

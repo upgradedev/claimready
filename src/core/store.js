@@ -23,7 +23,11 @@
  *   { type: 'patch', field, value, actor, baseRevision }   one change, same thing
  *   { type: 'lock',   field }     human only, pins a field
  *   { type: 'unlock', field }     human only, releases it
- *   { type: 'file',   at }        human only
+ *   { type: 'file',   at, pack, completedHumanActions }
+ *                                 filing. The insurer rule pack and the human actions already
+ *                                 carried out travel on the action, because the gate in
+ *                                 src/core/filing.js reads both and this store holds neither.
+ *                                 With no pack the domain refuses: see FILE_REFUSED_NO_PACK.
  *   { type: 'reset' }              restores the draft and advances the revision, never rewinds it
  *   { type: 'context', reason }   nothing on the claim changed, but what the tools ANSWER did.
  *                                 Moves the revision so a patch quoting the earlier number is
@@ -156,7 +160,17 @@ export function createStore(initialState) {
     }
 
     if (type === 'file') {
-      const result = fileClaim(state.claim, { at: action.at });
+      // THE ACTION CARRIES THE PACK AND THE COMPLETED HUMAN ACTIONS, THE STORE DOES NOT HOLD THEM.
+      // Which insurer's rules are loaded and which buttons a person has pressed are facts about
+      // the page, not about the draft, and a store that held them would be holding browser state.
+      // Carrying them on the action keeps this module the same pure forwarder it is for a patch,
+      // and it is what puts the insurer's derived requirements in front of the file gate: this
+      // action used to pass neither, so the domain decided on the static field list alone.
+      const result = fileClaim(state.claim, {
+        at: action.at,
+        pack: action.pack ?? null,
+        completedHumanActions: action.completedHumanActions,
+      });
       return settle(result, []);
     }
 

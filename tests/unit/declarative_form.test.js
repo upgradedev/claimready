@@ -32,6 +32,7 @@ import { fireEvent, createDocumentDouble, installClockDouble } from '../support/
 import { createView } from '../../src/ui/render.js';
 import {
   FORM_CONTROLS,
+  FORM_REFUSED_EMPTY,
   FORM_TOOL_DESCRIPTION,
   FORM_TOOL_NAME,
   REVISION_CONTROL,
@@ -251,7 +252,7 @@ test('a person fills the form in and presses the button, and the draft moves', (
   assert.equal(row.badge.textContent, 'via page', 'a person at the keyboard is provenance via the page');
   assert.equal(row.badge.classList.contains('badge-you'), true);
 
-  assert.match(doc.el('declared-result').textContent, /^Recorded the name of the witness on the draft, written by you\./);
+  assert.match(doc.el('declared-result').textContent, /^Recorded the name of the witness on the draft, submitted through the page UI\./);
   assert.match(doc.el('declared-result').textContent, new RegExp(`revision ${before + 1}\\.$`));
   assert.equal(doc.el('declared-witness').value, '', 'an accepted submission empties the boxes');
 });
@@ -270,11 +271,104 @@ test('resubmitting what is already on the draft changes nothing and moves no rev
   assert.match(doc.el('declared-result').textContent, /already on the draft/);
 });
 
-test('an empty submission says so instead of pretending something happened', () => {
+test('an empty submission a person makes is refused, and is not ledgered as a tool call', () => {
   const before = revisionNow();
+  const ledgerBefore = doc.el('ledger').children.length;
   submitAsPerson({});
-  assert.equal(revisionNow(), before);
-  assert.match(doc.el('declared-result').textContent, /^Nothing was submitted\./);
+
+  assert.equal(revisionNow(), before, 'nothing was written and the revision did not move');
+  assert.match(doc.el('declared-result').textContent, new RegExp(`^Refused\. ${FORM_REFUSED_EMPTY}: `));
+  assert.equal(doc.el('ledger').children.length, ledgerBefore,
+    'a person pressing the button is not a tool call and is not ledgered as one');
+  assert.equal(doc.el('declared-witness').value, '', 'an empty form has nothing to keep');
+});
+
+/* ---------------------------------------- 3b. what the ledger records, and when it is cleared */
+
+/**
+ * THE LEDGER IS READ BEFORE THE BOXES ARE EMPTIED, AND THAT ORDER IS THE WHOLE OF THESE TESTS.
+ *
+ * The submission was planned from the controls at the top of the handler, then the page emptied
+ * the three boxes on success, and only then did it build the ledger entry by reading those same
+ * controls again. So every accepted agent submission was recorded with empty arguments: the
+ * ledger, which exists to show a viewer what an agent sent, showed an empty witness, an empty
+ * police reference and an empty revision beside a draft that had just taken all three. The one
+ * path that recorded them correctly was the refusal path, because a refusal did not clear.
+ */
+
+test('an accepted agent submission is ledgered with the values it actually sent', async () => {
+  const before = revisionNow();
+  const { answered } = submitAsAgent({
+    witness: 'Sofia Marin',
+    police: 'PR-2026-31007',
+    revision: before,
+  });
+
+  assert.equal(revisionNow(), before + 1, 'both values were applied');
+  await answered[0];
+
+  const entry = newestLedgerEntry();
+  const args = entry.textOfClass('ledger-args');
+  assert.match(args, /Sofia Marin/, 'the ledger recorded an empty witness beside a witness it applied');
+  assert.match(args, /PR-2026-31007/, 'the ledger recorded an empty police reference beside one it applied');
+  assert.match(args, new RegExp(`"base_revision":"${before}"`),
+    'the ledger recorded an empty revision beside the revision the agent quoted');
+
+  // And the boxes are still emptied afterwards, which is what they were emptied for.
+  assert.equal(doc.el('declared-witness').value, '');
+  assert.equal(doc.el('declared-police').value, '');
+  assert.equal(doc.el('declared-revision').value, '');
+});
+
+test('a partly filled agent submission ledgers the one value it carried, and no phantom', async () => {
+  const before = revisionNow();
+  const { answered } = submitAsAgent({ police: 'PR-2026-31008', revision: before });
+
+  assert.equal(revisionNow(), before + 1);
+  await answered[0];
+
+  const args = newestLedgerEntry().textOfClass('ledger-args');
+  assert.match(args, /PR-2026-31008/);
+  assert.match(args, /"witness_name":""/, 'a control the agent left empty is recorded as empty');
+});
+
+test('a refused agent submission keeps the values a person would want kept', async () => {
+  const stale = revisionNow() - 1;
+  const { answered } = submitAsAgent({ witness: 'Iris Almeida', revision: stale });
+  await answered[0];
+
+  assert.match(newestLedgerEntry().textOfClass('ledger-args'), /Iris Almeida/);
+  assert.equal(doc.el('declared-witness').value, 'Iris Almeida',
+    'a refusal that empties the boxes throws away what the sender would resend');
+});
+
+/* ---------------------------------------------- 3c. an empty submission is a refusal, not a shrug */
+
+/**
+ * AN EMPTY SUBMISSION USED TO READ AS SUCCESS EVERYWHERE EXCEPT THE ONE SENTENCE. The result line
+ * said "Nothing was submitted", and then the page announced "Your agent submitted the supporting
+ * details form. The draft is at revision N", wrote a ledger row with no refusal on it and no code,
+ * and answered the model with a sentence carrying no code to branch on. Three of the four surfaces
+ * a viewer or a model reads called it a success.
+ */
+
+test('an empty agent submission is refused with a code, on every surface', async () => {
+  const before = revisionNow();
+  const { answered } = submitAsAgent({});
+
+  assert.equal(revisionNow(), before, 'nothing was written and the revision did not move');
+
+  const said = await answered[0];
+  assert.match(said, new RegExp(`^Refused\\. ${FORM_REFUSED_EMPTY}: `),
+    'the model is handed a code it can branch on, in the shape every other refusal uses');
+  assert.equal(doc.el('declared-result').textContent, said, 'the page shows what the agent was told');
+
+  const entry = newestLedgerEntry();
+  assert.equal(entry.classList.contains('is-refused'), true,
+    'a ledger row with no refusal on it reads as a submission that worked');
+  assert.equal(entry.textOfClass('ledger-code'), FORM_REFUSED_EMPTY);
+  assert.match(doc.el('live').textContent, new RegExp(`refused it: ${FORM_REFUSED_EMPTY}`),
+    'the announcement read as a success');
 });
 
 /* ------------------------------------------------------- 4. an agent, through the form */
@@ -317,7 +411,7 @@ test('an agent submission quoting the revision it read is applied, and badged as
   assert.equal(row.badge.classList.contains('badge-agent'), true);
 
   const said = await answered[0];
-  assert.match(said, /^Recorded the name of the witness on the draft, written by your agent\./);
+  assert.match(said, /^Recorded the name of the witness on the draft, submitted through the WebMCP tool call\./);
   assert.match(said, new RegExp(`revision ${before + 1}\\.$`));
 
   const entry = newestLedgerEntry();
@@ -353,6 +447,10 @@ test('a field a person pinned refuses the form too, and the agent is told which 
   assert.match(said, /^Refused\. PATCH_REJECTED_LOCKED: /);
   assert.match(said, /witness_name/);
   assert.equal(newestLedgerEntry().textOfClass('ledger-code'), 'PATCH_REJECTED_LOCKED');
+  assert.match(newestLedgerEntry().textOfClass('ledger-args'), /Someone Else/,
+    'the ledger has to show what was sent at the refusal, not an empty row');
+  assert.equal(doc.el('declared-witness').value, 'Someone Else',
+    'a refusal keeps what the sender would correct and send again');
 
   // Put it back, so the tests after this one start from an unpinned draft.
   fireEvent(rowFor(doc, 'witness_name').pin, 'click');
@@ -414,7 +512,78 @@ test('the form closes with the draft, and its hint names the revision to quote',
   }
 });
 
+/**
+ * FILING IS LAST IN THIS FILE, for the reason app_boot.test.js gives: it is the one action the
+ * page cannot be reloaded out of within a test that follows it.
+ *
+ * The form is closed by the view when the draft closes, and that is a disabled attribute on three
+ * controls. A tool call arriving at the handler is not stopped by an attribute, so the rules have
+ * to refuse it, and the ledger still has to show what was sent.
+ */
+test('a submission against a filed claim is refused by the rules, and ledgered with its values', async () => {
+  // Pin the insurer, then answer everything this insurer's intake asks for, so the claim can file.
+  const picker = doc.el('insurer-select');
+  picker.value = 'northwind';
+  fireEvent(picker, 'change');
+
+  for (const [field, value] of Object.entries({
+    damage_zone: '10',
+    severity: 'dent',
+    vehicle_drivable: 'true',
+    description: 'A car came out of a side road and hit the left front wing.',
+  })) {
+    const found = rowFor(doc, field);
+    found.control.value = value;
+    fireEvent(found.control, 'change');
+  }
+
+  assert.equal(doc.el('file-btn').disabled, false, `the draft should be filable: ${doc.el('file-reason').textContent}`);
+  fireEvent(doc.el('file-btn'), 'click');
+
+  const filedAt = revisionNow();
+  assert.equal(doc.el('declared-submit').disabled, true, 'the form closes with the draft');
+
+  const { answered } = submitAsAgent({ witness: 'Too Late Tomas', revision: filedAt });
+
+  assert.equal(revisionNow(), filedAt, 'a filed claim takes nothing from either surface');
+  const said = await answered[0];
+  assert.match(said, /^Refused\. PATCH_REJECTED_PROTECTED: /);
+  assert.match(said, /already been filed/);
+
+  const entry = newestLedgerEntry();
+  assert.equal(entry.textOfClass('ledger-code'), 'PATCH_REJECTED_PROTECTED');
+  assert.match(entry.textOfClass('ledger-args'), /Too Late Tomas/);
+});
+
 /* ---------------------------------------------------- 6. the module on its own */
+
+/**
+ * A GUARD AT AUTHORING TIME, NOT ONLY AT RUN TIME.
+ *
+ * The defect was an ORDER: the handler read the three controls, emptied them on success, and then
+ * read them again to build the ledger row. The behavioural tests above catch that on the paths
+ * they exercise. This catches it in the shape, on every path, by asserting that the handler holds
+ * exactly one read of each control and that the clear is the last thing it does.
+ */
+test('the submit handler reads the controls once, and empties them after everything that describes them', () => {
+  const wiring = readFileSync(new URL('../../src/ui/app.js', import.meta.url), 'utf8');
+  const start = wiring.indexOf('function submitDeclaredForm(');
+  assert.ok(start > 0, 'the submit handler was renamed and this guard stopped covering it');
+  const handler = wiring.slice(start, wiring.indexOf('\n  }\n', start));
+
+  for (const control of ['declaredWitness', 'declaredPolice', 'declaredRevision']) {
+    const reads = handler.split(`view.els.${control}.value`).length - 1;
+    assert.equal(reads, 1,
+      `${control} is read ${reads} times in the submit handler, and a second read is a second answer`);
+  }
+
+  const clear = handler.indexOf('clearDeclaredInputs()');
+  assert.ok(clear > 0, 'the handler no longer empties the boxes at all');
+  assert.ok(clear > handler.indexOf('addLedgerEntry('),
+    'the boxes are emptied before the ledger row is built, which is the defect this guards');
+  assert.ok(clear > handler.indexOf('respondWith'),
+    'the boxes are emptied before the agent is answered');
+});
 
 test('planSubmission reads an empty control as leave it alone, never as clear it', () => {
   const plan = planSubmission({ witnessName: ' Anna ', policeReportRef: '   ', agentInvoked: true, baseRevision: '4' });
@@ -466,7 +635,7 @@ test('describeOutcome names both fields when both were written', () => {
   });
   assert.equal(
     said,
-    'Recorded the name of the witness and the police report reference on the draft, written by you. '
+    'Recorded the name of the witness and the police report reference on the draft, submitted through the page UI. '
     + 'The draft is now at revision 6.',
   );
 });

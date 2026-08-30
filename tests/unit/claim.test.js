@@ -31,9 +31,21 @@ import {
   validateClaim,
   describeClaim,
 } from '../../src/core/claim.js';
+import { loadPolicyPack } from '../../src/core/policy.js';
 
 const FIXTURE_URL = new URL('../../fixtures/demo-collision.json', import.meta.url);
 const fixture = JSON.parse(readFileSync(FIXTURE_URL, 'utf8'));
+
+/**
+ * The insurer rules a filing is decided against, loaded from the shipped pack.
+ *
+ * fileClaim takes them now, and refuses when it is handed none. Before it did, the domain read the
+ * static required list alone and a claim the insurer's own intake was still asking about filed
+ * from a direct call. A test that went on calling fileClaim with no pack would be testing the
+ * shape of the old defect, so every filing below carries the rules it is decided against.
+ */
+const PACK_URL = new URL('../../fixtures/insurers/northwind.json', import.meta.url);
+const pack = loadPolicyPack(JSON.parse(readFileSync(PACK_URL, 'utf8')));
 
 function snapshot(value) {
   return JSON.parse(JSON.stringify(value));
@@ -721,7 +733,7 @@ test('nothing derived and nothing structural is patchable, by either actor', () 
 
 test('a filed claim refuses every patch as protected', () => {
   const ready = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
-  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z' });
+  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z', pack });
 
   assert.equal(filed.ok, true);
   assert.equal(filed.claim.status, 'filed');
@@ -1048,7 +1060,7 @@ test('noteContextChange refuses anything that is not a claim', () => {
 // they are reading.
 test('a filed claim still records a context change', () => {
   const ready = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
-  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z' });
+  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z', pack });
   assert.equal(filed.ok, true, filed.error);
 
   const noted = noteContextChange(filed.claim, 'the insurer rule pack changed to Kestrel Assurance');

@@ -4,9 +4,26 @@ import { readFileSync } from 'node:fs';
 
 import { createStore } from '../../src/core/store.js';
 import { createClaim, validateClaim, PATCHABLE_FIELDS } from '../../src/core/claim.js';
+import { loadPolicyPack } from '../../src/core/policy.js';
+import { FILE_CODES } from '../../src/core/filing.js';
 
 const FIXTURE_URL = new URL('../../fixtures/demo-collision.json', import.meta.url);
 const fixture = JSON.parse(readFileSync(FIXTURE_URL, 'utf8'));
+
+/**
+ * The insurer rules the file action is decided against.
+ *
+ * The action carries them, because the gate in src/core/filing.js reads them and this store holds
+ * no browser state. It used to carry nothing, so the domain decided filing on the static required
+ * list and the insurer's own open requirements never reached it.
+ */
+const PACK_URL = new URL('../../fixtures/insurers/northwind.json', import.meta.url);
+const pack = loadPolicyPack(JSON.parse(readFileSync(PACK_URL, 'utf8')));
+
+/** File the way the page does, with the rules and the human actions on the action. */
+function file(store, at) {
+  return store.dispatch({ type: 'file', at, pack, completedHumanActions: [] });
+}
 
 function snapshot(value) {
   return JSON.parse(JSON.stringify(value));
@@ -274,11 +291,44 @@ test('a patch quoting a revision from before a reset is refused as stale', () =>
 test('an incomplete claim cannot be filed, and it says what is missing', () => {
   const store = createStore(fixture);
 
-  const result = store.dispatch({ type: 'file' });
+  const result = file(store);
 
   assert.equal(result.ok, false);
-  assert.match(result.error, /not ready/i);
-  assert.match(result.error, /damage_zone/);
+  assert.equal(result.code, FILE_CODES.incomplete);
+  assert.match(result.error, /^Still needed before you can file: /);
+  assert.match(result.error, /where the impact was/);
+  assert.equal(store.getState().claim.status, 'draft');
+});
+
+// FAIL CLOSED. The action used to carry no rules at all, so this was the only path there was and
+// it filed. With none it now refuses, deterministically, and says why rather than falling back to
+// the static field list, which is the list that could not see the insurer's own requirements.
+test('a file action carrying no rule pack is refused rather than decided without one', () => {
+  const store = readyStore();
+  assert.equal(validateClaim(store.getState().claim).ready, true, 'every required field is filled');
+
+  const result = store.dispatch({ type: 'file', at: '2026-08-26T09:30:00.000Z' });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, FILE_CODES.noPack);
+  assert.match(result.error, /^The insurer rule pack did not load/);
+  assert.equal(store.getState().claim.status, 'draft');
+  assert.equal(store.getState().claim.revision, 0, 'a refusal moves nothing');
+});
+
+// The other half of the same rule: rules that load but ask for something still open.
+test('an open intake requirement refuses the filing, with the requirement code', () => {
+  const store = createStore(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+  const kestrel = loadPolicyPack(JSON.parse(readFileSync(
+    new URL('../../fixtures/insurers/kestrel.json', import.meta.url), 'utf8',
+  )));
+
+  // Kestrel asks a collision claimant for a witness. Northwind does not, and this claim names none.
+  const result = store.dispatch({ type: 'file', at: '2026-08-26T09:30:00.000Z', pack: kestrel });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, FILE_CODES.requirements);
+  assert.match(result.error, /still asks for: The name of a witness to the collision/);
   assert.equal(store.getState().claim.status, 'draft');
 });
 
@@ -286,7 +336,7 @@ test('a complete claim files, and the claim locks once it has', () => {
   const store = readyStore();
   assert.equal(validateClaim(store.getState().claim).ready, true);
 
-  const result = store.dispatch({ type: 'file', at: '2026-08-26T09:30:00.000Z' });
+  const result = file(store, '2026-08-26T09:30:00.000Z');
 
   assert.equal(result.ok, true);
   assert.equal(store.getState().claim.status, 'filed');
@@ -295,16 +345,17 @@ test('a complete claim files, and the claim locks once it has', () => {
 
 test('filing works without a timestamp, which stays null rather than invented', () => {
   const store = readyStore();
-  assert.equal(store.dispatch({ type: 'file' }).ok, true);
+  assert.equal(file(store).ok, true);
   assert.equal(store.getState().claim.filed_at, null);
 });
 
 test('a filed claim cannot be filed again or edited afterwards', () => {
   const store = readyStore();
-  store.dispatch({ type: 'file' });
+  file(store);
 
-  const again = store.dispatch({ type: 'file' });
+  const again = file(store);
   assert.equal(again.ok, false);
+  assert.equal(again.code, FILE_CODES.alreadyFiled);
   assert.match(again.error, /already been filed/);
 
   const edit = store.dispatch({ type: 'patch', field: 'severity', value: 'structural' });
@@ -317,7 +368,7 @@ test('filing tells the subscribers', () => {
   const seen = [];
   store.subscribe((state) => seen.push(state.claim.status));
 
-  store.dispatch({ type: 'file' });
+  file(store);
   assert.deepEqual(seen, ['filed']);
 });
 
@@ -530,7 +581,7 @@ test('filing advances the revision too, so a cached read cannot miss it', () => 
   const store = readyStore();
   const before = store.getState().claim.revision;
 
-  const result = store.dispatch({ type: 'file', at: '2026-08-26T09:30:00.000Z' });
+  const result = file(store, '2026-08-26T09:30:00.000Z');
   assert.equal(result.ok, true);
   assert.equal(store.getState().claim.revision, before + 1);
 });

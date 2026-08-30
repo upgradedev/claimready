@@ -74,20 +74,21 @@ jobs:
       # it runs the three mutations that must each make the control report NOT PROVEN. If the
       # control's expectation has stopped matching the code at this commit, this fails here rather
       # than being read as a browser problem forty seconds later.
+      #
+      # THE MUTATION LIST IS NOT REPEATED HERE ANY MORE. This step used to loop three mutation
+      # names typed out in the shell, so the registry in evals/replay.mjs and the list CI actually
+      # ran were two copies of one thing. A fourth mutation was added to the registry and would
+      # have been executed by nothing, which is the dead configuration this repository fails other
+      # people's work for. `--selftest` iterates the registry, picks each mutation's declared suite
+      # and requires every one of them to exit non zero, so adding a mutation is adding a CI case.
+      # tests/unit/replay_oracle.test.js asserts this line still says --selftest.
       - name: Replay the journeys and the negative control offline
         shell: bash
         run: |
           set -euo pipefail
           node evals/replay.mjs --quiet
           node evals/replay.mjs --negative-control --quiet
-          for mutation in applied-patch-refused withdrawal-ignored ninth-tool-never-registered; do
-            if node evals/replay.mjs --negative-control --mutate "${mutation}" --quiet; then
-              echo "The mutation ${mutation} did not break the negative control."
-              echo "A control that survives its own mutation is not a control. Fix it, do not widen it."
-              exit 1
-            fi
-            echo "mutation ${mutation}: the control refused it, as it must."
-          done
+          node evals/replay.mjs --selftest
 
       # The URL is the whole point. An empty variable is a failure, never a skip.
       - name: The judge URL must be configured

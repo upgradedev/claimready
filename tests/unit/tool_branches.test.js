@@ -246,10 +246,10 @@ test('validate_claim says not ready and names the fields, and never offers to fi
   const ctx = makeContext({ damage_zone: null, severity: null, description: null, vehicle_drivable: null });
   const said = await run(validateClaimTool, ctx);
 
-  assert.match(said, /NOT READY at revision \d+/);
+  assert.match(said, /NOT READY TO FILE at revision \d+\. FILE_REFUSED_INCOMPLETE\./);
   assert.match(said, /Missing: /);
-  assert.match(said, /Filing is a button on the page/);
-  assert.match(said, /not available as a tool/);
+  assert.match(said, /Why: Still needed before you can file/);
+  assert.match(said, /Filing is a control on this page and is not exposed as a WebMCP tool\./);
 });
 
 test('validate_claim keeps the two questions apart on a draft that is full but still asked of', async () => {
@@ -259,12 +259,17 @@ test('validate_claim keeps the two questions apart on a draft that is full but s
   });
   const said = await run(validateClaimTool, ctx);
 
-  assert.match(said, /READY at revision \d+/);
+  // THE HEADLINE IS THE FILING DECISION, NOT THE STATIC FIELD LIST. This draft answers every
+  // required field, and this insurer asks a structural claim for a police report reference and a
+  // vehicle that cannot be driven for a collection, so it cannot be filed. The tool used to open
+  // with READY here and then contradict itself two lines later.
+  assert.match(said, /NOT READY TO FILE at revision \d+\. FILE_REFUSED_REQUIREMENTS\./);
+  assert.doesNotMatch(said, /Missing: /, 'every required field is filled, so nothing is missing');
   // The required fields being filled is one question. What the insurer still wants is another.
   assert.match(said, /Separately, \d+ of this insurer's intake requirements are still open/);
   assert.match(said, /Call get_requirements for why/);
-  assert.match(said, /Tell the person on the page that they can press File this claim/);
-  assert.match(said, /No tool here reaches it/);
+  assert.match(said, /Filing is a control on this page and is not exposed as a WebMCP tool\./);
+  assert.match(said, /from the button and from a direct call alike/);
 });
 
 test('validate_claim says so plainly when the intake is answered too', async () => {
@@ -298,7 +303,7 @@ test('get_assistance_options lists the insurers own options, and says what no to
 
   assert.match(said, new RegExp(`${northwind.insurer} options for a vehicle that cannot be driven`));
   assert.match(said, /not a booking and not a decision about the claim/);
-  assert.match(said, /The collection is arranged by the person on the page pressing the button/);
+  assert.match(said, /The collection is arranged by pressing that button on this page, which is not exposed as a WebMCP tool/);
 });
 
 test('an assistance option the person has already done is not asked for again', async () => {
@@ -347,7 +352,7 @@ test('read_claim_state explains the clock face only while the position is still 
   const saidOpen = await run(readClaimStateTool, open);
   assert.match(saidOpen, /damage_zone is a clock position on the vehicle/);
   assert.match(saidOpen, /Quote revision \d+ as baseRevision/);
-  assert.match(saidOpen, /Filing the claim is a button pressed by the person on the page/);
+  assert.match(saidOpen, /Filing the claim is a control on this page and is not exposed as a WebMCP tool/);
 
   const answered = makeContext({ damage_zone: 10 });
   const saidAnswered = await run(readClaimStateTool, answered);
@@ -459,7 +464,7 @@ test('validate_claim keeps the sentence about filing even when the intake list i
   assert.ok(said.length <= 1500, `the result is ${said.length} characters, over the tool budget`);
   // THIS IS THE POINT OF THE TOOL AND IT LIVES IN THE TAIL FOR THAT REASON. A long rule pack once
   // pushed exactly this sentence off the end.
-  assert.match(said, /press File this claim|not available as a tool/);
+  assert.match(said, /is not exposed as a WebMCP tool\./);
 });
 
 test('read_claim_state keeps the baseRevision instruction under a crowded pack', async () => {
@@ -472,7 +477,7 @@ test('read_claim_state keeps the baseRevision instruction under a crowded pack',
   // Drop this line and no caller is told which revision to quote, so the write path goes unused.
   // It is therefore the last thing a budget squeeze may drop.
   assert.match(said, /as baseRevision/);
-  assert.match(said, /Filing the claim is a button/);
+  assert.match(said, /Filing the claim is a control on this page/);
 });
 
 test('get_assistance_options keeps its closing caveat under a crowded pack', async () => {

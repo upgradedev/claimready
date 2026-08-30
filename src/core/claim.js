@@ -41,7 +41,14 @@
  *
  * Treat every claim object as immutable. Every function here returns a new claim
  * on success and hands back the original, untouched, on failure.
+ *
+ * FILING IS DECIDED IN filing.js AND NOWHERE ELSE. `fileClaim` below asks `canFile`
+ * and refuses on what it answers, so the insurer's derived requirements reach the
+ * domain action rather than stopping at the page. See the import cycle note in
+ * filing.js before adding anything to the top level of this module that reads it.
  */
+
+import { canFile } from './filing.js';
 
 /** Incident categories a claim may declare. Also the enum for the tool schema. */
 export const INCIDENT_TYPES = ['collision', 'theft', 'glass', 'weather', 'fire', 'vandalism'];
@@ -880,13 +887,30 @@ export function provenanceOf(claim, field) {
 }
 
 /**
- * Mark the claim filed. Human only, and never reachable from a tool.
+ * Mark the claim filed. There is no tool for it on this page's surface.
  *
  * Filing is a change like any other, so it advances the revision: an agent
  * holding an older number finds out that the draft moved under it.
  *
+ * THE GATE IS canFile AND THIS FUNCTION HAS NO SECOND OPINION. It used to read
+ * validateClaim alone, which sees the static required list and nothing the
+ * insurer derives, so a theft claim with an open police report requirement was
+ * filed by a direct call while every surface on the page reported the
+ * requirement as open. Passing the pack in closes that, and passing none is
+ * refused rather than waved through: a caller that reaches this function
+ * directly gets the same answer the button gets.
+ *
+ * A REFUSAL CHANGES NOTHING. The original claim object is handed straight back,
+ * so the revision, the status and every field are the same values and the same
+ * reference they were before the call.
+ *
  * @param {object} claim
- * @param {{at?: string}} [options] timestamp supplied by the caller, never invented here
+ * @param {{at?: string, pack?: (object|null),
+ *          completedHumanActions?: (string[]|Set<string>)}} [options]
+ *        `at` is a timestamp supplied by the caller and never invented here.
+ *        `pack` is the insurer rule pack the page is reading against, as plain
+ *        data. `completedHumanActions` are the ids of requirements whose human
+ *        action has been carried out on the page.
  * @returns {{claim: object, ok: boolean, error: (string|null), code: (string|null), revision: number}}
  */
 export function fileClaim(claim, options = {}) {
@@ -895,23 +919,13 @@ export function fileClaim(claim, options = {}) {
   }
   const revision = currentRevision(claim);
 
-  if (claim.status === 'filed') {
+  const decision = canFile(options.pack ?? null, claim, options.completedHumanActions);
+  if (!decision.ok) {
     return {
       claim,
       ok: false,
-      error: 'This claim has already been filed.',
-      code: PATCH_CODES.protected,
-      revision,
-    };
-  }
-
-  const { ready, missing } = validateClaim(claim);
-  if (!ready) {
-    return {
-      claim,
-      ok: false,
-      error: `The claim is not ready to file. Still needed: ${missing.join(', ')}.`,
-      code: PATCH_CODES.value,
+      error: decision.reason,
+      code: decision.code,
       revision,
     };
   }

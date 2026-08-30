@@ -122,7 +122,7 @@ export default (ctx) => ({
       body,
       tail: [
         'This is what the policy provides for, not a booking and not a decision about the claim. '
-        + 'The collection is arranged by the person on the page pressing the button.',
+        + 'The collection is arranged by pressing that button on this page, which is not exposed as a WebMCP tool.',
       ],
       more: (count) => `${count} more line(s) are on the page. Call get_requirements for the full list.`,
     }));

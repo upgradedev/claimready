@@ -58,7 +58,7 @@ test('a read only tool call lands in the ledger and on the panel', async () => {
   assert.equal(doc.el('ledger-empty').classList.contains('hidden'), true);
 
   // The page shows the same answer the agent just got, marked as the agent's.
-  assert.match(doc.el('coverage-body').textContent, /Run by your agent at /);
+  assert.match(doc.el('coverage-body').textContent, /Run via a WebMCP tool at /);
 });
 
 test('a write from the agent moves the draft, is badged via tool, and is ledgered', async () => {

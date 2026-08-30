@@ -27,7 +27,8 @@
  */
 
 import { createStore } from '../core/store.js';
-import { validateClaim, patchIsNoChange, PATCHABLE_FIELDS } from '../core/claim.js';
+import { patchIsNoChange, PATCHABLE_FIELDS } from '../core/claim.js';
+import { canFile } from '../core/filing.js';
 import { checkCoverage } from '../core/coverage.js';
 import { estimateRepair } from '../core/estimate.js';
 import { loadPolicyPack, describePack } from '../core/policy.js';
@@ -43,6 +44,8 @@ import {
   MAX_TOOL_OUTPUT_CHARS
 } from '../webmcp/register.js';
 import {
+  EMPTY_SUBMISSION_REASON,
+  FORM_REFUSED_EMPTY,
   FORM_TOOL_NAME,
   describeDeclarativeForm,
   describeOutcome,
@@ -365,8 +368,8 @@ async function boot() {
       const humanOnly = Boolean(entry.humanAction);
       const shown = { ...entry, humanOnly, humanNote: null };
       if (humanOnly && entry.satisfied && ui.assistanceAt) {
-        shown.humanNote = `You pressed Request roadside assistance at ${ui.assistanceAt}. `
-          + 'There is no tool for that button, so your agent had to ask you.';
+        shown.humanNote = `Request roadside assistance was pressed on this page at ${ui.assistanceAt}. `
+          + 'It is not exposed as a WebMCP tool, so an agent has to ask for it.';
       }
       return shown;
     });
@@ -395,28 +398,29 @@ async function boot() {
    */
   function redraw(changed) {
     const entries = getRequirements();
-    drawClaim(changed, entries);
+    drawClaim(changed);
     drawRequirements(entries);
   }
 
-  function drawClaim(changed, entries) {
+  /**
+   * THE BUTTON AND THE SENTENCE BESIDE IT COME FROM ONE DECISION, AND SO DOES THE DOMAIN.
+   *
+   * This used to hand the view three separate derivations: `ready` off validateClaim, an
+   * outstanding list off the panel's own entries, and a `requirementsKnown` flag. The view then
+   * disabled the button on `ready` alone, which is the static required list and knows nothing the
+   * insurer derives, so the button stayed open over a panel reporting an open requirement and the
+   * store filed the claim. `canFile` is now the only answer, it is the same answer src/core/claim.js
+   * refuses on, and the view draws from it rather than deciding anything.
+   *
+   * It derives its own outstanding list rather than being handed this draw's, and that is not a
+   * second opinion: it is the same pure function over the same pack, the same claim and the same
+   * completed human actions, so the two cannot come out differently.
+   */
+  function drawClaim(changed) {
     const claim = claimNow();
-    const verdict = validateClaim(claim);
-    const list = Array.isArray(entries) ? entries : [];
     view.renderClaim(claim, changed);
     view.renderActions({
-      ready: Boolean(verdict.ready),
-      missing: verdict.missing || [],
-      // What the insurer still asks for, which is a wider question than what the file gate blocks
-      // on. A rule with no field is the sharpest case: no patch from either side can close it.
-      outstanding: outstandingRequirements(list).map((entry) => ({
-        id: entry.id,
-        label: entry.label,
-        field: entry.field
-      })),
-      insurer: context.pack ? context.pack.insurer : null,
-      // Not the same as nothing being asked for, and never printed as though it were.
-      requirementsKnown: Boolean(context.pack),
+      decision: canFile(context.pack, claim, ui.humanActions),
       filed: claim.status === 'filed',
       filedAt: claim.filed_at,
       assistanceAt: ui.assistanceAt,
@@ -799,10 +803,23 @@ async function boot() {
     // after this one and write an older account over the draft this submission just moved.
     cancelPendingCommit();
 
+    // READ ONCE, AT THE TOP, AND USED EVERYWHERE BELOW. The three controls are read here and
+    // nowhere else in this handler. They used to be read twice: once to plan the submission and
+    // again, further down, to build the ledger row. In between, an accepted submission emptied
+    // them, so every agent submission the rules ACCEPTED was recorded on the ledger as an empty
+    // witness, an empty police reference and an empty revision, beside a draft that had just
+    // taken all three. The only path that recorded them correctly was the refusal path, because a
+    // refusal does not clear. Capturing them once removes the window rather than reordering it.
+    const submitted = {
+      witness_name: view.els.declaredWitness.value,
+      police_report_ref: view.els.declaredPolice.value,
+      base_revision: view.els.declaredRevision.value
+    };
+
     const plan = planSubmission({
-      witnessName: view.els.declaredWitness.value,
-      policeReportRef: view.els.declaredPolice.value,
-      baseRevision: view.els.declaredRevision.value,
+      witnessName: submitted.witness_name,
+      policeReportRef: submitted.police_report_ref,
+      baseRevision: submitted.base_revision,
       agentInvoked
     });
 
@@ -811,7 +828,12 @@ async function boot() {
     let outcome;
 
     if (plan.empty) {
-      outcome = { empty: true, ok: false, revision: claimNow().revision };
+      // Nothing is dispatched, so no rule in src/core refused anything and no refusal reaches the
+      // buffer on its own. The page puts one there itself, with this module's own code, so the
+      // ledger row, the live region and the sentence the model is handed all report the refusal
+      // that this is. Without it the row carried no code and the announcement read as a success.
+      outcome = { empty: true, ok: false, code: FORM_REFUSED_EMPTY, revision: claimNow().revision };
+      buffer.push({ code: FORM_REFUSED_EMPTY, error: EMPTY_SUBMISSION_REASON });
     } else if (!agentInvoked && patchIsNoChange(claimNow(), plan.changes)) {
       // The human path only, exactly as commitControl does it. An agent submission is always
       // dispatched, because the stale check is a rule about the agent rather than about the value
@@ -841,19 +863,15 @@ async function boot() {
     }
 
     const message = describeOutcome({ ...outcome, agentInvoked });
+    const accepted = outcome.ok === true && outcome.unchanged !== true;
 
     view.renderDeclaredResult(message);
-    if (outcome.ok === true && outcome.unchanged !== true) view.clearDeclaredInputs();
 
     if (agentInvoked) {
       addLedgerEntry({
         at,
         name: FORM_TOOL_NAME,
-        args: safeArgs({
-          witness_name: view.els.declaredWitness.value,
-          police_report_ref: view.els.declaredPolice.value,
-          base_revision: view.els.declaredRevision.value
-        }),
+        args: safeArgs(submitted),
         text: message,
         error: false,
         refusals: buffer
@@ -872,6 +890,12 @@ async function boot() {
         } catch (ignored) { /* a browser that refuses the response must not break the page */ }
       }
     }
+
+    // LAST IN THE HANDLER, AND ONLY WHERE THE RULES ACCEPTED THE SUBMISSION. Nothing below this
+    // line reads a control, which is the structural half of the fix: the boxes cannot be emptied
+    // before something that describes what was in them. A refusal keeps them, because what the
+    // sender would correct and send again is exactly what is still sitting there.
+    if (accepted) view.clearDeclaredInputs();
   }
 
   /**
@@ -974,13 +998,23 @@ async function boot() {
     // would watch a refusal paint under it a moment later for something they had already finished.
     cancelPendingCommit();
 
-    const result = store.dispatch({ type: 'file', at: clockNow() });
+    // The pack and the completed human actions travel with the action, because the gate that
+    // decides this lives in src/core/filing.js and reads both. The button is drawn from the same
+    // decision, so reaching here with a refusal means the draft moved between the paint and the
+    // press, and the refusal is what says so rather than the click being trusted.
+    const result = store.dispatch({
+      type: 'file',
+      at: clockNow(),
+      pack: context.pack,
+      completedHumanActions: ui.humanActions
+    });
     if (!result.ok) {
       view.showFieldError(result.error || 'The claim could not be filed.');
       return;
     }
     view.showFieldError('');
-    view.announce('You filed the claim. The draft is closed to every writer, yours and your agent\'s.');
+    view.announce('The claim was filed through the page. The draft is closed to every writer, this '
+      + 'page and any agent alike.');
   }
 
   /**
@@ -1028,8 +1062,9 @@ async function boot() {
     view.showFieldError('');
     redraw([]);
 
-    view.announce('You requested roadside assistance. No tool on this page reaches that button. The '
-      + `revision has moved on to ${claimNow().revision}, so a patch quoting an earlier one is refused.`);
+    view.announce('Roadside assistance was requested through the page. No tool on this page reaches '
+      + `that button. The revision has moved on to ${claimNow().revision}, so a patch quoting an `
+      + 'earlier one is refused.');
     // Pressing this changes nothing about the tool surface. The tool that reads out the assistance
     // options exists while the claim says the vehicle cannot be driven, which is a fact about the
     // claim, and register.js is what watches it.

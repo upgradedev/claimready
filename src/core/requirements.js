@@ -275,11 +275,18 @@ export function summariseRequirements(requirements) {
 /**
  * Whether the file panel has nothing left to flag.
  *
- * The same question fileGateStatement answers in words, so the colour beside the
- * sentence cannot say something the sentence does not. A draft that is ready to
- * file while the intake is still asking for something is not settled, and neither
- * is one whose rule pack never loaded, because that is an unknown rather than a
- * clear answer.
+ * A draft that is ready to file while the intake is still asking for something is
+ * not settled, and neither is one whose rule pack never loaded, because that is an
+ * unknown rather than a clear answer.
+ *
+ * NOTHING ON THE PAGE DECIDES ANYTHING WITH THIS ANY MORE, AND THAT IS DELIBERATE.
+ * The file button, the sentence beside it and the domain refusal all come off
+ * canFile in src/core/filing.js, which is one decision rather than three readings
+ * of one idea. This function stays because it answers the same question from the
+ * derived state, which makes it a cross check: tests/unit/filing.test.js requires
+ * the two to agree on every draft in a matrix, so the older answer cannot quietly
+ * drift into a second one that some later caller reaches for. It is the same
+ * forcing function packFieldDemands above provides for the pack rules.
  *
  * @param {object} state the same object fileGateStatement takes
  * @returns {boolean}

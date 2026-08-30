@@ -9,11 +9,29 @@
  * the exact failure this gate exists to prevent, so there is no mode in which
  * it is survivable.
  *
+ * EVERY ROW CARRIES A TIER, AND THE TIER SAYS WHO IS ASKING.
+ *   mandatory     the organizer requires it. Quoted from the rules beside the
+ *                 tier constants below. Five rows: LIVE, D1, LIC, D3, D4
+ *   recommended   we require it of ourselves, because it protects a mandatory
+ *                 row or a judging criterion. Everything else in the table
+ *   optional      nobody requires it. Printed, never counted
+ *   owner gated   no script can prove it. Counted separately, never a pass
+ * The gate used to print one undifferentiated list, which invited the reading
+ * that every red row was equally urgent, and it carried the Chrome origin trial
+ * as an owner gated row inside the READY TO SUBMIT tally. The rules ask for no
+ * origin trial. Counting one made the entry look further from ready than it was.
+ *
  * Owner gated rows are printed in their own block with the manual step. No
  * script can prove any of them, so they are not passes. They ARE counted in
  * the second tally, because "is this ready to submit" is a question that
  * includes pressing Submit, and a percentage that leaves that out answers a
  * smaller question than a reader will assume it does.
+ *
+ * THE TOOL SURFACE IS READ FROM THE CODE THAT PUBLISHES IT, BOTH HALVES. The
+ * imperative half from register.describeToolSurface, the declarative half from
+ * declarative_form.js joined to the toolname attribute in index.html. Listing
+ * src/webmcp/tools/*.js and calling that the surface is what this gate did
+ * before, and it could not see the declarative form at all.
  *
  * The live check fetches the judge URL and requires HTTP 200 plus the flagship
  * sentence in the body. A network failure is a FAIL. It is never a skip, and it
@@ -86,6 +104,31 @@ const NOT_DEPLOYED = 'NOT DEPLOYED';
 const ENGINEERING = 'engineering';
 const DELIVERABLE = 'deliverable';
 
+/**
+ * WHAT THE ORGANIZER REQUIRES, AND WHAT WE REQUIRE OF OURSELVES. Four tiers, and the difference
+ * between them is who is asking.
+ *
+ * Read from https://webmcp.devpost.com/rules on 2026-08-30. The rules require, in their words: a
+ * working live URL "that judges can access using ChatGPT's in-app browser or Google Chrome with
+ * WebMCP enabled"; a text description covering four named elements; "a URL to your public code
+ * repository" which "Must be open source by including an open source license file"; and a video
+ * "less than three (3) minutes" made "publicly visible on YouTube". Those five rows are MANDATORY
+ * and nothing else is.
+ *
+ * Everything else this gate checks is RECOMMENDED: our own engineering, held to because it
+ * protects a mandatory row or a judging criterion. Calling it mandatory would be inventing a rule
+ * the organizer did not write, and a reader who cannot tell the two apart cannot triage.
+ *
+ * OPTIONAL rows are printed and are never counted in any tally. They exist because the fact is
+ * worth knowing, not because anything is owed.
+ *
+ * OWNER GATED rows are counted separately, in their own block, and are never a pass.
+ */
+const MANDATORY = 'mandatory';
+const RECOMMENDED = 'recommended';
+const OPTIONAL = 'optional';
+const OWNER_GATED = 'owner gated';
+
 /* ---------------------------------------------------------------- helpers */
 
 function read(path) {
@@ -122,14 +165,23 @@ function runNode(args, cwd) {
 }
 
 /**
- * `mandatory` marks a row the hackathon rules require to exist before the entry can be judged.
- * Those rows block the exit code in every mode. There used to be a `counted` parameter here that
- * defaulted to true and that no call site ever passed, so it looked like a way to keep a row out
- * of the score while being no such thing. Dead configuration in a gate is worse than none: it
- * reads as a lever somebody pulled. It is gone, and every row in the table is counted.
+ * `tier` says WHO is asking for this row, and it is the only input to whether the row blocks.
+ *
+ * There used to be a `counted` parameter here that defaulted to true and that no call site ever
+ * passed, so it looked like a way to keep a row out of the score while being no such thing. Dead
+ * configuration in a gate is worse than none. It is gone, and it is not coming back as a second
+ * flag beside this one: `mandatory` is DERIVED here rather than passed, so no call site can ever
+ * hand in a tier and a blocking flag that disagree.
+ *
+ * THE ONE SUBTLETY, WRITTEN DOWN RATHER THAN HIDDEN. A mandatory row blocks the exit code in every
+ * mode once it has actually been evaluated. NOT DEPLOYED is not an evaluation: it is the operator
+ * saying, with --allow-undeployed and no CLAIMREADY_URL, that nothing was fetched. That state is
+ * never a pass, is always reported as submission blocking in its own line, and fails the default
+ * mode through the percentage. What it does not do is turn a deliberate offline engineering run
+ * into a red build for a check nobody asked it to make.
  */
-function row(id, label, status, detail, blocking, mandatory = false) {
-  return { id, label, status, detail, blocking, mandatory };
+function row(id, label, status, detail, blocking, tier = RECOMMENDED) {
+  return { id, label, status, detail, blocking, tier, mandatory: tier === MANDATORY && status !== NOT_DEPLOYED };
 }
 
 /**
@@ -168,6 +220,7 @@ async function checkLiveUrl(root, options) {
       NOT_DEPLOYED,
       `CLAIMREADY_URL is not set and --allow-undeployed was passed, so nothing was fetched and nothing is proven. Drop --allow-undeployed, or set CLAIMREADY_URL, to fetch ${DEFAULT_JUDGE_URL}.`,
       blocking,
+      MANDATORY,
     );
   }
 
@@ -179,18 +232,18 @@ async function checkLiveUrl(root, options) {
       headers: { 'user-agent': 'claimready-readiness' },
     });
   } catch (error) {
-    return row('LIVE', `judge URL ${url}`, FAIL, `fetch failed: ${error.message}`, blocking);
+    return row('LIVE', `judge URL ${url}`, FAIL, `fetch failed: ${error.message}`, blocking, MANDATORY);
   }
 
   if (response.status !== 200) {
-    return row('LIVE', `judge URL ${url}`, FAIL, `HTTP ${response.status}, expected 200`, blocking);
+    return row('LIVE', `judge URL ${url}`, FAIL, `HTTP ${response.status}, expected 200`, blocking, MANDATORY);
   }
 
   let body = '';
   try {
     body = await response.text();
   } catch (error) {
-    return row('LIVE', `judge URL ${url}`, FAIL, `body unreadable: ${error.message}`, blocking);
+    return row('LIVE', `judge URL ${url}`, FAIL, `body unreadable: ${error.message}`, blocking, MANDATORY);
   }
 
   if (!normalizedText(body).includes(FLAGSHIP)) {
@@ -201,15 +254,16 @@ async function checkLiveUrl(root, options) {
       FAIL,
       `HTTP 200 but the flagship sentence is not being served, so the live surface is not this build.${near}`,
       blocking,
+      MANDATORY,
     );
   }
 
-  return row('LIVE', `judge URL ${url}`, PASS, `HTTP 200, flagship sentence present`, blocking);
+  return row('LIVE', `judge URL ${url}`, PASS, `HTTP 200, flagship sentence present`, blocking, MANDATORY);
 }
 
 function checkLicense(root) {
   const text = read(join(root, 'LICENSE'));
-  if (!text) return row('LIC', 'LICENSE present', FAIL, 'no LICENSE file at the repo root', ENGINEERING);
+  if (!text) return row('LIC', 'LICENSE present', FAIL, 'no LICENSE file at the repo root', ENGINEERING, MANDATORY);
   const ok = text.includes('MIT License') && text.includes('2026') && text.includes('Fousekis');
   return row(
     'LIC',
@@ -217,6 +271,7 @@ function checkLicense(root) {
     ok ? PASS : FAIL,
     ok ? 'MIT, 2026' : 'LICENSE exists but is not the expected MIT text',
     ENGINEERING,
+    MANDATORY,
   );
 }
 
@@ -324,7 +379,7 @@ function checkToolFiles(root) {
   if (!dir) {
     return row(
       'TOL',
-      'each tool file declares exactly one tool with annotations',
+      'each IMPERATIVE tool file declares exactly one tool with annotations',
       FAIL,
       `no tool modules found. Looked in ${TOOL_DIR_CANDIDATES.map((p) => p.join('/')).join(', ')}`,
       ENGINEERING,
@@ -340,7 +395,7 @@ function checkToolFiles(root) {
   }
   return row(
     'TOL',
-    'each tool file declares exactly one tool with annotations',
+    'each IMPERATIVE tool file declares exactly one tool with annotations',
     problems.length === 0 ? PASS : FAIL,
     problems.length === 0
       ? `${dir.rel}, ${files.length} tools: ${names.join(', ')}`
@@ -349,26 +404,176 @@ function checkToolFiles(root) {
   );
 }
 
-function checkHumanOnlyBoundary(root) {
-  const dir = resolveToolDir(root);
-  if (!dir) {
-    return row('HUM', 'filing, assistance and pinning are never tools', FAIL, 'no tool modules to inspect yet', ENGINEERING);
+/* ------------------------------------------------------- the tool surface */
+
+/**
+ * THE PAGE PUBLISHES TWO SURFACES AND THIS GATE USED TO READ ONE.
+ *
+ * `checkToolFiles` and the old `checkHumanOnlyBoundary` both listed `src/webmcp/tools/*.js` and
+ * called the result "the tool surface". That was true when the page had only the imperative half.
+ * It stopped being true when the page grew a declarative form: `src/webmcp/declarative_form.js`
+ * plus four attributes on markup in index.html publish a tenth callable name that no tool file
+ * declares and no directory walk can see. A blocklist that reads a directory would have watched a
+ * filing capability appear on the declarative surface and reported PASS.
+ *
+ * So the surface is now enumerated from the code that publishes it, both halves:
+ *   imperative   register.describeToolSurface({}), which is register.js's own answer to
+ *                "what does this page hand an agent", built from ALWAYS_ON_TOOLS and
+ *                CONDITIONAL_TOOLS rather than from a file listing
+ *   declarative  declarative_form.FORM_TOOL_NAME, joined to the `toolname` attribute actually
+ *                present in the shipped index.html, because the browser reads the markup and not
+ *                the module
+ *
+ * WHY OUT OF PROCESS. `describeToolSurface` has to be imported to be asked, and the selftest runs
+ * each check twice against one sandbox, before and after a break. Node caches a module by resolved
+ * URL, and register.js pulls in nine tool modules by relative specifier that no query string on the
+ * parent can bust, so an in process import would answer the second call from the first call's
+ * cache and the broken half would pass. A child process has no cache to inherit.
+ *
+ * WHY THE COUNT IS ASSERTED. `describeOne` inside register.js returns null when a factory throws,
+ * and `describeToolSurface` drops nulls. A gate that trusted the returned list would therefore
+ * report a clean surface by being handed a shorter one, which is strictly worse than the directory
+ * walk it replaces. The expected count is read from the two exported lists in the same process
+ * that built the surface, so the two cannot be read from different revisions of the file.
+ *
+ * @param {string} root
+ * @returns {{names: string[], imperative: string[], declarative: string[], problems: string[], scanned: string}}
+ */
+function enumerateToolSurface(root) {
+  const problems = [];
+  const probe = [
+    "import { pathToFileURL } from 'node:url';",
+    "import { join } from 'node:path';",
+    'const root = process.argv[1];',
+    'const at = (p) => pathToFileURL(join(root, p)).href;',
+    "const register = await import(at('src/webmcp/register.js'));",
+    "const form = await import(at('src/webmcp/declarative_form.js'));",
+    'const built = register.describeToolSurface({});',
+    'process.stdout.write(JSON.stringify({',
+    '  imperative: built.map((entry) => (entry && typeof entry.name === "string" ? entry.name : null)),',
+    '  expected: register.ALWAYS_ON_TOOLS.length + register.CONDITIONAL_TOOLS.length,',
+    '  declarative: [form.FORM_TOOL_NAME],',
+    '}));',
+  ].join('\n');
+
+  const run = spawnSync(process.execPath, ['--input-type=module', '-e', probe, root], { encoding: 'utf8' });
+  if (run.status !== 0 || !run.stdout) {
+    const said = (run.stderr || run.stdout || 'no output').trim().split(/\r?\n/).slice(0, 3).join(' | ');
+    return {
+      names: [],
+      imperative: [],
+      declarative: [],
+      problems: [`the tool surface could not be enumerated: ${said}`],
+      scanned: 'nothing',
+    };
   }
-  const files = listFiles(dir.full, '.js');
-  const offenders = [];
-  for (const file of files) {
-    const source = read(join(dir.full, file)) || '';
-    for (const action of HUMAN_ONLY_ACTIONS) {
-      const re = new RegExp(`name\\s*:\\s*['"\`]${action}['"\`]`);
-      if (re.test(source)) offenders.push(`${file} registers ${action}`);
+
+  let answer;
+  try {
+    answer = JSON.parse(run.stdout);
+  } catch (error) {
+    return {
+      names: [],
+      imperative: [],
+      declarative: [],
+      problems: [`the tool surface probe did not return JSON: ${error.message}`],
+      scanned: 'nothing',
+    };
+  }
+
+  const imperative = answer.imperative.filter((name) => typeof name === 'string' && name.length > 0);
+  if (answer.imperative.includes(null)) {
+    problems.push('at least one tool factory refused to produce a named descriptor, so the surface an agent is handed is shorter than the code declares');
+  }
+  if (imperative.length !== answer.expected) {
+    problems.push(
+      `register.js declares ${answer.expected} tools and describeToolSurface built ${imperative.length}. `
+      + 'A surface that reports fewer tools than it declares is a gate looking at less than it says it is.',
+    );
+  }
+
+  // The declarative half exists in two places and the browser reads only one of them: the markup.
+  // Comments are stripped first, because index.html documents the four attribute NAMES in a
+  // comment above the form and a scan that counted those would find a tool that is not there.
+  const html = (read(join(root, 'index.html')) || '').replace(/<!--[\s\S]*?-->/g, ' ');
+  const markupNames = [...html.matchAll(/\btoolname\s*=\s*"([^"]*)"/gi)].map((m) => m[1]);
+  const declared = answer.declarative.filter((name) => typeof name === 'string' && name.length > 0);
+
+  for (const name of declared) {
+    if (!markupNames.includes(name)) {
+      problems.push(
+        `declarative_form.js publishes "${name}" and index.html carries `
+        + `${markupNames.length === 0 ? 'no toolname attribute at all' : markupNames.map((n) => `"${n}"`).join(', ')}. `
+        + 'The browser reads the markup, so the module is describing a tool nobody can call.',
+      );
     }
   }
+  for (const name of markupNames) {
+    if (!declared.includes(name)) {
+      problems.push(`index.html publishes the declarative tool "${name}" and no module in src declares it.`);
+    }
+  }
+
+  const names = [...imperative, ...new Set([...declared, ...markupNames])];
+  for (const name of names) {
+    if (!/^[a-z][a-z0-9_]*$/.test(name)) problems.push(`tool name "${name}" is not lower snake case`);
+    if (name.length > 30) problems.push(`tool name "${name}" is ${name.length} characters, budget 30`);
+  }
+
+  return {
+    names,
+    imperative,
+    declarative: [...new Set([...declared, ...markupNames])],
+    problems,
+    scanned: `${imperative.length} imperative from register.js, ${new Set([...declared, ...markupNames]).size} declarative from declarative_form.js and index.html`,
+  };
+}
+
+function checkToolSurface(root) {
+  const surface = enumerateToolSurface(root);
+  return row(
+    'SUR',
+    'the published surface, imperative and declarative, is enumerated from the code that publishes it',
+    surface.problems.length === 0 ? PASS : FAIL,
+    surface.problems.length === 0
+      ? `${surface.scanned}: ${surface.names.join(', ')}`
+      : surface.problems.join(' | '),
+    ENGINEERING,
+    RECOMMENDED,
+  );
+}
+
+/**
+ * No human only action is callable, on EITHER surface.
+ *
+ * The list this walks is the one `enumerateToolSurface` built from the publishing code, so a
+ * filing capability added as a tool descriptor, as a `toolname` on the form, or as a rename of
+ * FORM_TOOL_NAME is caught by the same row. The old version read a directory and could only ever
+ * see the first of those three.
+ */
+function checkHumanOnlyBoundary(root) {
+  const surface = enumerateToolSurface(root);
+  if (surface.problems.some((p) => p.startsWith('the tool surface could not be enumerated'))) {
+    return row('HUM', 'filing, assistance and pinning are never tools, on either surface', FAIL, surface.problems[0], ENGINEERING, RECOMMENDED);
+  }
+
+  const offenders = [];
+  for (const name of surface.imperative) {
+    if (HUMAN_ONLY_ACTIONS.includes(name)) offenders.push(`the imperative surface publishes ${name}`);
+  }
+  for (const name of surface.declarative) {
+    if (HUMAN_ONLY_ACTIONS.includes(name)) offenders.push(`the declarative form publishes ${name}`);
+  }
+
   return row(
     'HUM',
-    'filing, assistance and pinning are never tools',
+    'filing, assistance and pinning are never tools, on either surface',
     offenders.length === 0 ? PASS : FAIL,
-    offenders.length === 0 ? 'no human only action appears in the tool surface' : offenders.join(', '),
+    offenders.length === 0
+      ? `no human only action appears among the ${surface.names.length} published names (${surface.scanned})`
+      : offenders.join(', '),
     ENGINEERING,
+    RECOMMENDED,
   );
 }
 
@@ -542,7 +747,7 @@ function checkPublicRepo(root) {
     ok ? PASS : FAIL,
     ok ? url : 'no git remote named origin yet',
     DELIVERABLE,
-    true,
+    MANDATORY,
   );
 }
 
@@ -550,7 +755,7 @@ function checkDescription(root) {
   const path = join(root, 'docs', 'submission', 'description.md');
   const text = read(path);
   if (!text) {
-    return row('D3', 'deliverable: written description', FAIL, 'docs/submission/description.md does not exist', DELIVERABLE, true);
+    return row('D3', 'deliverable: written description', FAIL, 'docs/submission/description.md does not exist', DELIVERABLE, MANDATORY);
   }
   // The four elements the challenge rules require the description to cover, in the organizer's
   // own words: "Why your use case is a strong fit for WebMCP", "How it creates a better user
@@ -583,7 +788,7 @@ function checkDescription(root) {
     missing.length === 0 ? PASS : FAIL,
     missing.length === 0 ? 'all four elements addressed' : `not yet addressed: ${missing.join(', ')}`,
     DELIVERABLE,
-    true,
+    MANDATORY,
   );
 }
 
@@ -591,7 +796,7 @@ function checkVideo(root) {
   const path = join(root, 'docs', 'submission', 'video.md');
   const text = read(path);
   if (!text) {
-    return row('D4', 'deliverable: public video under three minutes', FAIL, 'docs/submission/video.md does not exist', DELIVERABLE, true);
+    return row('D4', 'deliverable: public video under three minutes', FAIL, 'docs/submission/video.md does not exist', DELIVERABLE, MANDATORY);
   }
   const link = text.match(/https:\/\/(www\.)?(youtube\.com|youtu\.be)\/\S+/);
   return row(
@@ -600,7 +805,7 @@ function checkVideo(root) {
     link ? PASS : FAIL,
     link ? link[0] : 'no public video link recorded yet',
     DELIVERABLE,
-    true,
+    MANDATORY,
   );
 }
 
@@ -611,27 +816,53 @@ function ownerGatedRows() {
     {
       id: 'O1',
       label: 'video uploaded to YouTube as public, not unlisted',
+      backs: 'the mandatory video row D4',
       step: 'owner uploads the rendered cut, sets visibility to Public, pastes the link into docs/submission/video.md',
     },
     {
       id: 'O2',
       label: 'Devpost project created with every field filled',
+      backs: 'every mandatory row, which the form is where a judge sees',
       step: 'owner opens the hackathon submission form and pastes the repo URL, the live URL, the description and the video',
     },
     {
       id: 'O3',
       label: 'the form reads Submitted',
+      backs: 'the entry existing at all',
       step: 'owner presses Submit. A draft scores zero. Submit early, then edit in place',
-    },
-    {
-      id: 'O4',
-      label: 'Chrome origin trial token registered for the production domain',
-      step: 'owner registers the stable production origin so judges need no browser flag, then the token meta tag ships in index.html',
     },
     {
       id: 'O5',
       label: 'tools proven callable in a real judge path',
-      step: 'owner opens the live URL in the ChatGPT desktop browser, or Chrome with the WebMCP testing flag plus the Tool Inspector extension, and runs the three example prompts from the README',
+      backs: 'the mandatory live URL row LIVE, which is only worth anything if the tools answer there',
+      step: 'owner opens the live URL in the ChatGPT in-app browser, or Chrome with chrome://flags/#enable-webmcp-testing, and runs the three example prompts from the README',
+    },
+  ];
+}
+
+/**
+ * Printed, never counted, and here so nobody re adds it as a deliverable.
+ *
+ * THE CHROME ORIGIN TRIAL IS NOT A REQUIREMENT OF THIS CHALLENGE. It sat in the owner gated block
+ * above, which is counted in the READY TO SUBMIT tally, so the gate was reporting the entry as
+ * owing a token that the organizer never asked for. Read from https://webmcp.devpost.com/rules on
+ * 2026-08-30, the rules say a judge accesses the project with "ChatGPT's in-app browser or Google
+ * Chrome with WebMCP enabled", and for Chrome they tell the entrant to "enable
+ * chrome://flags/#enable-webmcp-testing, and restart the browser". No origin trial and no token
+ * appears anywhere in the rules.
+ *
+ * The row stays because the FACT is worth printing: stock Chrome, with no flag and no token, sees
+ * nothing on this page. A judge following the organizer's own instructions is not stock Chrome, so
+ * that fact costs the entry nothing, and it is the difference between a limitation stated and a
+ * limitation discovered.
+ */
+function optionalRows() {
+  return [
+    {
+      id: 'O4',
+      label: 'Chrome origin trial token registered for the production domain',
+      why: 'NOT required by the rules. Judges are told to use the ChatGPT in-app browser or chrome://flags/#enable-webmcp-testing. A token would only serve a visitor who arrives with neither',
+      step: 'optional: owner registers the stable production origin, and the token meta tag then ships in index.html',
     },
   ];
 }
@@ -643,12 +874,24 @@ function pad(value, width) {
   return text.length >= width ? text : text + ' '.repeat(width - text.length);
 }
 
+/**
+ * The table, grouped by tier, because the tier is the first thing a reader needs.
+ *
+ * An ungrouped table invites the reading that every red row is equally urgent. It is not: a red
+ * MANDATORY row means the entry cannot be judged, and a red RECOMMENDED row means our own
+ * engineering slipped. Those are different days of work.
+ */
 function printTable(rows) {
-  console.log(`${pad('ID', 6)}${pad('STATUS', 14)}${pad('BLOCKS', 13)}CHECK`);
-  console.log('-'.repeat(96));
-  for (const r of rows) {
-    console.log(`${pad(r.id, 6)}${pad(r.status, 14)}${pad(r.blocking, 13)}${r.label}`);
-    if (r.detail) console.log(`${' '.repeat(33)}${r.detail}`);
+  console.log(`${pad('ID', 6)}${pad('STATUS', 14)}${pad('TIER', 14)}${pad('BLOCKS', 13)}CHECK`);
+  console.log('-'.repeat(110));
+  for (const tier of [MANDATORY, RECOMMENDED]) {
+    const group = rows.filter((r) => r.tier === tier);
+    if (group.length === 0) continue;
+    console.log(`${tier.toUpperCase()}, ${group.length} row(s)${tier === MANDATORY ? '. Required by the organizer. Each one blocks the exit code in every mode' : '. Our own engineering, not the organizer\'s'}`);
+    for (const r of group) {
+      console.log(`${pad(r.id, 6)}${pad(r.status, 14)}${pad(r.tier, 14)}${pad(r.blocking, 13)}${r.label}`);
+      if (r.detail) console.log(`${' '.repeat(47)}${r.detail}`);
+    }
   }
 }
 
@@ -740,6 +983,44 @@ function replaceAcrossSrc(sandbox, from, to) {
 
 function git(sandbox, args) {
   return spawnSync('git', ['-C', sandbox, ...args], { encoding: 'utf8' });
+}
+
+/**
+ * Publish a tool from a sandbox the way the page publishes one: a module, imported by register.js
+ * and named in ALWAYS_ON_TOOLS.
+ *
+ * Writing the file alone is not publishing. `describeToolSurface` is built from the two lists in
+ * register.js, so an unimported file is invisible to it, and a break that stopped at writing the
+ * file would leave the human only rows green on both halves.
+ *
+ * @param {string} sandbox
+ * @param {string} name the tool name to publish, normally one from HUMAN_ONLY_ACTIONS
+ */
+function publishSelftestTool(sandbox, name) {
+  const file = 'zz_selftest_break.js';
+  writeFileSync(
+    join(sandbox, 'src', 'webmcp', 'tools', file),
+    `export default () => ({\n  name: '${name}',\n`
+    + "  description: 'Written by the readiness selftest to prove the human only boundary refuses it.',\n"
+    + '  annotations: { readOnlyHint: false },\n'
+    + "  inputSchema: { type: 'object', properties: {} },\n"
+    + '  async execute() { return null; },\n});\n',
+    'utf8',
+  );
+  editFile(sandbox, join('src', 'webmcp', 'register.js'), (source) => {
+    const withImport = source.replace(
+      "import describeClaimTool from './tools/describe_claim.js';",
+      `import describeClaimTool from './tools/describe_claim.js';\nimport zzSelftestTool from './tools/${file}';`,
+    );
+    const wired = withImport.replace(
+      'export const ALWAYS_ON_TOOLS = [',
+      'export const ALWAYS_ON_TOOLS = [\n  (ctx) => zzSelftestTool(ctx),',
+    );
+    if (wired === source) {
+      throw new Error('the selftest could not wire a tool into register.js, so its break step did nothing.');
+    }
+    return wired;
+  });
 }
 
 function styleGateRow(sandbox) {
@@ -852,24 +1133,78 @@ const SELFTEST_CASES = [
     run: (s) => checkToolFiles(s),
   },
   {
-    id: 'HUM',
-    name: 'filing appears as a tool',
+    id: 'TOL',
+    // THE SCENARIO THAT MOVED HOUSE. The two human only cases below used to write an unimported
+    // file into the tools directory, and while HUM read the directory that was enough. HUM now
+    // reads what register.js publishes, so an unimported file is invisible to it, and their break
+    // steps were rewritten to publish properly. That left this scenario, a human only action
+    // sitting in the tools directory that nothing imports yet, covered by no case at all. It is
+    // TOL's to catch, because TOL is the per file lint, and here it is being watched to catch it.
+    name: 'a human only action is written as a tool file, even one register.js never imports',
     break: (s) => writeFileSync(
       join(s, 'src', 'webmcp', 'tools', 'zz_selftest_break.js'),
-      "export default () => ({\n  name: 'file_claim',\n  annotations: { readOnlyHint: false },\n  inputSchema: { type: 'object', properties: {} },\n  async execute() { return null; },\n});\n",
+      "export default () => ({\n  name: 'file_claim',\n  annotations: { readOnlyHint: false },\n"
+      + "  inputSchema: { type: 'object', properties: {} },\n  async execute() { return null; },\n});\n",
       'utf8',
     ),
+    run: (s) => checkToolFiles(s),
+  },
+  {
+    id: 'HUM',
+    name: 'filing appears as a tool on the imperative surface',
+    // THE BREAK HAS TO PUBLISH IT, NOT JUST WRITE THE FILE. This case used to drop a tool file in
+    // the directory, which was enough while the gate read the directory. The gate now reads what
+    // register.js actually publishes, and a file nobody imports publishes nothing. A break that
+    // stopped short of publishing would leave this case green on both halves and report a gate
+    // with teeth that had never been shown any.
+    break: (s) => publishSelftestTool(s, 'file_claim'),
     run: (s) => checkHumanOnlyBoundary(s),
   },
   {
     id: 'HUM',
     name: 'unpinning a field appears as a tool, the third human only action',
+    break: (s) => publishSelftestTool(s, 'unpin_field'),
+    run: (s) => checkHumanOnlyBoundary(s),
+  },
+  {
+    id: 'HUM',
+    name: 'filing appears on the DECLARATIVE surface, through the markup a browser reads',
+    // The surface the old gate could not see at all. No tool file changes: the four attributes on
+    // the form in index.html are what a browser reads, so renaming one there publishes a filing
+    // capability that no directory walk would ever find.
+    break: (s) => editFile(s, 'index.html', (t) => t.replace('toolname="record_supporting_details"', 'toolname="file_claim"')),
+    run: (s) => checkHumanOnlyBoundary(s),
+  },
+  {
+    id: 'HUM',
+    name: 'filing appears on the declarative surface, through the module that describes it',
+    break: (s) => {
+      editFile(s, join('src', 'webmcp', 'declarative_form.js'), (t) => t.replace(
+        "export const FORM_TOOL_NAME = 'record_supporting_details';",
+        "export const FORM_TOOL_NAME = 'submit_claim';",
+      ));
+      editFile(s, 'index.html', (t) => t.replace('toolname="record_supporting_details"', 'toolname="submit_claim"'));
+    },
+    run: (s) => checkHumanOnlyBoundary(s),
+  },
+  {
+    id: 'SUR',
+    name: 'a tool factory throws, so the surface an agent is handed is quietly one tool shorter',
+    // describeOne swallows a throwing factory and returns null, and describeToolSurface drops the
+    // null. Without the count assertion the gate would be handed eight tools, find nothing wrong
+    // with any of them, and report a clean surface by looking at less of it.
     break: (s) => writeFileSync(
-      join(s, 'src', 'webmcp', 'tools', 'zz_selftest_break.js'),
-      "export default () => ({\n  name: 'unpin_field',\n  annotations: { readOnlyHint: false },\n  inputSchema: { type: 'object', properties: {} },\n  async execute() { return null; },\n});\n",
+      join(s, 'src', 'webmcp', 'tools', 'describe_claim.js'),
+      "export default () => { throw new Error('broken on purpose by the readiness selftest'); };\n",
       'utf8',
     ),
-    run: (s) => checkHumanOnlyBoundary(s),
+    run: (s) => checkToolSurface(s),
+  },
+  {
+    id: 'SUR',
+    name: 'the declarative form in the markup and the module that describes it stop agreeing',
+    break: (s) => editFile(s, 'index.html', (t) => t.replace('toolname="record_supporting_details"', 'toolname="record_details"')),
+    run: (s) => checkToolSurface(s),
   },
   {
     id: 'D1',
@@ -1008,6 +1343,7 @@ async function main() {
     checkUnitTests(ROOT),
     checkCorePurity(ROOT),
     checkToolFiles(ROOT),
+    checkToolSurface(ROOT),
     checkHumanOnlyBoundary(ROOT),
     checkPublicRepo(ROOT),
     checkDescription(ROOT),
@@ -1023,11 +1359,21 @@ async function main() {
   const percent = rows.length === 0 ? 0 : Math.round((passed.length / rows.length) * 1000) / 10;
 
   const owner = ownerGatedRows();
-  console.log('\nowner gated. No script can prove any of these, so none of them is ever a PASS');
-  console.log('-'.repeat(96));
+  console.log('\nOWNER GATED. No script can prove any of these, so none of them is ever a PASS. They ARE counted');
+  console.log('-'.repeat(110));
   for (const o of owner) {
-    console.log(`${pad(o.id, 6)}${pad('OWNER GATED', 14)}${pad('manual', 13)}${o.label}`);
-    console.log(`${' '.repeat(33)}${o.step}`);
+    console.log(`${pad(o.id, 6)}${pad('OWNER GATED', 14)}${pad(OWNER_GATED, 14)}${pad('manual', 13)}${o.label}`);
+    console.log(`${' '.repeat(47)}backs ${o.backs}`);
+    console.log(`${' '.repeat(47)}${o.step}`);
+  }
+
+  const optional = optionalRows();
+  console.log('\nOPTIONAL. The organizer asks for none of this. Printed because the fact matters, NEVER counted');
+  console.log('-'.repeat(110));
+  for (const o of optional) {
+    console.log(`${pad(o.id, 6)}${pad('NOT OWED', 14)}${pad(OPTIONAL, 14)}${pad('nothing', 13)}${o.label}`);
+    console.log(`${' '.repeat(47)}${o.why}`);
+    console.log(`${' '.repeat(47)}${o.step}`);
   }
 
   const undeployed = rows.some((r) => r.status === NOT_DEPLOYED);
@@ -1042,10 +1388,19 @@ async function main() {
   const overallTotal = rows.length + owner.length;
   const overallPercent = Math.round((passed.length / overallTotal) * 1000) / 10;
 
-  console.log('\n' + '='.repeat(96));
+  const mandatoryRows = rows.filter((r) => r.tier === MANDATORY);
+  const mandatoryPassed = mandatoryRows.filter((r) => r.status === PASS);
+  const recommendedRows = rows.filter((r) => r.tier === RECOMMENDED);
+  const recommendedPassed = recommendedRows.filter((r) => r.status === PASS);
+
+  console.log('\n' + '='.repeat(110));
+  console.log(`MANDATORY, what the rules require:   ${mandatoryPassed.length} of ${mandatoryRows.length} PASS  (${mandatoryRows.map((r) => `${r.id} ${r.status}`).join(', ')})`);
+  console.log(`RECOMMENDED, our own engineering:    ${recommendedPassed.length} of ${recommendedRows.length} PASS`);
+  console.log(`OPTIONAL, owed to nobody:            ${optional.length} row(s) printed, 0 counted`);
   console.log(`automated rows:   ${passed.length} of ${rows.length} PASS, ${percent} percent${undeployed ? ' (provisional, the live row proved nothing)' : ''}`);
   console.log(`READY TO SUBMIT:  ${passed.length} of ${overallTotal} proven, ${overallPercent} percent. This is the number that answers the question.`);
   console.log(`  it adds the ${owner.length} owner gated rows, none of which any script can prove, and one of which is whether the form reads Submitted.`);
+  console.log(`  it does NOT add the ${optional.length} optional row(s). Counting something the organizer never asked for makes the entry look further from ready than it is.`);
   console.log(`engineering rows outstanding: ${engineeringFailures.length}`);
   console.log(`deliverable rows outstanding: ${deliverableFailures.length}`);
   if (mandatoryFailures.length > 0) {
