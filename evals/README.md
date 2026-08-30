@@ -56,12 +56,12 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33151418595](https://github.com/upgradedev/claimready/actions/runs/33151418595), workflow `WebMCP evals`, conclusion success, started 2026-08-28T07:25:45Z |
-| Commit under test | `4023446e7916b867f1365f871b08885d5cb45655`, which is also the commit GitHub Pages last built, so the run drove the bytes being served |
+| Run | [33334936720](https://github.com/upgradedev/claimready/actions/runs/33334936720), workflow `WebMCP evals`, conclusion success, run 2026-08-30 |
+| Commit under test | `1ee157d`, which is also the commit GitHub Pages last built, so the run drove the bytes being served. This matters more than it sounds: the previous run of record drove `4023446`, and `src/` changed substantially afterwards, so that run had stopped being evidence about the live page. A green run against bytes the host no longer serves is not evidence, which is the rule this file states two paragraphs down and now follows |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
-| Result | `Passed steps: 16/16 across 3 case(s).` |
+| Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `7/8` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
 
 Two earlier runs were green as well,
 [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906) and
