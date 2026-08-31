@@ -159,8 +159,24 @@ Read this claim page and tell me what it still needs from me.
 Let it answer. Then:
 
 ```
-A delivery van reversed into my left front wing while the car was parked in the car park on Harbour Road. It is a dent at the 10 o'clock position and the car still drives. Fill that in for me and write the description.
+A delivery van reversed into my car while it was parked in the car park on Harbour Road. It caught the left front wing and left a dent. The car still drives, and it is still there in the Harbour Road car park. Fill that in for me and write the description.
 ```
+
+**Two things about that sentence, and both are the point of the beat.**
+
+**It never says "10 o'clock".** An earlier version did, and it quietly threw the demonstration away:
+the claimant was speaking the insurer's vocabulary, so the agent had nothing to translate and the
+row filled by copying. A person says "the left front wing". The clock face is the insurer's, it is
+in the tool's enum and in the row's own label, and watching a model cross that gap is the thing
+worth filming. If the row lands on 9 or 11 o'clock instead, keep the take: the narration names no
+number, and beat 04 is where a wrong answer gets corrected by hand.
+
+**It says where the car is.** That is not padding. Answer "cannot be driven" in beat 04 and this
+insurer raises two requirements at once, the roadside collection and the collection address, and
+the address is a field. Without it in this sentence, beat 07 presses the roadside control, the
+address stays open, and **File this claim stays disabled**, which is exactly how the first attempt
+at filming this stopped. `tests/unit/filmed_journey.test.js` runs the whole sequence three times
+from a fresh draft and fails if that chain ever breaks again.
 
 **It will ask before it writes. That is a third message, and it is not optional.** Observed on
 2026-08-31: the assistant listed the five values it intended to send, said it needed confirmation
@@ -178,6 +194,11 @@ the ledger and no revision moving, which is most of what this beat is for.
 - the status strip reading `8 tools registered`, and the API name it found
 - the ledger filling with `read_claim_state`, `get_requirements` and `apply_claim_patch`
 - claim rows moving from `not set` to a value, each carrying the `via tool` badge
+- the **Damage position** row reading `10 o'clock, left front wing`, which nobody typed
+- **Where it happened** carrying the car park, with a `via tool` badge. Open **Optional details** at
+  the end of the take if it has not opened by itself, and check it. If that row is empty the rest of
+  the session cannot file, so stop here and send one more sentence: `The car is still in the car
+  park on Harbour Road. Put that on the claim.`
 - the **Draft revision** number in the header rising as the patches land
 
 **Stop on:** the filled draft, with the `via tool` badges on the rows the agent wrote and the
@@ -416,9 +437,16 @@ on camera and left the one requirement the entry had just made a point of unansw
 `assistanceApplies` in `src/ui/app.js` requires `claim.status !== 'filed'`, so filing closes the
 assistance control.
 
-Whatever else the requirements panel still shows is left as it is. Filing is gated on the required
-fields through `validateClaim`, not on this insurer's intake list, so the page does allow a filing
-with an intake requirement open. Record what is true on the day rather than staging the panel.
+**The panel has to be empty of open requirements before the File control will do anything, and by
+this point in the session it is.** Filing is gated on the insurer's derived intake as well as on the
+required fields: `canFile` in `src/core/filing.js` refuses with `FILE_REFUSED_REQUIREMENTS` while
+anything is open, which is the defect that gate was written to close. The two this insurer raises
+when the car cannot be driven are the collection address, answered by the location the agent wrote
+in beat 03, and the roadside collection, answered by the button you press first. That is why the
+order in this take is forced and why beat 03's prompt says where the car is.
+
+If **File this claim** is still disabled after the roadside press, read the line under it. It names
+what is still open, and the answer is almost always that beat 03 did not write the location.
 
 ---
 

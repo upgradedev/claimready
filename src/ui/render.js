@@ -148,6 +148,9 @@ export function createView(doc) {
     fieldError: pick('field-error'),
     requirements: pick('requirements'),
     reqSummary: pick('req-summary'),
+    reqProgress: pick('req-progress'),
+    reqProgressFill: pick('req-progress-fill'),
+    reqProgressText: pick('req-progress-text'),
     coverageBody: pick('coverage-body'),
     estimateBody: pick('estimate-body'),
     ledger: pick('ledger'),
@@ -196,6 +199,25 @@ export function createView(doc) {
         els.toolsDetails.open = true;
       }
     } catch (ignored) { /* a browser that refuses the query leaves the list folded, which is safe */ }
+  }
+
+  /**
+   * The bar beside the intake sentence. It states the same count that sentence states, in the same
+   * draw, off the same list, so the two cannot disagree. `answered` is null when no pack loaded:
+   * the bar is hidden rather than drawn at zero, because "this page cannot say" and "none of them"
+   * are different facts and a bar at zero says the second one.
+   *
+   * @param {(number|null)} answered
+   * @param {number} total
+   */
+  function drawProgress(answered, total) {
+    const known = typeof answered === 'number' && total > 0;
+    els.reqProgress.hidden = !known;
+    els.reqProgress.setAttribute('aria-valuemin', '0');
+    els.reqProgress.setAttribute('aria-valuemax', String(known ? total : 0));
+    els.reqProgress.setAttribute('aria-valuenow', String(known ? answered : 0));
+    els.reqProgressFill.style.width = known ? `${Math.round((answered / total) * 100)}%` : '0%';
+    text(els.reqProgressText, known ? `${answered} of ${total} answered` : '');
   }
 
   return {
@@ -484,6 +506,9 @@ export function createView(doc) {
         text(els.reqSummary, blocked);
         els.reqSummary.classList.add('is-blocked');
         els.requirements.replaceChildren();
+        // No pack, no denominator. A bar drawn at zero of zero would read as "nothing answered"
+        // when the truth is that this page cannot say, which is a different sentence.
+        drawProgress(null, 0);
         return;
       }
 
@@ -492,6 +517,7 @@ export function createView(doc) {
       const fresh = new Set((state && state.newIds) || []);
       text(els.reqSummary, (state && state.summary) || '');
       els.requirements.replaceChildren(...entries.map((entry) => requirementItem(doc, entry, fresh.has(entry.id))));
+      drawProgress(entries.filter((entry) => entry.satisfied).length, entries.length);
     },
 
     renderCoverage(entry) {

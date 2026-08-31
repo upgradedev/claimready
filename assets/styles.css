@@ -948,3 +948,77 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
   .field-row, .revision, .demo-flash { transition: none; }
   .req.is-new { animation: none; }
 }
+
+/* Orientation strip. Three lines, no state, no decision. */
+.how {
+  display: grid;
+  gap: .5rem;
+  margin: 0 auto 1.25rem;
+  padding: 0;
+  max-width: 62rem;
+  list-style: none;
+}
+
+@media (min-width: 900px) {
+  .how { grid-template-columns: repeat(3, 1fr); gap: .75rem; }
+}
+
+.how li {
+  display: flex;
+  gap: .55rem;
+  align-items: flex-start;
+  font-size: .92rem;
+  line-height: 1.45;
+  color: var(--ink-soft, inherit);
+}
+
+.how-step {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+/* How much of this insurer's intake is answered. The same count the sentence above states. */
+.req-progress {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin: .35rem 0 .9rem;
+}
+
+.req-progress[hidden] { display: none; }
+
+.req-progress-track {
+  flex: 1 1 auto;
+  height: .4rem;
+  border-radius: 999px;
+  background: var(--rule, rgba(127, 127, 127, .28));
+  overflow: hidden;
+}
+
+.req-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--ok, var(--accent));
+  transition: width .25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .req-progress-fill { transition: none; }
+}
+
+.req-progress-text {
+  flex: 0 0 auto;
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft, inherit);
+}

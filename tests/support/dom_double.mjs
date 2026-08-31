@@ -73,6 +73,12 @@ class ElementDouble {
     this.type = '';
     this.rows = undefined;
     this.placeholder = '';
+    this.hidden = false;
+    // CSSOM, not the style attribute. render.js sets widths through this object on purpose: the
+    // page ships style-src 'self' with no unsafe-inline, so a style ATTRIBUTE would be refused by
+    // the browser while an assignment through CSSOM is not. A plain object is enough to record
+    // what was set and to let a test read it back.
+    this.style = {};
 
     const self = this;
     this.classList = {
