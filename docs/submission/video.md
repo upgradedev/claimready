@@ -74,12 +74,16 @@ setting a take below depends on.
    commit it is about to write into the manifest, so a stale deployment stops the build later
    rather than sooner.
 2. **Open the page in the ChatGPT desktop built in browser, signed in to your own account.** The
-   repository README's section on running the page with an agent has the two supported paths and
-   the browser flag for the Chrome route. Two settings decide whether tools appear at all, and both
-   are outside this page: the model must be **GPT-5.6 Sol or GPT-5.6 Terra**, because Luna has
-   WebMCP disabled, and site tools are **not available in Enterprise or Edu workspaces**. Read live
-   on 2026-08-31 from <https://learn.chatgpt.com/docs/webmcp>. Settle this on the day before you
-   plan to record, not on the day.
+   menu path, on the Windows app: **View, Browser, Open Browser Tab**, or `Ctrl+T`. It is not
+   `Ctrl+Shift+B`, which is what an earlier version of this file said. Paste the judge URL into the
+   panel's address bar.
+
+   Two settings decide whether tools appear at all, and both are outside this page: the model must
+   be **GPT-5.6 Sol or GPT-5.6 Terra**, because Luna has WebMCP disabled, and site tools are **not
+   available in Enterprise or Edu workspaces**. Read live on 2026-08-31 from
+   <https://learn.chatgpt.com/docs/webmcp>. This whole path was walked on 2026-08-31 on the Windows
+   app, package `OpenAI.Codex 26.825.6671.0`, model 5.6 Sol Ultra, and the page reported `Agent
+   connected through document.modelContext. 8 tools registered.`
 3. **Confirm the status strip reads `8 tools registered` and names the API it found.** If it does
    not, stop. A page that did not publish its tools is not worth filming.
 4. **Press Load synthetic incident.** Every take below assumes that starting point, and all six
@@ -97,6 +101,19 @@ setting a take below depends on.
    revision and resets the draft, and every later take reads from where the last one left off.
 10. **Turn cursor capture on in the recorder.** Takes 5 and 6 ask for a button pressed by hand and a
    box typed into by hand, and several recorders leave the pointer out of the picture by default.
+11. **Find the pause key on your recorder before you start, and know that you will need it.** The
+   model thinks for a long time. Measured on 2026-08-31, one prompt at a time: **2m 05s** to answer
+   the first question, **1m 22s** to come back with the patch it proposed, **1m 07s** to save it
+   after the confirmation. The takes that involve the assistant are 20 to 33 seconds long, so the
+   thinking cannot be in them.
+
+   **Pause the recording while it thinks. Resume the moment the answer starts to appear.** That
+   keeps one continuous session, changes nothing about what happened, and leaves a take that is
+   mostly the thing worth watching: the ledger filling, the rows moving, the revision stepping.
+   Do not fake the wait away by cutting mid sentence, and do not speed the picture up.
+
+   A faster answer is worth trying before you record: the model picker at the bottom of the
+   composer offers builds with less thinking, and the session above was on the slowest one.
 
 Save every take as `video/beats/<beat id>/take.mp4`. That exact path, that exact name. To see what
 is still missing, and the recording instructions for each:
@@ -144,6 +161,17 @@ Let it answer. Then:
 ```
 A delivery van reversed into my left front wing while the car was parked in the car park on Harbour Road. It is a dent at the 10 o'clock position and the car still drives. Fill that in for me and write the description.
 ```
+
+**It will ask before it writes. That is a third message, and it is not optional.** Observed on
+2026-08-31: the assistant listed the five values it intended to send, said it needed confirmation
+because the change transmits claim details, and waited. Answer:
+
+```
+Confirmed, save them.
+```
+
+Only then does `apply_claim_patch` reach the page. A take that stops at the proposal has no patch in
+the ledger and no revision moving, which is most of what this beat is for.
 
 **Must be visible on the take:**
 

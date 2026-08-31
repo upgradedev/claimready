@@ -355,7 +355,7 @@ different evidence behind them.
 | Any browser, no agent | Verified. It is an ordinary form. A person types in either box, presses **Add these details**, and the draft moves one revision with both rows marked `via page`. Driven by hand in Chromium 148 over a local server: no navigation, no console output, no CSP violation, and no horizontal overflow at 375px |
 | Chrome with WebMCP on | **Verified, 2026-08-31**, on Chrome `151.0.7922.174`, the stable channel, against the deployed page. `getTools()` returned ten entries, and one of them is `record_supporting_details`: a tool this page never registered, built by the browser out of those four attributes, carrying our own description and a JSON Schema with a description on each of the three parameters. Executing it answered `Recorded the name of the witness on the draft, submitted through the WebMCP tool call. The draft is now at revision 3.` and a following `read_claim_state` agreed. Reproduce with `node evals/browser_probe.mjs`, whose header gives the Chrome command line |
 | The agent branch of the submit handler | Verified, but by us rather than by a browser. A `SubmitEvent` carrying `agentInvoked` and `respondWith` was constructed and dispatched at the form. Quoting no revision came back `Refused. PATCH_REJECTED_STALE:` naming the number to send, with the draft unmoved and a ledger row flagged `refused`. Quoting the current revision came back `Recorded the name of the witness on the draft, written by your agent`, with the badge reading `via tool` |
-| The ChatGPT desktop browser | **Unverified.** The WebMCP documentation for that surface does not mention declarative forms at all, so this page makes no claim either way about it |
+| The ChatGPT desktop browser | **The registered half is verified, 2026-08-31**: an assistant in that app's built in browser read, patched and validated this claim through the page's own tools, and the ledger recorded every call. **The declared form is still unverified there**, and this page makes no claim either way: the documentation for that surface does not mention declarative forms, and the page's own counters cannot see what the browser synthesised |
 | The Chrome eval harness in CI | Does not cover it. `evals/evals.json` and the negative control drive the nine registered tools only |
 
 On any browser that does not implement the declarative API the four attributes are unknown
@@ -460,13 +460,19 @@ past.
 
 WebMCP is new, so a judge needs one of two surfaces.
 
-**1. The ChatGPT desktop app's built in browser.** Open the app, press `Ctrl+Shift+B` (or
-`Cmd+Shift+B`), and load the page. Three things decide whether tools appear, and none of them is
-this page, so check them before concluding it is broken. Read live on 2026-08-31 from
-<https://learn.chatgpt.com/docs/webmcp>: site tools work in that built in browser for **ChatGPT Work
-and Codex**; the model must be **GPT-5.6 Sol or GPT-5.6 Terra**, and **GPT-5.6 Luna has WebMCP
-disabled**; and site tools are **not available in Enterprise or Edu workspaces**. Availability also
-follows a rollout, in their words.
+**1. The ChatGPT desktop app's built in browser. Verified against this page on 2026-08-31, and it
+is the surface the video is recorded on.** Open the app, then **View, Browser, Open Browser Tab**
+(`Ctrl+T` on Windows), and load the page in the panel that appears. Observed on the Windows app,
+package `OpenAI.Codex 26.825.6671.0`, model **5.6 Sol Ultra**: the strip read `Agent connected
+through document.modelContext. 8 tools registered.` and the assistant answered from the page's own
+tools rather than from the DOM. The ledger recorded the calls, and what they returned is quoted in
+[what a real model did with them](#what-a-real-model-did-with-them).
+
+Three things decide whether tools appear at all, and none of them is this page, so check them before
+concluding it is broken. Read live on 2026-08-31 from <https://learn.chatgpt.com/docs/webmcp>: site
+tools work in that built in browser for **ChatGPT Work and Codex**; the model must be **GPT-5.6 Sol
+or GPT-5.6 Terra**, and **GPT-5.6 Luna has WebMCP disabled**; and site tools are **not available in
+Enterprise or Edu workspaces**. Availability also follows a rollout, in their words.
 
 **2. Chrome 149 or later, with WebMCP on.** Either turn on `chrome://flags/#enable-webmcp-testing`
 and relaunch, or start Chrome with `--enable-features=WebMCP`. The second was **observed working on
@@ -478,6 +484,35 @@ registered tools, their schemas and the result of each call.
 
 Both routes give the page an agent surface. Only the first has a model behind it, which is why the
 video is recorded there.
+
+### What a real model did with them
+
+One session, 2026-08-31, in the app's built in browser, quoted from the page's own tool call ledger
+rather than from the conversation. Two prompts and one confirmation, nothing else:
+
+| Time | Call | What came back, first line |
+|---|---|---|
+| 14:14:52 | `read_claim_state {}` | `Claim draft on policy MTR-2026-0417, revision 0, status draft.` |
+| 14:14:54 | `get_requirements {"include":"outstanding"}` | `Northwind Mutual intake rules, claim revision 0. 4 of 5 requirement(s) still open.` |
+| 14:14:56 | `validate_claim {}` | `NOT READY TO FILE at revision 0. FILE_REFUSED_INCOMPLETE.` |
+| 14:19:31 | `read_claim_state {}` | re-read before writing, unasked |
+| 14:19:49 | `apply_claim_patch {"baseRevision":0,"changes":[…]}` | `Applied. The claim is now at revision 1.` |
+| 14:20:01 | `validate_claim {}` | `READY TO FILE at revision 1.` |
+
+Three things in that sequence are the entry, and none of them was prompted for:
+
+- **The model answered in the page's vocabulary.** Asked what the claim still needed, it said the
+  impact position as a clock face, the severity as one of three words, and whether the car drives.
+  That wording is the insurer's, and it reached the model because the page published it.
+- **It re-read the draft before patching**, and sent `baseRevision` with the number it had just
+  read. The revision protocol is in the tool descriptions, and it followed it.
+- **It stopped at the filing boundary on its own.** After the patch it told the user, in its own
+  words, that the claim was complete and that they could press **File this claim** on the page. No
+  tool this page publishes reaches that button, and the model said so rather than trying.
+
+**One thing this session did not settle**: whether the declared form appears in that app's tool
+list. The page's strip counts what the page registered, not what the browser synthesised, so it
+cannot answer the question either way. In Chrome it does appear, which is the row above.
 
 Chrome 149 is the first build with WebMCP, but 153 or later is the better one for this page. The
 imperative API documentation, read on 2026-08-27 at
