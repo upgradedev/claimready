@@ -75,6 +75,15 @@ jobs:
           fi
           node --test tests/unit
 
+      # The page runs no model, so every answer comes from a rule pack being evaluated in code.
+      # That invites the fair question of whether the pack is doing the work or decorating answers
+      # that were coming out the same anyway. This puts one identical claim through both shipped
+      # packs and fails when they agree on everything, which is the shape that would make "swap the
+      # insurer and the answers change" a false claim. Demonstrated failing by pointing both names
+      # at one file.
+      - name: The insurer rule pack must be load bearing
+        run: node scripts/compare_packs.mjs
+
       # THE PUBLISHED COVERAGE NUMBER MUST BE ABOUT THE PRODUCT.
       #
       # Node's own "all files" line is not. Its denominator is only what the run loaded, so a source
