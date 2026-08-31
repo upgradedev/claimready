@@ -143,7 +143,7 @@ export default (ctx) => ({
     // the static list and knows nothing the insurer derives. It printed that sentence directly
     // above its own line saying an intake requirement was still open, and the button it named was
     // one the page would have refused.
-    const decision = canFile(pack, claim, ctx.humanActions);
+    const decision = canFile(pack, claim, ctx.humanActions, { homePackId: ctx.homePackId ?? null });
     const applied = Array.isArray(result.applied) ? result.applied : [];
 
     const head = [

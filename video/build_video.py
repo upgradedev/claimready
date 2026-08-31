@@ -150,7 +150,13 @@ def read_text(path):
 # after it, d054311, put a tools panel on index.html, inside the frame that beats 01, 02 and 08
 # scan. Nothing in the pipeline noticed, because neither the beat hash nor the workflow cache key
 # had ever heard of index.html.
-CAMERA_PATHS = ["index.html", "src", "assets"]
+# fixtures/ is on this list because the page fetches it at runtime and because it is the half
+# that decides what the tools ANSWER. index.html, src and assets alone left the three JSON
+# files out: demo-collision.json, and the two insurer rule packs. A host serving a stale
+# northwind.json would have passed a verifier that called itself a check on "every file the
+# page loads", while the requirements, the clause and the excess on camera came from bytes
+# nothing had compared.
+CAMERA_PATHS = ["index.html", "src", "assets", "fixtures"]
 
 CAMERA_SKIP_DIRECTORIES = {"__pycache__", ".git"}
 

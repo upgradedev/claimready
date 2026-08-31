@@ -163,6 +163,7 @@ async function boot() {
    */
   const packs = new Map();
   let activePackId = null;
+  let requestedPackId = null;
 
   /* Tool call bookkeeping. agentDepth says a tool is on the stack, and refusals raised while it is
      are collected into the buffer belonging to that call. Reading store.lastCode before and after a
@@ -292,6 +293,7 @@ async function boot() {
     if (named && named.pack) activePackId = named.id;
     else if (usable) activePackId = usable.id;
     else activePackId = results[0] ? results[0].id : null;
+    requestedPackId = activePackId;
   }
 
   async function fetchPack(entry) {
@@ -341,6 +343,9 @@ async function boot() {
       return;
     }
 
+    // Nothing loaded, so nothing is active. Leaving the previous id here was the other half of
+    // the stranding above: the page reported a pack it was no longer answering under.
+    activePackId = null;
     context.pack = null;
     context.packId = null;
     context.policy = embeddedPolicy;
@@ -420,7 +425,7 @@ async function boot() {
     const claim = claimNow();
     view.renderClaim(claim, changed);
     view.renderActions({
-      decision: canFile(context.pack, claim, ui.humanActions),
+      decision: canFile(context.pack, claim, ui.humanActions, { homePackId: context.homePackId }),
       filed: claim.status === 'filed',
       filedAt: claim.filed_at,
       assistanceAt: ui.assistanceAt,
@@ -938,7 +943,15 @@ async function boot() {
    * that quotes 0 wrong.
    */
   function switchPack(id) {
-    if (!id || id === activePackId) return;
+    // Asked for, against loaded. A pack that fails to fetch leaves nothing loaded, and comparing
+    // the request against the loaded id then read as "you are already on that one" and returned
+    // early, which stranded the page in no pack mode with no way back: pick northwind, pick a
+    // kestrel that 404s, pick northwind again, nothing happens. The retry of a pack that is not
+    // loaded is always allowed, which is also what makes a failed fetch recoverable by picking the
+    // same entry again.
+    if (!id) return;
+    if (id === requestedPackId && context.pack) return;
+    requestedPackId = id;
     applyPack(id);
 
     // A cover check run under another insurer's schedule is not this insurer's answer, so it goes
@@ -1006,7 +1019,8 @@ async function boot() {
       type: 'file',
       at: clockNow(),
       pack: context.pack,
-      completedHumanActions: ui.humanActions
+      completedHumanActions: ui.humanActions,
+      homePackId: context.homePackId
     });
     if (!result.ok) {
       view.showFieldError(result.error || 'The claim could not be filed.');
@@ -1026,6 +1040,13 @@ async function boot() {
    * whether the car still drove, and pressing it recorded a recovery request against a claim that
    * had never asked for one.
    */
+  /**
+   * The requirement id the roadside control answers. Both shipped packs use it, and a pack that
+   * names the collection something else leaves the button closing nothing rather than closing
+   * whatever human action happened to be open.
+   */
+  const ROADSIDE_REQUIREMENT_ID = 'roadside_collection';
+
   function assistanceApplies(claim) {
     return Boolean(claim) && claim.vehicle_drivable === false && claim.status !== 'filed';
   }
@@ -1044,9 +1065,18 @@ async function boot() {
     }
 
     ui.assistanceAt = clockNow();
-    // What the person just did, named by the requirements it answers, so src/core and every tool
+    // What the person just did, named by the requirement it answers, so src/core and every tool
     // read one answer rather than four surfaces guessing from a note on the page.
-    const closed = getRequirements().filter((entry) => entry.humanOnly).map((entry) => entry.id);
+    //
+    // ONE REQUIREMENT, NOT EVERY HUMAN ONLY ONE. This used to close every requirement no field
+    // answers, which is right for the two packs that ship here and wrong for the contract: a pack
+    // may name several unrelated human actions, and a button that says "Request roadside
+    // assistance" would then have reported a police station visit as done as well. Where a pack
+    // raises a human action this page has no control for, the requirement stays open and says so,
+    // which is the honest outcome rather than a silent completion.
+    const closed = getRequirements()
+      .filter((entry) => entry.humanOnly && entry.id === ROADSIDE_REQUIREMENT_ID)
+      .map((entry) => entry.id);
     recordHumanActions(closed);
 
     // The claim did not move and the answers did: a requirement that every tool reported as open

@@ -23,7 +23,7 @@
  *   { type: 'patch', field, value, actor, baseRevision }   one change, same thing
  *   { type: 'lock',   field }     human only, pins a field
  *   { type: 'unlock', field }     human only, releases it
- *   { type: 'file',   at, pack, completedHumanActions }
+ *   { type: 'file',   at, pack, completedHumanActions, homePackId }
  *                                 filing. The insurer rule pack and the human actions already
  *                                 carried out travel on the action, because the gate in
  *                                 src/core/filing.js reads both and this store holds neither.
@@ -170,6 +170,9 @@ export function createStore(initialState) {
         at: action.at,
         pack: action.pack ?? null,
         completedHumanActions: action.completedHumanActions,
+        // Whose policy this is. The picker can load another insurer's rules against the same
+        // claim, and filing under those is refused in the domain rather than only in the page.
+        homePackId: action.homePackId ?? null,
       });
       return settle(result, []);
     }
