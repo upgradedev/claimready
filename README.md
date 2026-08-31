@@ -85,10 +85,30 @@ adequate. It loses on two specific counts, and both are checkable from outside.
 
 **One. Discovery has to happen in advance, and here it does not.** A REST plus OpenAPI integration
 has to be built for this insurer, by somebody, before any agent can use it, which does nothing for
-an agent meeting this origin for the first time. Here the agent asks the page. Check it by loading
-the two rule packs in `fixtures/insurers/` against the same claim: `northwind` and `kestrel` make
-the same nine tools answer differently, with different requirements and different clause ids, and
-nothing was rebuilt between them. That is the difference between an integration and a discovery.
+an agent meeting this origin for the first time. Here the agent asks the page. Do not take that on
+trust, run it:
+
+```sh
+node scripts/compare_packs.mjs
+```
+
+It puts one identical claim through both shipped rule packs and prints what each answers. Measured
+on 2026-08-31, all five fields differ:
+
+| | `northwind` | `kestrel` |
+|---|---|---|
+| collision | COVERED under `OD-4.1`, excess 250 EUR | COVERED under `OD-1.7`, excess 150 EUR |
+| theft | NOT COVERED under `TH-7.2` | COVERED under `TH-3.4`, excess 500 EUR |
+| intake | 7 requirements derived, 2 open | 8 derived, 3 open |
+| what is open | roadside collection, collection address | those two, plus the name of a witness |
+
+Same page, same nine tools, nothing rebuilt between them. The script **exits 1 if the two packs
+agree on everything**, because a pack that changes nothing is decoration and this repository should
+not be able to make that claim while a check says otherwise. It runs on every push, and it was
+demonstrated failing by pointing both pack names at one file. That is the difference between an
+integration and a discovery, and it is also the answer to a fair suspicion: the page runs no model,
+so if the rules were not load bearing, the answers would be canned. They are not, and the check is
+what keeps that honest.
 
 **Two. The capability set is a function of the claim, and a REST surface is a function of the
 deploy.** `get_assistance_options` does not exist while the page thinks the car is drivable. Say the
@@ -416,16 +436,16 @@ Two more, because they are part of the same promise:
 run one command. It needs Python 3 and nothing else: no account, no token, no npm install.
 
 ```sh
-python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha 1ee157d
+python video/build_video.py --verify-deployed \n  --url https://upgradedev.github.io/claimready/ --deployed-sha 707401a
 ```
 
 It fetches all 22 files the page loads from the host, compares each to this checkout, and compares
-that to the commit you named. Observed on 2026-08-31 against the live host: `the deployed page is
-1ee157d, on every one of those files`, exit 0. Name a commit the tree is not and it refuses instead,
-which you can see for yourself by putting `4023446` in that flag.
+that to the commit you named. Observed on 2026-08-31 against the live host: it printed `the deployed
+page is 707401a, on every one of those files` and exited 0. Name a commit the tree is not and it
+refuses instead, which you can see for yourself by putting `4023446` in that flag.
 
-That is the check behind the evals row in the Status table, and it is why the row names `1ee157d`
-rather than the head of `main`. A green check against a commit the host is no longer serving proves
+That is the check behind the evals row in the Status table, and it is why the row names the commit
+that run drove rather than the head of `main`. A green check against a commit the host is no longer serving proves
 nothing about what a judge opens, and this repository has already had that happen once: two green
 eval runs named a commit that two later commits had superseded. Commits that touch only
 documentation or the video tooling leave every one of those 22 files alone, so the run keeps its
@@ -561,9 +581,10 @@ go stale between commits.
 | Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
 | Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
 | Declarative form step, the HTML attribute API | built, and not registered by anything | `grep -n 'toolname=' index.html` for the declared tool, `node --test tests/unit/declarative_form.test.js` for the assertion that the markup matches `src/webmcp/declarative_form.js`. It is live once GitHub Pages has built the commit that carries it, which the two commands under [Open it yourself](#open-it-yourself) settle. What is verified and what is not is the table in [the declarative half](#the-declarative-half-a-form-with-four-attributes): the form is verified as a form, and no browser has yet been watched synthesising a tool from the attributes |
+| The insurer rule pack is load bearing, not decoration | proven, in CI on every push | `node scripts/compare_packs.mjs`. One claim, both packs, five fields compared, and exit 1 if they agree on everything. Seen to fail by pointing both pack names at one file |
 | Intake measurement, counted from the shipped rule packs | built | `node scripts/measure_intake.mjs`. It counts fields in `fixtures/insurers/` and `src/core/claim.js` and extrapolates nothing. See [One number you can reproduce](#one-number-you-can-reproduce) |
 | Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` prints the count. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser. This row used to hardcode a number and the number was wrong, so it now names the command instead, which is what the paragraph above this table promises |
-| The tool surface running in a real browser's own WebMCP implementation | proven, in CI, against the bytes the host serves | [run 33334936720](https://github.com/upgradedev/claimready/actions/runs/33334936720), 2026-08-30: 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Its `headSha` is `1ee157d`. Commits have landed since, so do not take this row's word for it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 1ee157d` fetches all 22 files the page loads and refuses if any one of them differs. It passed against the live host on 2026-08-31, so the run drove the bytes a judge loads. That check is the part that matters: two earlier green runs were against a commit whose `src/` had genuinely changed underneath them, so they proved nothing about the page being served. Read the honest limit below before quoting this |
+| The tool surface running in a real browser's own WebMCP implementation | proven, in CI, against the bytes the host serves | [run 33383186852](https://github.com/upgradedev/claimready/actions/runs/33383186852), 2026-08-31: 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Its `headSha` is `707401a`, the commit GitHub Pages built. Do not take this row's word for it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 707401a` fetches all 22 files the page loads and refuses if any one of them differs. Two earlier runs were against a commit whose `src/` had changed underneath them, so they proved nothing about the page being served, which is why this row is re-run rather than re-worded. Read the honest limit below before quoting this |
 | Evals against the tool surface | built and executed | Three journeys over the nine registered tools, and none over the declared form, plus a fourth case that is a negative control and is required to FAIL. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat evals/negative-control.json`, `cat .github/workflows/evals.yml` |
 | **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not on their own assert that the refusals refused. What the negative control adds is the other direction: it applies a patch that is legal, requires the ninth tool to be WITHDRAWN, and fails the workflow unless the harness reports exactly seven of eight steps passed and names the last one. Read as a pair, the surface moves when a patch lands and holds still when one is refused, which is what makes journey 2 evidence rather than a no op. That pair has been replayed offline and made to fail three ways, **and it has now run in a browser**: in run 33334936720 the negative control job reported `Passed steps: 7/8` and named the reason, `step 8 (get_assistance_options): tool "get_assistance_options" is not available.` This file used to say the withdrawal half had never been seen in a browser. It has been seen twice: there, and on a desktop, where `node evals/browser_probe.mjs` watched `getTools()` go from nine entries to ten when the car could not be driven and back to nine when it could, on Chrome `151.0.7922.174` stable against the deployed page, 2026-08-31. A second limit lives there too: smoke mode gathers the page's browser console errors and never reports or gates on them, so a green run says nothing at all about the console |
 | Public video | not yet built. It is the only row that blocks the readiness **exit code**, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows. It is **not** the only thing between this repository and a finished submission: `node scripts/readiness.mjs` prints a `READY TO SUBMIT` tally that counts the owner gated rows too, so the number a reader should trust is lower than the automated one. Run it rather than quoting a figure from here: the outstanding rows are `D4` plus the owner gated ones, including `O3`, whether the form reads Submitted | `node scripts/readiness.mjs` row `D4` |

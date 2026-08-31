@@ -56,28 +56,30 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33334936720](https://github.com/upgradedev/claimready/actions/runs/33334936720), workflow `WebMCP evals`, conclusion success, run 2026-08-30 |
-| Commit under test | `1ee157d`. Later commits touched documentation and video tooling only, so the run still drove the bytes being served. Do not believe that sentence, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 1ee157d` fetches all 22 files the page loads and compares them to that commit. Python 3, no account and no token, so a reader outside this repository can run it. It printed `the deployed page is 1ee157d, on every one of those files` on 2026-08-31. This matters more than it sounds: the previous run of record drove `4023446`, and `src/` changed substantially afterwards, so that run had stopped being evidence about the live page. A green run against bytes the host no longer serves is not evidence, which is the rule this file states two paragraphs down and now follows |
+| Run | [33383186852](https://github.com/upgradedev/claimready/actions/runs/33383186852), workflow `WebMCP evals`, conclusion success, run 2026-08-31 |
+| Commit under test | `707401a`, which is the commit GitHub Pages built. Do not take that on trust, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 707401a` fetches all 22 files the page loads and compares each to that commit. Python 3, no account and no token, so a reader outside this repository can run it. This matters more than it sounds: an earlier run of record drove `4023446`, and `src/` changed substantially afterwards, so that run had stopped being evidence about the live page. This file was re-run the moment `index.html` changed again, for the same reason. A green run against bytes the host no longer serves is not evidence |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
 | Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `7/8` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
 
-Two earlier runs were green as well,
-[33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906) and
-[33074580188](https://github.com/upgradedev/claimready/actions/runs/33074580188). The run above is
-the one quoted here for a reason worth stating: the other two were driven against commit
-`2c052e3464198993e3efed9043e0443ff2bcb817`, and two commits landed after it, one of which changed
-`src/`. A green run against bytes the host no longer serves is not evidence about the live page, so
-this file was re-run rather than left pointing at the old number. Read it for yourself with
-`gh run view 33334936720 --repo upgradedev/claimready --log`, and confirm the commit with
-`gh run view 33334936720 --repo upgradedev/claimready --json headSha`.
+Earlier runs were green as well:
+[33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
+[33074580188](https://github.com/upgradedev/claimready/actions/runs/33074580188) and
+[33334936720](https://github.com/upgradedev/claimready/actions/runs/33334936720). The run above is
+the one quoted here for a reason worth stating: each of the others was driven against a commit that
+later commits superseded, and two of those commits changed what the browser loads. A green run
+against bytes the host no longer serves is not evidence about the live page, so this file is
+re-run rather than left pointing at the old number. Read it for yourself with
+`gh run view 33383186852 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33383186852 --repo upgradedev/claimready --json headSha`.
 
-**The negative control HAS now run in a browser.** This paragraph used to say it had not, at any
-commit. In run 33334936720 its own job reported `Passed steps: 7/8 across 1 case(s).` and named the
-step that had to fail: `step 8 (get_assistance_options): tool "get_assistance_options" is not
-available.` The workflow asserts both the summary and that sentence, so a browser that quietly kept
-the tool would have turned the job green and failed the assertion instead.
+**The negative control HAS now run in a browser, twice.** This paragraph used to say it had not, at
+any commit. In runs 33334936720 and 33383186852 its own job reported `Passed steps: 7/8 across 1
+case(s).` and named the step that had to fail: `step 8 (get_assistance_options): tool
+"get_assistance_options" is not available.` The workflow asserts both the summary and that sentence,
+so a browser that quietly kept the tool would have turned the job green and failed the assertion
+instead.
 
 ## Observed on a desktop, in the stable channel, 2026-08-31
 
@@ -91,7 +93,8 @@ node evals/browser_probe.mjs
 
 Chrome `151.0.7922.174`, stable channel, against the deployed page. The probe is 200 lines of
 `node:net` and has no dependencies, so there is nothing to install and nothing to trust but Node.
-What came back, abridged to the first line of each answer:
+Run twice, before and after `index.html` gained its icon, with the same result. What came back,
+abridged to the first line of each answer:
 
 | What was asked | What the browser did |
 |---|---|
@@ -106,6 +109,11 @@ What came back, abridged to the first line of each answer:
 | `getTools()` again | **nine**. The tool has been withdrawn |
 | executing the tool built from the form | `Recorded the name of the witness on the draft, submitted through the WebMCP tool call. The draft is now at revision 3.` |
 | `read_claim_state` | `Claim draft on policy MTR-2026-0417, revision 3, status draft.` |
+
+Run a second time against the same tab, where the draft had already moved, the declarative tool
+answered `Refused. PATCH_REJECTED_STALE: expected revision 2, current revision 3.` So the tool the
+browser builds from the form is not a shortcut around the rules: it enforces the same revision
+protocol as the registered ones and returns the refusal in the page's own words.
 
 **The honest limit, and it is the same one as everywhere else on this page: the caller was a script,
 not a model.** This shows that a real browser publishes, executes and withdraws the tools this page
