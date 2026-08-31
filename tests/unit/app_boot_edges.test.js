@@ -217,3 +217,40 @@ test('a browser with no respondWith, or one that refuses it, still updates the p
   }));
   assert.match(doc.el('declared-result').textContent, /^Recorded /);
 });
+
+// THE STRANDING. This page booted with the kestrel pack refused by the network, so picking it is a
+// selection that loads nothing. What used to happen next is the defect: applyPack left the picker's
+// active id pointing at northwind, and switchPack read a re selection of northwind as "you are
+// already on that one" and returned early. The page sat with no rules loaded, the intake panel gone
+// and no way back, from a picker that is there to be pressed.
+test('picking a pack that will not load, then picking one that will, recovers the page', () => {
+  reload();
+  const select = doc.el('insurer-select');
+
+  select.value = 'kestrel';
+  fireEvent(select, 'change');
+  assert.match(doc.el('pack-note').textContent, /did not load/, 'a failed load says so, in the page');
+  assert.doesNotMatch(doc.el('pack-note').textContent, /^\s*$/, 'never a blank explanation');
+
+  select.value = 'northwind';
+  fireEvent(select, 'change');
+  assert.match(doc.el('pack-note').textContent, /Northwind Mutual/, 'the good pack is loaded again');
+  assert.match(doc.el('req-summary').textContent, /\S/, 'the intake panel is back');
+});
+
+// And the same selection twice, when the first one loaded nothing, is a retry rather than a no op.
+test('picking the pack that failed a second time is a retry, not a silent no op', () => {
+  const select = doc.el('insurer-select');
+
+  select.value = 'kestrel';
+  fireEvent(select, 'change');
+  assert.match(doc.el('pack-note').textContent, /did not load/);
+
+  select.value = 'kestrel';
+  fireEvent(select, 'change');
+  assert.match(doc.el('pack-note').textContent, /did not load/, 'it says so again rather than going quiet');
+
+  select.value = 'northwind';
+  fireEvent(select, 'change');
+  assert.match(doc.el('pack-note').textContent, /Northwind Mutual/);
+});

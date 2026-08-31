@@ -1,1 +1,1 @@
-So the insurer publishes its rules instead of a chatbot. Filmed against a simulated host standing in for an agent browser, the page's own code registers eight tools into it. The policy stays on the insurer's origin.
+So the insurer publishes its rules instead of a chatbot. Filmed in Chrome, against the browser's own WebMCP implementation, the page's own code registers eight tools into it. The policy stays on the insurer's origin.

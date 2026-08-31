@@ -388,12 +388,22 @@ export function fileGateStatement(state) {
  * @returns {string}
  */
 export function optionalDetailsNote(state) {
-  const opener = 'The File button does not wait for these.';
+  // THE OPENER IS A CLAIM ABOUT THE BUTTON, SO IT IS COMPUTED, NOT FIXED.
+  //
+  // This note used to open with "The File button does not wait for these" whatever the pack said,
+  // and then name, in the next sentence, the field the pack was asking for. Both sentences were
+  // drawn from the same input and they contradicted each other: an insurer requirement that names
+  // an optional field is outstanding, an outstanding requirement refuses the filing in
+  // src/core/filing.js, and the button beside this note was correctly disabled while the note said
+  // it was not waiting. The panel is not allowed to disagree with the control it sits under.
   const closer = 'Your agent can set them too, and this group opens by itself when it does, so '
     + 'nothing is written where you cannot see it.';
 
   const known = state ? state.requirementsKnown !== false : true;
-  if (!known) return `${opener} ${closer}`;
+  if (!known) {
+    return 'The File button is not waiting for these. This page cannot say whether the insurer '
+      + `asks for any of them until its rules load. ${closer}`;
+  }
 
   const outstanding = Array.isArray(state && state.outstanding) ? state.outstanding : [];
   const wanted = outstanding.filter((entry) => entry && OPTIONAL_FIELDS.includes(entry.field));
@@ -403,7 +413,8 @@ export function optionalDetailsNote(state) {
     : 'This insurer';
 
   if (wanted.length === 0) {
-    return `${opener} ${insurer} is not asking for any of them on this draft. ${closer}`;
+    return 'The File button does not wait for these. '
+      + `${insurer} is not asking for any of them on this draft. ${closer}`;
   }
 
   // Capped for the same reason the file panel caps its list: a note that runs to five labels is a
@@ -414,5 +425,6 @@ export function optionalDetailsNote(state) {
 
   // A colon before the labels, the same as the file panel, because a pack writes them capitalised
   // and "asking for The name of a witness" reads as a mistake.
-  return `${opener} ${insurer} is asking for: ${asks}. ${closer}`;
+  return 'The File button is waiting for the ones this insurer asks for. '
+    + `${insurer} is asking for: ${asks}. Filing stays closed until they are answered. ${closer}`;
 }

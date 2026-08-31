@@ -628,7 +628,11 @@ test('the note names the optional fields the loaded pack is actually asking for'
   const state = panelState(collisionDraft(), kestrel);
   const note = optionalDetailsNote(state);
 
-  assert.match(note, /The File button does not wait for these/);
+  // The button IS waiting for this one: an outstanding insurer requirement refuses the filing,
+  // so a note that said otherwise would contradict the control it sits under.
+  assert.match(note, /The File button is waiting for the ones this insurer asks for/);
+  assert.doesNotMatch(note, /does not wait for these/);
+  assert.match(note, /Filing stays closed until they are answered/);
   assert.match(note, /Kestrel Assurance is asking for: /);
   assert.match(note, /witness/i);
   assert.doesNotMatch(note, /not asking for any/);
@@ -667,7 +671,7 @@ test('a requirement that no field answers is not named as an optional field', ()
 
 test('with no rule pack loaded the note claims nothing about what is asked for', () => {
   const note = optionalDetailsNote({ ready: false, missing: [], outstanding: [], requirementsKnown: false });
-  assert.match(note, /The File button does not wait for these/);
+  assert.match(note, /cannot say whether the insurer asks for any of them until its rules load/);
   assert.doesNotMatch(note, /asking/);
 });
 

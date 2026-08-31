@@ -53,6 +53,7 @@ import {
 export const FILE_CODES = {
   alreadyFiled: 'FILE_REFUSED_ALREADY_FILED',
   noPack: 'FILE_REFUSED_NO_PACK',
+  borrowedRules: 'FILE_REFUSED_BORROWED_RULES',
   incomplete: 'FILE_REFUSED_INCOMPLETE',
   requirements: 'FILE_REFUSED_REQUIREMENTS',
 };
@@ -66,6 +67,27 @@ export const NO_PACK_FILING_REASON =
 export const ALREADY_FILED_REASON = 'This claim has already been filed.';
 
 /**
+ * Said when the rules in hand belong to an insurer this policy is not with.
+ *
+ * The picker on the page loads another insurer's published rules against the same claim, which is
+ * worth having: it is how a visitor sees that the requirements, the clause and the excess are the
+ * pack talking rather than this page. What it is not is a way to file. A claim is filed under its
+ * own insurer's rules, and a page that says "policy MTR-2026-0417 is not with Kestrel Assurance"
+ * two panels above the File button and then files under Kestrel's intake is telling a reader two
+ * different things at once. That was the shape of the first filing defect this module was written
+ * to close, one input further out.
+ *
+ * @param {(string|null)} insurer the insurer whose rules are loaded
+ * @returns {string}
+ */
+export function borrowedRulesReason(insurer) {
+  const name = typeof insurer === 'string' && insurer.trim().length > 0 ? insurer.trim() : 'another insurer';
+  return `These are ${name}'s published rules, read against a policy that is not with ${name}. `
+    + 'A claim is filed under its own insurer\'s rules, so load this policy\'s own rule pack '
+    + 'before filing. Everything else on the page still answers under the pack you picked.';
+}
+
+/**
  * Whether the thing handed in is a rule pack this module can read.
  *
  * Checked rather than trusted, and a half loaded pack counts as no pack. `deriveRequirements`
@@ -76,7 +98,20 @@ export const ALREADY_FILED_REASON = 'This claim has already been filed.';
  * @returns {boolean}
  */
 function isUsablePack(pack) {
-  return Boolean(pack) && typeof pack === 'object' && Array.isArray(pack.requirements);
+  if (!pack || typeof pack !== 'object') return false;
+  // A list of requirements alone is not a pack. `{ requirements: [] }` used to pass here and then
+  // answer for an insurer with no name, no id and no schedule, which is a worse failure than no
+  // pack at all because it looks like an answer. The three fields below are the ones every surface
+  // downstream reads: the id decides whose rules these are, the requirements decide the intake,
+  // and the coverages decide the cover check.
+  if (!Array.isArray(pack.requirements)) return false;
+  if (!Array.isArray(pack.coverages)) return false;
+  return typeof pack.id === 'string' && pack.id.trim().length > 0;
+}
+
+/** The pack's own id, trimmed, or null when it does not state one. */
+function packIdOf(pack) {
+  return pack && typeof pack.id === 'string' && pack.id.trim().length > 0 ? pack.id.trim() : null;
 }
 
 /** The insurer's own name, when the pack states one. */
@@ -102,13 +137,22 @@ function insurerOf(pack) {
  *            requirementsKnown: boolean, insurer: (string|null)}}
  * @throws {TypeError} when the claim is missing
  */
-export function canFile(pack, claim, completedHumanActions) {
+export function canFile(pack, claim, completedHumanActions, options) {
   if (!claim || typeof claim !== 'object') {
     throw new TypeError('canFile needs a claim object.');
   }
 
   const known = isUsablePack(pack);
   const insurer = known ? insurerOf(pack) : null;
+
+  // Whose policy this is, as the page states it, against whose rules are loaded. Absent, nothing
+  // below changes: a caller that does not know the home insurer gets the same answer this function
+  // gave before the borrowed check existed.
+  const homePackId = options && typeof options.homePackId === 'string' && options.homePackId.trim().length > 0
+    ? options.homePackId.trim()
+    : null;
+  const activeId = packIdOf(pack);
+  const borrowed = Boolean(known && homePackId && activeId && activeId !== homePackId);
 
   // The static half comes from validateClaim rather than from a second filter, so "which required
   // fields are empty" has one answer in this repository and not two that agree by coincidence.
@@ -123,7 +167,7 @@ export function canFile(pack, claim, completedHumanActions) {
     }))
     : [];
 
-  const facts = { missing, outstanding, requirementsKnown: known, insurer };
+  const facts = { missing, outstanding, requirementsKnown: known, insurer, borrowed };
 
   if (claim.status === 'filed') {
     return { ok: false, code: FILE_CODES.alreadyFiled, reason: ALREADY_FILED_REASON, ...facts };
@@ -144,6 +188,18 @@ export function canFile(pack, claim, completedHumanActions) {
   if (!known) {
     const alsoEmpty = missing.length > 0 ? ` ${said}` : '';
     return { ok: false, code: FILE_CODES.noPack, reason: `${NO_PACK_FILING_REASON}${alsoEmpty}`, ...facts };
+  }
+
+  // Before the field and requirement checks, because a draft that is complete under the wrong
+  // insurer's intake is not a draft that can be filed, and naming the missing fields first would
+  // send a claimant to fill in answers for a pack that is not going to file anything.
+  if (borrowed) {
+    return {
+      ok: false,
+      code: FILE_CODES.borrowedRules,
+      reason: borrowedRulesReason(insurer),
+      ...facts,
+    };
   }
 
   if (missing.length > 0) {

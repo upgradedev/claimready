@@ -74,7 +74,7 @@ export default (ctx) => ({
 
     // The one decision. Same pack, same claim and same completed human actions as the page, so
     // what a model is told here and what a visitor sees beside the button are one answer.
-    const decision = canFile(pack, claim, ctx.humanActions);
+    const decision = canFile(pack, claim, ctx.humanActions, { homePackId: ctx.homePackId ?? null });
 
     // The head is short whatever the pack says: a fixed sentence, a small number and a code from a
     // list of four. Everything that grows with the claim or the pack is below it.

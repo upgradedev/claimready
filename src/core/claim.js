@@ -919,7 +919,9 @@ export function fileClaim(claim, options = {}) {
   }
   const revision = currentRevision(claim);
 
-  const decision = canFile(options.pack ?? null, claim, options.completedHumanActions);
+  const decision = canFile(options.pack ?? null, claim, options.completedHumanActions, {
+    homePackId: options.homePackId ?? null,
+  });
   if (!decision.ok) {
     return {
       claim,
