@@ -1045,11 +1045,26 @@ def main(argv=None):
                              "narration key is read, nothing is assembled, and no owner take is "
                              "required. This exists so the browser capture is proved to work "
                              "before anyone records a take or spends a narration credit")
+    parser.add_argument("--verify-deployed", action="store_true",
+                        help="prove the host serves the bytes of a named commit and stop. Fetches "
+                             "every on camera source, compares it to this checkout and compares "
+                             "that to the commit, and fails on the first file that differs. "
+                             "Nothing is filmed, nothing is spent, and no take is required. It is "
+                             "the check a reader runs to decide whether evidence gathered against "
+                             "one commit still describes the page being served")
     args = parser.parse_args(argv)
 
     beats = load_beats()
     check_runbook_names_every_owner_beat(beats)
     sha = deployed_sha(args.deployed_sha)
+
+    if args.verify_deployed:
+        verify_deployed(args.url, sha, camera_files())
+        print(
+            "the host, this checkout and that commit are the same bytes on every file the page "
+            "loads. Evidence gathered against it still describes what a visitor gets."
+        )
+        return 0
 
     if args.check_takes:
         # Scoped by --beat, the same way the build is. Without this, asking whether ONE machine
