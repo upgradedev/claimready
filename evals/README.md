@@ -56,8 +56,8 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33383186852](https://github.com/upgradedev/claimready/actions/runs/33383186852), workflow `WebMCP evals`, conclusion success, run 2026-08-31 |
-| Commit under test | `707401a`. Commits after it have not touched any of the 22 files the page loads, which is the only thing that would end this run's standing. Do not take that on trust, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 707401a` fetches all 22 files the page loads and compares each to that commit. Python 3, no account and no token, so a reader outside this repository can run it. This matters more than it sounds: an earlier run of record drove `4023446`, and `src/` changed substantially afterwards, so that run had stopped being evidence about the live page. This file was re-run the moment `index.html` changed again, for the same reason. A green run against bytes the host no longer serves is not evidence |
+| Run | [33399284806](https://github.com/upgradedev/claimready/actions/runs/33399284806), workflow `WebMCP evals`, conclusion success, run 2026-08-31, after the filing and rule pack fixes landed |
+| Commit under test | `860e68a`. Commits after it have not touched any of the 25 files the page loads, which is the only thing that would end this run's standing. Do not take that on trust, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 860e68a` fetches all 25 files the page loads and compares each to that commit. Python 3, no account and no token, so a reader outside this repository can run it. This matters more than it sounds: an earlier run of record drove `4023446`, and `src/` changed substantially afterwards, so that run had stopped being evidence about the live page. This file was re-run the moment `index.html` changed again, for the same reason. A green run against bytes the host no longer serves is not evidence |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
@@ -71,11 +71,11 @@ the one quoted here for a reason worth stating: each of the others was driven ag
 later commits superseded, and two of those commits changed what the browser loads. A green run
 against bytes the host no longer serves is not evidence about the live page, so this file is
 re-run rather than left pointing at the old number. Read it for yourself with
-`gh run view 33383186852 --repo upgradedev/claimready --log`, and confirm the commit with
-`gh run view 33383186852 --repo upgradedev/claimready --json headSha`.
+`gh run view 33399284806 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33399284806 --repo upgradedev/claimready --json headSha`.
 
 **The negative control HAS now run in a browser, twice.** This paragraph used to say it had not, at
-any commit. In runs 33334936720 and 33383186852 its own job reported `Passed steps: 7/8 across 1
+any commit. In runs 33334936720 and 33399284806 its own job reported `Passed steps: 7/8 across 1
 case(s).` and named the step that had to fail: `step 8 (get_assistance_options): tool
 "get_assistance_options" is not available.` The workflow asserts both the summary and that sentence,
 so a browser that quietly kept the tool would have turned the job green and failed the assertion
