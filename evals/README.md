@@ -57,7 +57,7 @@ run happened, and all three are settled below.
 | | Observed |
 |---|---|
 | Run | [33334936720](https://github.com/upgradedev/claimready/actions/runs/33334936720), workflow `WebMCP evals`, conclusion success, run 2026-08-30 |
-| Commit under test | `1ee157d`, which is also the commit GitHub Pages last built, so the run drove the bytes being served. This matters more than it sounds: the previous run of record drove `4023446`, and `src/` changed substantially afterwards, so that run had stopped being evidence about the live page. A green run against bytes the host no longer serves is not evidence, which is the rule this file states two paragraphs down and now follows |
+| Commit under test | `1ee157d`. Pages has built `bb468e7` since, and `git diff --stat 1ee157d bb468e7 -- index.html src assets` prints nothing, so the run still drove the bytes being served: everything that landed afterwards was documentation and video tooling. This matters more than it sounds: the previous run of record drove `4023446`, and `src/` changed substantially afterwards, so that run had stopped being evidence about the live page. A green run against bytes the host no longer serves is not evidence, which is the rule this file states two paragraphs down and now follows |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
@@ -70,8 +70,8 @@ the one quoted here for a reason worth stating: the other two were driven agains
 `2c052e3464198993e3efed9043e0443ff2bcb817`, and two commits landed after it, one of which changed
 `src/`. A green run against bytes the host no longer serves is not evidence about the live page, so
 this file was re-run rather than left pointing at the old number. Read it for yourself with
-`gh run view 33151418595 --repo upgradedev/claimready --log`, and confirm the commit with
-`gh run view 33151418595 --repo upgradedev/claimready --json headSha`.
+`gh run view 33334936720 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33334936720 --repo upgradedev/claimready --json headSha`.
 
 **The negative control has NOT yet been run in a browser at any commit.** It is written, it is
 wired into `.github/workflows/evals.yml`, and it has been replayed offline. The browser half is
@@ -116,8 +116,8 @@ called a tool and got an answer, so the browser exposed one of the two names and
 `registerTools` ran against it. That was the correct failure to be afraid of, and it did not happen.
 
 The lifecycle half needed four steps rather than one, and got them. These four lines are from run
-33151418595, the one against the deployed commit, with each tool's own output truncated at the first
-newline because that is where the runner's log breaks it:
+33334936720, the run of record above, with each tool's own output truncated at the first newline
+because that is where the runner's log breaks it:
 
 ```
 Step 2/7: Calling tool "apply_claim_patch"       PASS: Applied. The claim is now at revision 1.
@@ -205,7 +205,7 @@ whole file, so it was checked against the bytes the host actually serves rather 
 
 That last row is the expected result in a browser without the API and is not evidence against the
 page. It is recorded because it is the same absence that would have made every journey fail at its
-first step on a runner, which was risk 3 above. Run 33151418595 settled it: on the runner's Chrome
+first step on a runner, which was risk 3 above. Run 33334936720 settled it: on the runner's Chrome
 Dev build one of the two names was there, and the page's own registration ran against it.
 
 **What has been observed to pass, locally, with no install:**

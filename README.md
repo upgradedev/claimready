@@ -420,15 +420,23 @@ gh api repos/upgradedev/claimready/pages/builds/latest --jq '.commit, .updated_a
 git rev-parse HEAD
 ```
 
-Observed on 2026-08-28: Pages had built `4023446e7916b867f1365f871b08885d5cb45655` at
-`2026-08-28T06:57:47Z`, which was the head of `main` at that moment. Pages rebuilds on every push,
+Observed on 2026-08-31: Pages had built `bb468e7c7536c3822c716969d18d0d8d2087e934` at
+`2026-08-31T07:15:53Z`, which was the head of `main` at that moment. Pages rebuilds on every push,
 so the two agree again a minute or so after any commit, and a reader who finds them disagreeing has
 found a real problem rather than a stale note.
 
 Those two agreeing is the whole point. A green check against a commit the host is no longer serving
 proves nothing about what a judge opens, and this repository has already had that happen once: two
 green eval runs named a commit that two later commits had superseded. The evals row in the Status
-table now names a run whose `headSha` is the built commit, for exactly that reason.
+table names the run that drove the bytes the host serves, for exactly that reason. When later
+commits touch only documentation or the video tooling, the run keeps its standing and the row says
+so with the command that proves it, rather than quietly ageing:
+
+```sh
+git diff --stat <run headSha> <built commit> -- index.html src assets
+```
+
+Nothing printed means the browser is loading the same bytes the run drove.
 
 No account, no install, nothing to accept. The page is served over HTTPS, which WebMCP requires,
 and it carries its Content Security Policy in the document, which is what makes the policy hold
@@ -551,7 +559,7 @@ go stale between commits.
 | Declarative form step, the HTML attribute API | built, and not registered by anything | `grep -n 'toolname=' index.html` for the declared tool, `node --test tests/unit/declarative_form.test.js` for the assertion that the markup matches `src/webmcp/declarative_form.js`. It is live once GitHub Pages has built the commit that carries it, which the two commands under [Open it yourself](#open-it-yourself) settle. What is verified and what is not is the table in [the declarative half](#the-declarative-half-a-form-with-four-attributes): the form is verified as a form, and no browser has yet been watched synthesising a tool from the attributes |
 | Intake measurement, counted from the shipped rule packs | built | `node scripts/measure_intake.mjs`. It counts fields in `fixtures/insurers/` and `src/core/claim.js` and extrapolates nothing. See [One number you can reproduce](#one-number-you-can-reproduce) |
 | Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` prints the count. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser. This row used to hardcode a number and the number was wrong, so it now names the command instead, which is what the paragraph above this table promises |
-| The tool surface running in a real browser's own WebMCP implementation | proven, in CI, against the deployed commit | [run 33151418595](https://github.com/upgradedev/claimready/actions/runs/33151418595), 2026-08-28: 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Its `headSha` is the commit GitHub Pages last built, which is the part that matters: two earlier green runs were against a commit that had since been superseded, so they proved nothing about the bytes now being served. Read the honest limit below before quoting this |
+| The tool surface running in a real browser's own WebMCP implementation | proven, in CI, against the bytes the host serves | [run 33334936720](https://github.com/upgradedev/claimready/actions/runs/33334936720), 2026-08-30: 16 of 16 steps across 3 journeys against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. Its `headSha` is `1ee157d`. Pages has built `bb468e7` since, and `git diff --stat 1ee157d bb468e7 -- index.html src assets` prints nothing, so the run drove the bytes a judge loads today. That check is the part that matters: two earlier green runs were against a commit whose `src/` had genuinely changed underneath them, so they proved nothing about the page being served. Read the honest limit below before quoting this |
 | Evals against the tool surface | built and executed | Three journeys over the nine registered tools, and none over the declared form, plus a fourth case that is a negative control and is required to FAIL. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat evals/negative-control.json`, `cat .github/workflows/evals.yml` |
 | **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not on their own assert that the refusals refused. What the negative control adds is the other direction: it applies a patch that is legal, requires the ninth tool to be WITHDRAWN, and fails the workflow unless the harness reports exactly seven of eight steps passed and names the last one. Read as a pair, the surface moves when a patch lands and holds still when one is refused, which is what makes journey 2 evidence rather than a no op. That pair has been replayed offline and made to fail three ways; it has **not yet been run in a browser**, because it is not yet on a pushed branch. Narrower still, and stated in `evals/README.md`: three green runs have shown Chrome REGISTERING a tool mid page and keeping it, and nothing has yet shown Chrome WITHDRAWING one. That half is proven against our own code and a fake host only. A second limit lives there too: smoke mode gathers the page's browser console errors and never reports or gates on them, so a green run says nothing at all about the console |
 | Public video | not yet built. It is the only row that blocks the readiness **exit code**, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows. It is **not** the only thing between this repository and a finished submission: `node scripts/readiness.mjs` prints a `READY TO SUBMIT` tally that counts the owner gated rows too, so the number a reader should trust is lower than the automated one. Run it rather than quoting a figure from here: the outstanding rows are `D4` plus the owner gated ones, including `O3`, whether the form reads Submitted | `node scripts/readiness.mjs` row `D4` |
