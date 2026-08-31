@@ -560,6 +560,11 @@ const CHANNEL = spec.browser_channel && spec.browser_channel !== 'bundled'
   : undefined;
 const ALLOW_SHIM = Boolean(spec.allow_shim);
 
+// The feature is turned on for the beats that ask for an agent, and left off for the ones that do
+// not. Beat 01 films the page as a visitor with no agent sees it, and a browser carrying WebMCP
+// would make it show the agent copy instead: the right footage for the wrong beat.
+const WANTS_AGENT = (spec.steps || []).some((step) => step.do === 'agent_host');
+
 // A minimal WebMCP host, kept only as a fallback for a machine with no WebMCP capable Chrome.
 // It is OFF by default. The capture launches the installed Chrome channel with the WebMCP feature
 // on, so the API the page registers against is the browser's own and nothing of ours stands in for
@@ -603,7 +608,9 @@ function fail(message) {
 (async () => {
   const browser = await chromium.launch({
     channel: CHANNEL,
-    args: ['--force-color-profile=srgb', '--enable-features=WebMCP']
+    args: WANTS_AGENT
+      ? ['--force-color-profile=srgb', '--enable-features=WebMCP']
+      : ['--force-color-profile=srgb']
   });
   const context = await browser.newContext({
     viewport: spec.viewport,
