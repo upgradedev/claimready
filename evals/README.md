@@ -73,9 +73,50 @@ this file was re-run rather than left pointing at the old number. Read it for yo
 `gh run view 33334936720 --repo upgradedev/claimready --log`, and confirm the commit with
 `gh run view 33334936720 --repo upgradedev/claimready --json headSha`.
 
-**The negative control has NOT yet been run in a browser at any commit.** It is written, it is
-wired into `.github/workflows/evals.yml`, and it has been replayed offline. The browser half is
-still owed and is listed as owed at the end of this file.
+**The negative control HAS now run in a browser.** This paragraph used to say it had not, at any
+commit. In run 33334936720 its own job reported `Passed steps: 7/8 across 1 case(s).` and named the
+step that had to fail: `step 8 (get_assistance_options): tool "get_assistance_options" is not
+available.` The workflow asserts both the summary and that sentence, so a browser that quietly kept
+the tool would have turned the job green and failed the assertion instead.
+
+## Observed on a desktop, in the stable channel, 2026-08-31
+
+Everything above happened on a CI runner with a Dev build. This section is the same question asked
+on an ordinary machine, because a judge has one of those and not a runner.
+
+```sh
+chrome --headless=new --disable-gpu --enable-features=WebMCP        --remote-debugging-port=9222 --user-data-dir=<a temp dir>        https://upgradedev.github.io/claimready/
+node evals/browser_probe.mjs
+```
+
+Chrome `151.0.7922.174`, stable channel, against the deployed page. The probe is 200 lines of
+`node:net` and has no dependencies, so there is nothing to install and nothing to trust but Node.
+What came back, abridged to the first line of each answer:
+
+| What was asked | What the browser did |
+|---|---|
+| which API is there | `document.modelContext` |
+| `getTools()` at boot | nine entries: the eight this page registers, plus `record_supporting_details`, which it never registers |
+| the descriptor of that ninth entry | our own description, `origin` `https://upgradedev.github.io`, and a JSON Schema carrying a description on each of `witness_name`, `police_report_ref` and `base_revision`. The browser built all of that from four HTML attributes |
+| `read_claim_state` | `Claim draft on policy MTR-2026-0417, revision 0, status draft.` |
+| `apply_claim_patch`, the car cannot be driven | `Applied. The claim is now at revision 1.` |
+| `getTools()` again | **ten** entries. `get_assistance_options` has appeared |
+| `apply_claim_patch` quoting revision 0 | `PATCH_REJECTED_STALE. expected revision 0, current revision 1.` The refusal came back verbatim, as the page wrote it |
+| `apply_claim_patch`, the car can be driven again | `Applied. The claim is now at revision 2.` |
+| `getTools()` again | **nine**. The tool has been withdrawn |
+| executing the tool built from the form | `Recorded the name of the witness on the draft, submitted through the WebMCP tool call. The draft is now at revision 3.` |
+| `read_claim_state` | `Claim draft on policy MTR-2026-0417, revision 3, status draft.` |
+
+**The honest limit, and it is the same one as everywhere else on this page: the caller was a script,
+not a model.** This shows that a real browser publishes, executes and withdraws the tools this page
+declares, that the declarative half is a real tool to an agent and not a decoration, and that a
+refusal reaches the caller in the page's own words. It says nothing about what a model chooses to do
+with them, which is a different question and is answered by using the page with one.
+
+One thing the probe found and this file would otherwise have got wrong: a registered tool answers
+with an MCP envelope, while the tool the browser builds from the form answers with the text the page
+passed to `respondWith`, unwrapped. The probe handles both, and the first version of it reported a
+false failure until it did.
 
 ### The three named risks, and what settled each
 
@@ -681,13 +722,23 @@ node scripts/gen_scenarios.mjs --count 180 --json
    proven against the domain and the registration path, and the browser half is proven for journey 2
    only. Do not write that the pair has been observed in a browser before it has.
 
-   **Be precise about WHICH half of the mechanism has never been seen in a browser, because it is
-   not the whole thing.** Three green runs have shown Chrome registering a tool mid page and keeping
-   it. Nothing here has ever shown Chrome **withdrawing** one. `replay.mjs` proves that the page
-   calls `controller.abort()` and that a host which honours an abort drops the tool, which is a fact
-   about our code and about a fake host, not about Chrome. The imperative API documentation records
-   that unregistration stopped cancelling in flight executions as of Chrome 153, so the behaviour has
-   moved recently, and the runner is on a Dev build.
+   **Settled, 2026-08-30 and 2026-08-31. This paragraph used to say the withdrawal half had never
+   been seen in a browser, and that is no longer true.** It has now been seen twice, and the two
+   sightings are on different Chrome builds:
+
+   - In CI, run 33334936720, the negative control job reported `Passed steps: 7/8` and named the
+     reason: `step 8 (get_assistance_options): tool "get_assistance_options" is not available.`
+     That step is REQUIRED to fail, and it fails because the tool was gone. Chrome 154, Dev.
+   - On a desktop, `node evals/browser_probe.mjs` against the deployed page watched `getTools()`
+     return nine entries at boot, ten while `vehicle_drivable` was false, and nine again after a
+     patch put the car back on the road. Chrome 151.0.7922.174, stable channel.
+
+   What has NOT changed is the caller. Both sightings were driven by a script through the browser's
+   own API, not by a model, and `replay.mjs` still proves only that the page calls
+   `controller.abort()` and that a host honouring an abort drops the tool. The imperative API
+   documentation records that unregistration stopped cancelling in flight executions as of Chrome
+   153, so the behaviour has moved recently, which is why both builds are named above rather than
+   one.
 
    **So the diagnosis is written down now, before anyone reads it under a deadline.** If the first
    browser run of this file reports `Passed steps: 8/8`, the likeliest cause is the browser's

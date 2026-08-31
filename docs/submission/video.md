@@ -75,7 +75,11 @@ setting a take below depends on.
    rather than sooner.
 2. **Open the page in the ChatGPT desktop built in browser, signed in to your own account.** The
    repository README's section on running the page with an agent has the two supported paths and
-   the browser flag for the Chrome route.
+   the browser flag for the Chrome route. Two settings decide whether tools appear at all, and both
+   are outside this page: the model must be **GPT-5.6 Sol or GPT-5.6 Terra**, because Luna has
+   WebMCP disabled, and site tools are **not available in Enterprise or Edu workspaces**. Read live
+   on 2026-08-31 from <https://learn.chatgpt.com/docs/webmcp>. Settle this on the day before you
+   plan to record, not on the day.
 3. **Confirm the status strip reads `8 tools registered` and names the API it found.** If it does
    not, stop. A page that did not publish its tools is not worth filming.
 4. **Press Load synthetic incident.** Every take below assumes that starting point, and all six
