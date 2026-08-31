@@ -55,6 +55,21 @@
   are covered for while you are still describing the crash.
 </p>
 
+<!--
+  Orientation, not state. A first time visitor lands on three columns and a tool list and has to
+  work out what any of it is for. These three lines say it in the order it happens, and they are
+  static: nothing here reads the claim, so there is no second place for the truth to drift to.
+-->
+<ol class="how" aria-label="How this page works">
+  <li><span class="how-step" aria-hidden="true">1</span>
+    You tell your own agent what happened, in your own words.</li>
+  <li><span class="how-step" aria-hidden="true">2</span>
+    It reads this insurer's rules from the page and fills the draft. You correct anything it got
+    wrong, and pin what must not move.</li>
+  <li><span class="how-step" aria-hidden="true">3</span>
+    Filing is yours. No tool this page publishes reaches that button.</li>
+</ol>
+
 <section class="strip" data-el="strip" aria-label="Agent connection">
   <p class="strip-line">
     <span class="dot" data-el="status-dot" aria-hidden="true"></span>
@@ -201,6 +216,12 @@
           Change an answer and this list is worked out again, on the page, with no model involved.</p>
       </div>
       <p class="req-summary" data-el="req-summary">Working out what the intake asks for.</p>
+      <div class="req-progress" data-el="req-progress" role="progressbar"
+           aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"
+           aria-label="Intake requirements answered">
+        <span class="req-progress-track"><span class="req-progress-fill" data-el="req-progress-fill"></span></span>
+        <span class="req-progress-text" data-el="req-progress-text"></span>
+      </div>
       <ul class="reqs" data-el="requirements"></ul>
     </section>
 

@@ -105,3 +105,56 @@ test('a pack that will not load leaves a reason, and picking a good one again re
   assert.equal(select.value, 'northwind');
   assert.equal(doc.el('file-btn').disabled, false, 'the page is answering under the home pack again');
 });
+
+/* ------------------------------------------------------------------ the intake progress bar */
+
+// IT STATES THE SAME COUNT THE SENTENCE ABOVE IT STATES. Two numbers drawn from one list in one
+// pass, which is the only arrangement where they cannot drift apart. The sentence is the thing a
+// screen reader gets; the bar is the thing a judge with ninety seconds gets.
+test('the intake bar counts the same answered requirements the summary sentence names', () => {
+  const summary = doc.el('req-summary').textContent;
+  const text = doc.el('req-progress-text').textContent;
+  const bar = doc.el('req-progress');
+
+  const shown = text.match(/^(\d+) of (\d+) answered$/);
+  assert.ok(shown, `the bar states a count, and it said ${JSON.stringify(text)}`);
+
+  const answered = Number(shown[1]);
+  const total = Number(shown[2]);
+  assert.equal(bar.hidden, false);
+  assert.equal(bar.getAttribute('aria-valuenow'), String(answered));
+  assert.equal(bar.getAttribute('aria-valuemax'), String(total));
+  assert.equal(doc.el('req-progress-fill').style.width, `${Math.round((answered / total) * 100)}%`);
+
+  const open = total - answered;
+  if (open === 0) {
+    assert.match(summary, new RegExp(`All ${total} intake requirements are answered`));
+  } else {
+    assert.match(summary, new RegExp(`${open} of ${total} intake requirements are still open`));
+  }
+});
+
+test('answering one more requirement moves the bar and the sentence together', () => {
+  // Kestrel asks a collision claimant for a witness and Northwind does not, so loading it is what
+  // puts an open requirement on this otherwise complete draft. Filing stays refused under a
+  // borrowed pack either way, which is a different fact and is asserted above.
+  selectPack('kestrel');
+  const before = doc.el('req-progress-text').textContent;
+  const [, answeredBefore, totalBefore] = before.match(/^(\d+) of (\d+) answered$/);
+  assert.notEqual(answeredBefore, totalBefore, 'the borrowed pack has something open to answer');
+
+  const witness = rowFor(doc, 'witness_name');
+  witness.control.value = 'M. Okafor';
+  fireEvent(witness.control, 'change');
+
+  const after = doc.el('req-progress-text').textContent;
+  assert.notEqual(after, before, 'the bar redraws when the derived list moves');
+
+  const [, answeredAfter, totalAfter] = after.match(/^(\d+) of (\d+) answered$/);
+  assert.equal(Number(answeredAfter), Number(answeredBefore) + 1);
+  assert.equal(totalAfter, totalBefore);
+  assert.equal(doc.el('req-progress').getAttribute('aria-valuenow'), answeredAfter);
+  assert.equal(doc.el('req-progress').getAttribute('aria-valuemax'), totalAfter);
+
+  selectPack('northwind');
+});
