@@ -127,7 +127,11 @@ jobs:
         run: |
           npm install --no-save --no-package-lock --no-audit --no-fund \
             "playwright@${PLAYWRIGHT_VERSION}"
+          # System libraries for a Chromium, and Playwright's own ffmpeg, which is what
+          # recordVideo writes with. The bundled Chromium itself is not installed: the capture
+          # drives the Chrome channel below, which is the build that carries WebMCP.
           npx playwright install-deps chromium
+          npx playwright install ffmpeg
 
       # The machine beats are filmed against the browser's own WebMCP implementation, not against
       # a host of ours, so the capture needs a Chrome that carries the feature. Playwright's
@@ -222,7 +226,11 @@ jobs:
         run: |
           npm install --no-save --no-package-lock --no-audit --no-fund \
             "playwright@${PLAYWRIGHT_VERSION}"
+          # System libraries for a Chromium, and Playwright's own ffmpeg, which is what
+          # recordVideo writes with. The bundled Chromium itself is not installed: the capture
+          # drives the Chrome channel below, which is the build that carries WebMCP.
           npx playwright install-deps chromium
+          npx playwright install ffmpeg
 
       # The machine beats are filmed against the browser's own WebMCP implementation, not against
       # a host of ours, so the capture needs a Chrome that carries the feature. Playwright's
