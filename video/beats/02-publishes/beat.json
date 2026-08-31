@@ -22,7 +22,10 @@
       },
       {
         "do": "expect_tool_count",
-        "count": 8
+        "count": 9,
+        "includes": [
+          "record_supporting_details"
+        ]
       },
       {
         "do": "wait_text",

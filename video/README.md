@@ -109,19 +109,32 @@ what it is at that point: a claim nobody has checked yet, since the plan touches
 There is no flag that skips this. If the host is behind, wait for the deployment or build from the
 commit the host is serving.
 
-## Disclosure: the WebMCP host in the machine beats
+## The WebMCP surface in the machine beats is the browser's own
 
-A headless browser has no agent in it, so the capture script installs one thing before the page
-loads: an object at `document.modelContext` with `registerTool` on it, backed by an `EventTarget`
-and honouring the `AbortSignal` each registration is given.
+This section used to disclose a host of ours. It no longer needs to. The capture launches the
+installed **Chrome Dev channel** with `--enable-features=WebMCP` and films the page registering
+against the API that browser provides, so nothing of ours stands in for the agent surface. The
+capture prints which name it found, `document.modelContext` or `navigator.modelContext`, and
+refuses to film a browser that has neither rather than filming a page that says no agent is
+present.
 
-Nothing about the page is stubbed. Every tool in those frames is the page's own tool, registered by
-the page's own code, and every tool call in the ledger really ran. The host is the same surface an
-agent browser provides, and it is written out in full in `CAPTURE_JS` inside `build_video.py` so a
-reader can check that claim rather than take it.
+What that buys is not tidiness. The browser is the half that turns the declarative form into a
+tool, so a beat filmed this way shows a surface holding **nine** tools, the eight this page
+registers plus `record_supporting_details`, which it never registers. Beat 02 asserts exactly that,
+by count and by name.
 
-The owner beats need no such thing. They are a real agent in a real browser, which is exactly why
-they cannot be captured here.
+The fallback host is still in `CAPTURE_JS` and is **off**. `CLAIMREADY_ALLOW_SHIM=1` turns it on
+for a machine with no WebMCP capable Chrome, and it prints a warning when it does. It cannot
+synthesise a tool from HTML attributes, so beat 02's assertion fails under it. That failure is the
+design: a shim run would film a page that differs from the one a judge opens, and it should stop
+rather than pass.
+
+`CLAIMREADY_CHROME_CHANNEL` picks the channel. The default is `chrome-dev`, which is what CI
+installs and what the eval harness drives. Chrome stable 151 carries WebMCP as well, observed on
+2026-08-31, so a desktop run can set `chrome`.
+
+The owner beats are a real agent in a real browser, which is exactly why they cannot be captured
+here.
 
 ## Audio locked, to the frame
 

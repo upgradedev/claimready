@@ -553,11 +553,24 @@ const { chromium } = require('playwright');
 
 const spec = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 
-// A minimal WebMCP host. There is no agent in a headless browser, so the capture supplies the one
-// thing an agent browser supplies: an object with registerTool on it. Every tool the page registers
-// here is the page's own tool, registered by the page's own code, honouring the page's own
-// AbortSignal. Nothing about the page is stubbed. This host is what the ChatGPT browser provides in
-// the owner beats, and it is disclosed as such in video/README.md.
+// 'bundled' means Playwright's own Chromium, which is not guaranteed to carry WebMCP. Anything
+// else is a channel name handed straight to Playwright: chrome, chrome-dev, chrome-beta.
+const CHANNEL = spec.browser_channel && spec.browser_channel !== 'bundled'
+  ? spec.browser_channel
+  : undefined;
+const ALLOW_SHIM = Boolean(spec.allow_shim);
+
+// The feature is turned on for the beats that ask for an agent, and left off for the ones that do
+// not. Beat 01 films the page as a visitor with no agent sees it, and a browser carrying WebMCP
+// would make it show the agent copy instead: the right footage for the wrong beat.
+const WANTS_AGENT = (spec.steps || []).some((step) => step.do === 'agent_host');
+
+// A minimal WebMCP host, kept only as a fallback for a machine with no WebMCP capable Chrome.
+// It is OFF by default. The capture launches the installed Chrome channel with the WebMCP feature
+// on, so the API the page registers against is the browser's own and nothing of ours stands in for
+// it. Set CLAIMREADY_ALLOW_SHIM=1 to fall back to this object, and know what that costs: the
+// browser is what turns the declarative form into a tool, so a shim run publishes one tool fewer
+// and beat 02's own assertion fails rather than filming a page that differs from the real one.
 const HOST = `(() => {
   const tools = new Map();
   const bus = new EventTarget();
@@ -593,7 +606,12 @@ function fail(message) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ args: ['--force-color-profile=srgb'] });
+  const browser = await chromium.launch({
+    channel: CHANNEL,
+    args: WANTS_AGENT
+      ? ['--force-color-profile=srgb', '--enable-features=WebMCP']
+      : ['--force-color-profile=srgb']
+  });
   const context = await browser.newContext({
     viewport: spec.viewport,
     deviceScaleFactor: 1,
@@ -601,6 +619,35 @@ function fail(message) {
     recordVideo: { dir: spec.raw_dir, size: spec.viewport }
   });
   const page = await context.newPage();
+
+  // One reader for both worlds. The browser's own API answers getTools() with a promise and takes
+  // the arguments to executeTool as a JSON string; the fallback object answers synchronously. A
+  // registered tool replies with an MCP envelope, and the tool the browser builds from the form
+  // replies with the text the page passed to respondWith, unwrapped, so both are accepted.
+  const toolNames = () => page.evaluate(async () => {
+    const context = document.modelContext ?? navigator.modelContext;
+    if (!context) return null;
+    if (typeof context.getTools === 'function') {
+      return (await context.getTools()).map((tool) => String(tool.name));
+    }
+    return context.__toolNames();
+  });
+
+  const callTool = (name, args) => page.evaluate(async ([wanted, payload]) => {
+    const context = document.modelContext ?? navigator.modelContext;
+    if (!context) throw new Error('no WebMCP API in this browser');
+    if (typeof context.getTools === 'function' && typeof context.executeTool === 'function') {
+      const tool = (await context.getTools()).find((candidate) => candidate.name === wanted);
+      if (!tool) throw new Error('no such tool: ' + wanted);
+      const raw = await context.executeTool(tool, JSON.stringify(payload || {}));
+      if (typeof raw !== 'string') return raw;
+      try { return JSON.parse(raw); } catch { return { content: [{ text: raw }] }; }
+    }
+    return context.__call(wanted, payload);
+  }, [name, args || {}]);
+
+  let wantsAgent = false;
+  let shimInstalled = false;
 
   const problems = [];
   page.on('pageerror', (error) => problems.push('page error: ' + error.message));
@@ -611,9 +658,31 @@ function fail(message) {
   try {
     for (const step of spec.steps) {
       if (step.do === 'agent_host') {
-        await page.addInitScript(HOST);
+        wantsAgent = true;
+        if (ALLOW_SHIM) {
+          await page.addInitScript(HOST);
+          shimInstalled = true;
+          console.log('WARNING: filming against the fallback host, not the browser. ' +
+                      'CLAIMREADY_ALLOW_SHIM is set.');
+        }
       } else if (step.do === 'goto') {
         await page.goto(spec.url, { waitUntil: 'load', timeout: 60000 });
+        if (wantsAgent && !shimInstalled) {
+          const api = await page.waitForFunction(
+            () => (document.modelContext
+              ? 'document.modelContext'
+              : (navigator.modelContext ? 'navigator.modelContext' : null)),
+            null,
+            { timeout: 20000 }
+          ).then((handle) => handle.jsonValue()).catch(() => null);
+          if (!api) {
+            fail('this browser exposes neither document.modelContext nor navigator.modelContext, ' +
+                 'so the page has no agent surface to register against and this beat would film a ' +
+                 'page saying so. Launch a Chrome that carries WebMCP: the capture asked for ' +
+                 'channel ' + (CHANNEL || 'bundled') + ' with --enable-features=WebMCP.');
+          }
+          console.log('agent surface: ' + api + ', provided by the browser');
+        }
       } else if (step.do === 'wait') {
         await page.waitForTimeout(step.ms);
       } else if (step.do === 'wait_text') {
@@ -630,12 +699,19 @@ function fail(message) {
                ' and it read ' + JSON.stringify(seen));
         });
       } else if (step.do === 'expect_tool_count') {
-        const names = await page.evaluate(() => document.modelContext.__toolNames());
+        const names = await toolNames();
+        if (!names) fail('there is no WebMCP API to count tools on.');
         if (names.length !== step.count) {
-          fail('expected ' + step.count + ' registered tools and the page registered ' +
+          fail('expected the agent surface to hold ' + step.count + ' tool(s) and it holds ' +
                names.length + ': ' + names.join(', '));
         }
-        console.log('tools registered: ' + names.join(', '));
+        for (const wanted of step.includes || []) {
+          if (!names.includes(wanted)) {
+            fail('expected ' + wanted + ' among the tools and the surface holds: ' +
+                 names.join(', '));
+          }
+        }
+        console.log('tools on the agent surface: ' + names.join(', '));
       } else if (step.do === 'scroll_to') {
         await page.locator(step.selector).first().scrollIntoViewIfNeeded({ timeout: 15000 });
       } else if (step.do === 'click') {
@@ -643,10 +719,7 @@ function fail(message) {
       } else if (step.do === 'select') {
         await page.locator(step.selector).first().selectOption(step.value, { timeout: 15000 });
       } else if (step.do === 'call_tool') {
-        const result = await page.evaluate(
-          ([name, args]) => document.modelContext.__call(name, args),
-          [step.name, step.args || {}]
-        );
+        const result = await callTool(step.name, step.args);
         if (!result) fail('tool ' + step.name + ' returned nothing');
       } else {
         fail('unknown capture step: ' + JSON.stringify(step.do));
@@ -698,6 +771,12 @@ def capture_machine_beat(spec, out_beat_dir, url):
     capture = spec.get("capture") or {}
     payload = {
         "url": url,
+        # The channel Playwright launches. The default is the Dev channel, because that is the
+        # build CI installs and the one the eval harness drives. Chrome stable 151 carries WebMCP
+        # as well, so a desktop run can set CLAIMREADY_CHROME_CHANNEL=chrome.
+        "browser_channel": (os.environ.get("CLAIMREADY_CHROME_CHANNEL", "").strip()
+                            or "chrome-dev"),
+        "allow_shim": os.environ.get("CLAIMREADY_ALLOW_SHIM", "").strip() == "1",
         "viewport": capture.get("viewport") or {"width": 1440, "height": 810},
         "steps": capture.get("steps") or [],
         "raw_dir": raw_dir,
