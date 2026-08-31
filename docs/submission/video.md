@@ -4,6 +4,10 @@ This file is two things. It is the runbook the owner records from, and it is the
 deliverable itself. The readiness gate reads the link at the bottom, so this file is also what turns
 row D4 green.
 
+Everything below is written so a person can record without asking a question. Each take has the
+exact prompt or the exact clicks, what has to be in frame, how long to run, the frame to stop on,
+and the path to save to.
+
 ## Deliverable record
 
 | Field | Value |
@@ -11,90 +15,119 @@ row D4 green.
 | Public video URL | **NOT YET UPLOADED** |
 | Visibility required | Public. Not unlisted, not private. The rules ask for a public video |
 | Length cap | less than three minutes. The pipeline caps the cut at 170 seconds |
-| Length of the finished cut | not measured. The cut does not exist yet, because five owner takes have not been recorded |
-| Rehearsal length, estimate | superseded. 135.80s was measured on 2026-08-27 against narration that has since been rewritten for four beats. See the note below |
+| Length of the finished cut | **not measured.** The cut does not exist. Six owner takes have not been recorded, so nothing has been assembled and no gate has read a cut |
+| Beats | nine. Three captured in CI, six recorded by the owner |
+| Targets, as the tool prints them | `python video/build_video.py --plan` prints `9 beats, targets adding to 166s, cap 170s` |
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
 
-Where the 135.80s came from, since a number with no command behind it is worth nothing. On
-2026-08-27 the eight `narration.txt` files were rendered for real and the whole render path was run
-end to end with stand in pictures, in a scratch directory outside this repository. The figure is the
-duration `ffprobe` reported for the assembled `cut.mp4`, printed by row G of
-`python video/sync_gate.py`, which read the encoded file rather than the plan.
+**No gate has passed on a cut, because there is no cut.** What has passed is
+`python video/sync_gate.py --selftest`, which builds its own small media with ffmpeg and proves each
+check refuses what it is meant to refuse. That says the instrument works. It says nothing about a
+deliverable that has not been made.
 
-**It no longer describes this cut.** Beats `03`, `04`, `05` and `06` were rewritten after that
-render, `06` roughly doubling in length, so four of the eight measured beats no longer exist as
-measured. Nothing has been re-rendered since, so there is no replacement figure to print here and
-none is invented. What can be said without measuring anything is that the targets in the eight
-`beat.json` files now add to 161s against a 170s cap, which `python video/build_video.py --plan`
-prints on its first line, and that the narration is always shorter than its target by design.
+**There is no measured length, and none is invented here.** An earlier version of this file carried
+135.80s from a rehearsal render on 2026-08-27. That figure described narration that has since been
+rewritten in six of the nine beats, and it predates `06b-declared-form` entirely, so it has been
+removed rather than adjusted. The only number that can be stated without rendering anything is the
+sum of the targets in the nine `beat.json` files, and it is printed by the tool rather than
+remembered:
 
-That figure was 154s in an earlier version of this file and it was wrong by the time it was read.
-Re-run on 2026-08-28 the command prints `8 beats, targets adding to 161s, cap 170s`, so the number
-here is the one the tool prints rather than the one somebody remembered. The same run prints
-`5 owner take(s) missing: 03-agent-fills, 04-human-corrects, 05-reconcile, 06-refusal,
-07-human-files`, which is the same five named below, and `ls video/beats/*/take.mp4` finds no file
-at all. Nothing in this file claims a take exists.
+```sh
+python video/build_video.py --plan
+```
 
-The length of the deliverable stays unmeasured until row G of `python video/sync_gate.py` prints a
-duration for a cut built from the five real owner takes. The per beat rehearsal numbers, and what
-they are worth now, are in [`video/README.md`](../../video/README.md).
+The targets are deliberately a little longer than the narration in every beat, and the finished
+length is the narration, so the cut comes in under the sum. That is a design property, not a
+measurement, and it stays unmeasured until row G of the sync gate prints a duration for a real cut.
 
 When the cut is uploaded, replace **NOT YET UPLOADED** above with the full watch link copied from
-the browser address bar. Paste the whole thing, scheme included. The readiness gate looks for a
-YouTube link in this file and fails until it finds one, so nothing here pretends the video exists
-before it does.
+the browser address bar, scheme included. The readiness gate looks for a YouTube link in this file
+and fails until it finds one, so nothing here pretends the video exists before it does.
 
 ## The cut
 
-Eight beats. Three are captured in CI against the real deployed page. Five are recorded by the owner,
-because the money shot is the visitor's own agent driving the page inside the ChatGPT desktop built
-in browser, and that browser needs a real machine and a real account. It cannot run in CI, so the
-pipeline takes a file instead and refuses to build without it.
-
 | Beat | Kind | Target | What is on screen |
 | --- | --- | --- | --- |
-| `01-problem` | machine | 14s | the page with an empty draft, and the list of what this policy needs |
-| `02-publishes` | machine | 15s | the strip reading 8 tools registered, and the tool names |
+| `01-problem` | machine | 12s | the page as it boots, three rows answered and seven reading `not set`, the panel reading ten published tools, and the list of what this policy needs |
+| `02-publishes` | machine | 15s | the strip reading `8 tools registered`, and the tool names |
 | `03-agent-fills` | owner | 29s | the agent reading the policy and writing the draft, field by field |
-| `04-human-corrects` | owner | 25s | a person setting the car to not drivable, and the revision moving |
-| `05-reconcile` | owner | 23s | requirements changing, and a ninth tool being published |
-| `06-refusal` | owner | 23s | the planted note read, and the pinned field refused in the ledger |
+| `04-human-corrects` | owner | 22s | a person setting the car to not drivable, the revision moving, the pin, and the strip going 8 to 9 |
+| `05-reconcile` | owner | 23s | the agent reading back, the requirements recomputed, and the ninth tool in its list |
+| `06-refusal` | owner | 21s | the planted note read, and the pinned field refused in the ledger |
+| `06b-declared-form` | owner | 13s | the declarative half: an ordinary form, filled and submitted by hand |
 | `07-human-files` | owner | 16s | a hand pressing Request roadside assistance, then File this claim |
-| `08-close` | machine | 16s | the one sentence, and the architecture line |
+| `08-close` | machine | 15s | the one sentence, and the architecture line |
 
-Beat order is the directory order under `video/beats`. Nothing else decides it.
+Beat order is the directory order under `video/beats`, sorted. Nothing else decides it. That is why
+the declarative beat is `06b-declared-form`: it must come after `06-refusal` and before
+`07-human-files`, because filing closes that form.
 
-## Before you record anything
+## Preflight, before you record anything
 
-1. Open the live page in the ChatGPT desktop built in browser, signed in to your own account. The
-   README section on running the page with an agent has the two supported paths and the browser
-   flag for the Chrome route.
-2. Confirm the status strip reads `8 tools registered` and names the API it found. If it does not,
-   stop. Recording a page that did not publish its tools wastes the take.
-3. Press **Load synthetic incident** so every take starts from the same draft. Every take below
-   assumes that starting point.
-4. Record at 1920 by 1080 if your machine can. Anything is scaled and padded to that, so a smaller
-   window is safe, it is just softer.
-5. Record a few seconds longer than the target. The picture is trimmed to the narration, so a long
-   take costs nothing and a short one is held on its last frame, which reads as a freeze.
-6. No system audio and no voice on the take. The narration is rendered separately and the take's
-   own audio is discarded. Talking over it is wasted effort.
+Work down this list. Every line is either a thing that has wasted a take before, or a recorder
+setting a take below depends on.
 
-Save every take as `video/beats/<beat id>/take.mp4`. That exact path, that exact name. The build
-names the file it wants when it is missing, so if you are unsure, run:
+1. **The live page is up and is the commit the build will name.** Open `CLAIMREADY_URL` in an
+   ordinary browser first and confirm it loads. The build refuses to film a page that is not the
+   commit it is about to write into the manifest, so a stale deployment stops the build later
+   rather than sooner.
+2. **Open the page in the ChatGPT desktop built in browser, signed in to your own account.** The
+   repository README's section on running the page with an agent has the two supported paths and
+   the browser flag for the Chrome route.
+3. **Confirm the status strip reads `8 tools registered` and names the API it found.** If it does
+   not, stop. A page that did not publish its tools is not worth filming.
+4. **Press Load synthetic incident.** Every take below assumes that starting point, and all six
+   owner takes, `03-agent-fills` through `07-human-files`, are one continuous session from it.
+5. **Put the Draft revision number in the header in frame and keep it there.** Four of the six takes
+   turn on that number moving.
+6. **Record at 1920 by 1080 if the machine can.** Everything is scaled and padded to that, so a
+   smaller window is safe, it is just softer.
+7. **Record a few seconds longer than the target.** The picture is trimmed to the narration, so a
+   long take costs nothing. A take shorter than its narration is held on its last frame, which
+   reads as a freeze, and the build refuses a hold longer than 1.5 seconds.
+8. **No system audio and no voice on the take.** The narration is rendered separately and the
+   take's own audio is discarded.
+9. **Do not press Load synthetic incident again** once take 1 has started. It advances the
+   revision and resets the draft, and every later take reads from where the last one left off.
+10. **Turn cursor capture on in the recorder.** Takes 5 and 6 ask for a button pressed by hand and a
+   box typed into by hand, and several recorders leave the pointer out of the picture by default.
+
+Save every take as `video/beats/<beat id>/take.mp4`. That exact path, that exact name. To see what
+is still missing, and the recording instructions for each:
 
 ```sh
 python video/build_video.py --check-takes
 ```
 
-## Owner beat 03-agent-fills
+It exits non zero while a take is missing and names every one of them, so it is also the check to
+run before pushing.
 
-**Save to:** `video/beats/03-agent-fills/take.mp4`, about 30 seconds.
+## Record in this order
 
-**On screen:** the deployed page beside the conversation, with the claim draft, the header revision
-chip and the tool call ledger all in frame if you can manage it.
+`03-agent-fills`, `04-human-corrects`, `05-reconcile`, `06-refusal`, `06b-declared-form`,
+`07-human-files`. One session, in that order, without reloading.
+
+The order is forced by the product, not by preference:
+
+- `06-refusal` needs the row `04-human-corrects` pinned. On a fresh page the planted note asks for
+  something nothing is protecting and the beat has nothing to show.
+- `06b-declared-form` needs the draft still open. `renderDeclaredForm` in `src/ui/render.js`
+  disables every control on that form once the claim is filed.
+- Inside `07-human-files`, Request roadside assistance must be pressed before File this claim.
+  `assistanceApplies` in `src/ui/app.js` requires `claim.status !== 'filed'`, so filing closes the
+  assistance control. Press it first or it cannot be pressed at all.
+
+---
+
+## Owner take 1 of 6: `03-agent-fills`
+
+**Save to:** `video/beats/03-agent-fills/take.mp4`
+**Run for:** about 33 seconds. The narration target is 29s.
+
+**In frame the whole time:** the deployed page beside the conversation, with the claim draft, the
+**Draft revision** chip in the header and the tool call ledger all visible if the screen allows it.
 
 **Type this, word for word:**
 
@@ -112,36 +145,73 @@ A delivery van reversed into my left front wing while the car was parked in the 
 
 - the status strip reading `8 tools registered`, and the API name it found
 - the ledger filling with `read_claim_state`, `get_requirements` and `apply_claim_patch`
-- claim rows moving from `not set` to a value, each carrying the `agent` badge
+- claim rows moving from `not set` to a value, each carrying the `via tool` badge
 - the **Draft revision** number in the header rising as the patches land
 
-## Owner beat 04-human-corrects
+**Stop on:** the filled draft, with the `via tool` badges on the rows the agent wrote and the
+ledger showing the three calls. Hold there for two or three seconds before you stop the recording.
 
-**Save to:** `video/beats/04-human-corrects/take.mp4`, about 25 seconds.
+**The badge words are `via tool` and `via page`, not `agent` and `you`.** `BADGE_WORDS` in
+`src/ui/render.js` names the surface an answer arrived on, on purpose, because the page cannot know
+who was at the keyboard: an agent that drives a control rather than calling a tool is recorded the
+same way a person is. The narration says what the badge says and claims nothing about authorship.
 
-**On screen:** the same page, the same session. Leave the conversation alone for this one. This beat
-is a person using the page directly.
+---
 
-**No prompt.** Do this instead:
+## Owner take 2 of 6: `04-human-corrects`
 
-1. Note the **Draft revision** number before you touch anything, and keep the header in frame so the
-   before and the after are both on the take.
-2. Set the **Still drivable** row to **No**, using the control on the page.
+**Save to:** `video/beats/04-human-corrects/take.mp4`
+**Run for:** about 26 seconds. The narration target is 22s.
+
+**In frame the whole time:** the same page, the same session, with the **Still drivable** row, the
+**Draft revision** number in the header and the **status strip** all visible. Leave the conversation
+alone. This beat is a person using the page directly.
+
+**No prompt. Do this:**
+
+1. Note the **Draft revision** number before you touch anything. Do not say it out loud, the take
+   has no audio. Just keep the header in frame so the before and the after are both on the take.
+2. Set the **Still drivable** row to **No, it could not be driven**, using the select on the
+   page. The row then displays `No`.
 3. Press **Pin** on that same row.
 
 **Must be visible on the take:**
 
 - the **Still drivable** row moving to `No`
-- the badge on that row changing to `you`
+- the badge on that row reading `via page`
 - the **Draft revision** number in the header stepping up
 - the pin control on that row reading as pinned
+- the status strip count stepping from `8 tools registered` to `9`, the instant **Still drivable**
+  becomes `No`
 
-## Owner beat 05-reconcile
+**Stop on:** the pinned **Still drivable** row reading `No`, with the new revision number in the
+header.
 
-**Save to:** `video/beats/05-reconcile/take.mp4`, about 23 seconds.
+**No agent patch is sent in this take**, so no refusal can appear in it, and the narration does not
+claim one. The refusal is produced in `06-refusal`, against the row that gets pinned here. That is
+why this take matters: without the pin, `06` has nothing to refuse.
 
-**On screen:** back in the conversation, with the requirements panel and the status strip both
-visible on the page.
+**The ninth tool registers here, not in take 3.** `registerToolSurface` in `src/webmcp/register.js`
+subscribes to the store, so `get_assistance_options` registers synchronously the moment this edit
+lands. The `8` to `9` transition belongs to this take and cannot appear in one that starts
+afterwards. Keep the strip in frame. Take 3 shows the strip already reading `9` and the agent
+explaining it, and its narration is written that way.
+
+**Do not go looking for the spoken announcement.** The page does announce why a tool was
+published, but it announces it into the live region, which `assets` clips to one pixel so screen
+readers get it and nobody else does. It is never on camera. The visible evidence is the strip
+count here, and the reason printed on the tool's own row in take 3.
+
+---
+
+## Owner take 3 of 6: `05-reconcile`
+
+**Save to:** `video/beats/05-reconcile/take.mp4`
+**Run for:** about 27 seconds. The narration target is 23s.
+
+**In frame the whole time:** back in the conversation, with the **What this intake still needs**
+panel, the status strip and the **WebMCP tools on this page** panel all visible. That panel opens
+by itself only on a window at least 900 wide and 950 tall, so open it by hand if it stayed folded.
 
 **Type this, word for word:**
 
@@ -151,27 +221,41 @@ I have just corrected the drivable answer on the page myself. Read the claim aga
 
 **Must be visible on the take:**
 
+- a `read_claim_state` or `get_requirements` entry appearing in the tool call ledger, so the read
+  back the narration describes is on screen and is not taken on trust
 - the **What this intake still needs** list changing, with the reason printed beside each entry
-- the status strip count moving from `8` to `9`
-- the name `get_assistance_options` appearing in the list of tools available to the agent
-- the page announcement naming why the tool was published
+- the status strip reading `9 tools registered`
+- the `get_assistance_options` row in the **WebMCP tools on this page** panel, reading
+  `Registered because the claim says the vehicle cannot be driven.`, and the agent naming the
+  tool in its answer
 - the **roadside collection** entry in the requirements list, with the words saying no tool on this
-  page reaches it and a person has to act on it. Beat 07 is the beat that closes it, and this is
-  where a viewer first sees that it is open
+  page reaches it and a person has to act on it. Take 6 is where it gets closed, and this is where a
+  viewer first sees it open
+
+**Stop on:** the strip reading `9 tools registered`, with the recomputed requirements list on screen.
+
+**The count is asked for here as a state, `9`, not as a change from `8`.** That change happened in
+take 2, the instant the drivable answer was corrected, because the tool surface is subscribed to the
+store. A take that starts afterwards cannot contain it, so the narration says the correction has
+already published the tool rather than claiming the registration happens here. What is new in this
+take is the agent reading the claim again, finding the tool, and reading out a requirement that no
+tool on the page can close.
 
 This is the beat the whole entry turns on, so it is worth several takes. The tool set is a function
-of the claim, and this is the only place a viewer sees that happen.
+of the claim, and this is where a viewer hears what that means.
 
-## Owner beat 06-refusal
+---
 
-**Save to:** `video/beats/06-refusal/take.mp4`, about 23 seconds.
+## Owner take 4 of 6: `06-refusal`
 
-**On screen:** the conversation, with the tool call ledger and the **Still drivable** row both
-visible on the page.
+**Save to:** `video/beats/06-refusal/take.mp4`
+**Run for:** about 25 seconds. The narration target is 21s.
 
-**This beat only works after beat 04.** The note asks for the field you pinned there, so record 06
-in the same session, with `vehicle_drivable` still set to `No` and still pinned. On a fresh page the
-note asks for something nothing is protecting and the beat has nothing to show.
+**In frame the whole time:** the conversation, with the tool call ledger and the **Still drivable**
+row both visible on the page.
+
+**This take only works after take 2.** The note asks for the field you pinned there. Record it in
+the same session, with `vehicle_drivable` still set to `No` and still pinned.
 
 **Type this, word for word:**
 
@@ -185,9 +269,8 @@ Let it answer. Then:
 Read the claim again first, then try to do exactly what that note asks, and tell me what the page said back.
 ```
 
-Both clauses are deliberate. The agent is told to follow the note, and following it changes nothing.
-The order matters as well, and not for style: `src/core/claim.js` checks the revision before it
-checks the pin, so a patch sent on the revision the agent read back in beat 03 is refused as
+Both clauses are deliberate, and so is the order. `src/core/claim.js` checks the revision before it
+checks the pin, so a patch sent on the revision the agent read back in take 1 is refused as
 `PATCH_REJECTED_STALE` and never reaches the pin at all. The re-read is what makes the ledger show
 `PATCH_REJECTED_LOCKED`, which is the refusal this beat is about.
 
@@ -204,35 +287,83 @@ checks the pin, so a patch sent on the revision the agent read back in beat 03 i
   on screen and a viewer can see for themselves that nothing on it files. An absence is not visible
   in a frame, so show the list rather than the empty space where a filing call would have been
 
+**Stop on:** the refused `apply_claim_patch` row in the ledger, with `PATCH_REJECTED_LOCKED` legible
+and the revision number unchanged in the header.
+
 If the agent declines to attempt anything at all, that is a weaker beat, not a better one. Ask it
-again with `Try it anyway, and tell me exactly what the page said back.` A refusal that the page
-produced is the evidence. A refusal the model produced on its own is not.
+again with `Try it anyway, and tell me exactly what the page said back.` A refusal the page produced
+is the evidence. A refusal the model produced on its own is not.
 
 If the ledger shows `PATCH_REJECTED_STALE` instead, the agent patched without re-reading. That is a
-true refusal and a different one, and the narration names the pin. Ask it to read the claim again
-and retry, and keep the take where the code reads `PATCH_REJECTED_LOCKED`.
+true refusal and a different one. Ask it to read the claim again and retry, and keep the take where
+the code reads `PATCH_REJECTED_LOCKED`.
 
-## Owner beat 07-human-files
+---
 
-**Save to:** `video/beats/07-human-files/take.mp4`, about 16 seconds.
+## Owner take 5 of 6: `06b-declared-form`
 
-**On screen:** the page, full width if you can, with the **Your decisions** panel in shot.
+**Save to:** `video/beats/06b-declared-form/take.mp4`
+**Run for:** about 17 seconds. The narration target is 13s.
 
-**No prompt. Two presses, in this order.** First **Request roadside assistance**, then **File this
-claim**, both with the pointer and slowly enough to see. Unpin nothing and change no field.
+**In frame the whole time:** the same page and the same session, scrolled so the **Supporting
+details** form and the **Draft revision** number in the header are both visible.
 
-**Why the order is forced, and why this beat presses twice.** Beat 05 spends its whole length
-showing a requirement the page had just raised: a roadside collection, which this insurer's rule
-pack answers with a human action rather than a field. `get_assistance_options` reads the options
-out, and closing the requirement is the button. An earlier version of this runbook filed the claim
-straight over it, which put a tidy screen on camera and left the one requirement the entry had just
-made a point of unanswered. The order is the product's, not a preference: `assistanceApplies` in
-`src/ui/app.js` requires `claim.status !== 'filed'`, so filing closes the assistance control. Press
-it first or it cannot be pressed at all.
+**No prompt. This one is you, using the form.** Do this:
 
-Whatever else the requirements panel still shows is left as it is. Filing is gated on the required
-fields through `validateClaim`, not on this insurer's intake list, so the page does allow a filing
-with an intake requirement open. Record what is true on the day rather than staging the panel.
+1. Note the **Draft revision** number before you type anything, and keep the header in frame.
+2. Type `M. Okafor` into **Name of the witness**. That exact text, so a re-record matches the take it
+   replaces. The whole claim is synthetic.
+3. Leave **Draft revision your agent read** empty, and let the hint under it stay on camera. It is
+   the box an agent fills and a person does not.
+4. Press **Add these details**, with the pointer, slowly enough to see.
+
+**Must be visible on the take:**
+
+- the **Supporting details** form, with the witness box being typed into by hand
+- the hint under the revision box saying it is there for an agent, and naming the revision the draft
+  is at
+- the line under the button reading `Recorded the name of the witness on the draft, submitted
+  through the page UI. The draft is now at revision N.`
+- the **Draft revision** number in the header stepping up
+- the optional group above the form opening by itself, with **Witness name** now carrying a value
+  and a `via page` badge
+
+**Stop on:** that result line under the button, with the new revision visible in the header.
+
+**Why this take exists, and what it does not claim.** Both halves of WebMCP ship on this page. The
+imperative half is the nine registered tools every other take shows. The declarative half is this
+form: an ordinary HTML form in `index.html` with four extra attributes on it, `toolname`,
+`tooldescription`, `toolautosubmit` and `toolparamdescription`. The browser builds the input schema
+from the form itself, so nothing on this page writes one, and that is the migration path an insurer
+with an existing intake form actually has.
+
+The narration names those four attributes as what publishes the form to an agent, and stops there.
+It never says an agent was seen using it. Declarative invocation needs a browser that implements it,
+the ChatGPT desktop browser's support for it is unverified, and a take that depended on an agent
+submitting this form might not be recordable at all. What is recordable, always, is a person filling
+in the same form, and the page prints which route the submission arrived through, so the take
+carries `submitted through the page UI` in the page's own words rather than the narration asserting
+anything about it.
+
+The four attributes are markup. They are not visible on a rendered page, so do not try to put them
+on camera. What is on camera is the form and what it did.
+
+---
+
+## Owner take 6 of 6: `07-human-files`
+
+**Save to:** `video/beats/07-human-files/take.mp4`
+**Run for:** about 20 seconds. The narration target is 16s.
+
+**In frame the whole time:** the page, full width if you can, with the **Your decisions** panel in
+shot.
+
+**No prompt. Two presses, in this order:**
+
+1. **Request roadside assistance**, with the pointer, slowly enough to see.
+2. Then **File this claim**, the same way.
+
+Unpin nothing and change no field.
 
 **Must be visible on the take:**
 
@@ -243,21 +374,85 @@ with an intake requirement open. Record what is true on the day rather than stag
 - the filed line that appears underneath it
 - the sentence on that panel saying these buttons are never registered as agent tools
 
-## Building the cut
+**Stop on:** the filed line under the File button, with the draft closed above it.
 
-Once all five takes are in place:
+**Why the order is forced.** Take 3 spends its whole length showing a requirement the page had just
+raised: a roadside collection, which this insurer's rule pack answers with a human action rather
+than a field. `get_assistance_options` reads the options out, and closing the requirement is the
+button. An earlier version of this runbook filed the claim straight over it, which put a tidy screen
+on camera and left the one requirement the entry had just made a point of unanswered.
+`assistanceApplies` in `src/ui/app.js` requires `claim.status !== 'filed'`, so filing closes the
+assistance control.
+
+Whatever else the requirements panel still shows is left as it is. Filing is gated on the required
+fields through `validateClaim`, not on this insurer's intake list, so the page does allow a filing
+with an intake requirement open. Record what is true on the day rather than staging the panel.
+
+---
+
+## Assembling the cut
+
+Once all six takes are in place:
+
+```sh
+python video/build_video.py --check-takes
+```
+
+It must print that every owner take the cut needs is present, and exit `0`. Then:
 
 1. Push the branch.
-2. Run the **Video** workflow by hand, with `beat` empty.
-3. Download the `claimready-video` artifact. `cut.mp4` is the video.
+2. Run the **Video** workflow by hand, with the `beat` input **empty**.
+3. The workflow renders every beat, assembles the cut, and runs the sync gate on the encoded files.
+4. Download the `claimready-video` artifact. `cut.mp4` is the video and `captions.vtt` is the
+   subtitle track.
 
-To fix one sentence: edit that beat's `narration.txt`, push, and run the workflow with `beat` set to
-that beat id. Every other beat restores from the cache and the cut is reassembled around the one
-that changed. To fix one take: replace that `take.mp4` and do the same. The whole reason the
-pipeline is built per beat is that neither of those costs the cut.
+Locally the same two commands are:
 
-The workflow refuses to run without `ELEVENLABS_API_KEY`, and it names the secret when it does. It
-never renders a silent track to keep going.
+```sh
+python video/build_video.py
+python video/sync_gate.py
+```
+
+Neither is run on the owner's machine in practice. The build needs ffmpeg, a browser and
+`ELEVENLABS_API_KEY`, and the workflow installs all three inside the job and nowhere else. It
+refuses to run without the secret and names it, and it never renders a silent track to keep going.
+
+## When one beat comes out wrong
+
+Fix the one beat. That is what the whole per beat design is for.
+
+- **A sentence is wrong:** edit that beat's `narration.txt`.
+- **A take is wrong:** replace that `video/beats/<id>/take.mp4`.
+- **A machine beat filmed the wrong thing:** edit the capture steps in that beat's `beat.json`.
+
+Then run the **Video** workflow with `beat` set to that beat id. Read the result in the
+`claimready-beat-<id>` artifact.
+
+> A --beat run renders one beat and never assembles or gates a cut, so nothing it produces may be uploaded.
+
+That is not a caution, it is what the tooling does. A one beat run assembles nothing, gates nothing,
+and deletes any cut, caption file and manifest an earlier run left in the build directory, so there
+is no stale cut sitting beside your fresh beat waiting to be uploaded. In the workflow the assembly
+step, the gate step, the upload of the cut and the upload instructions are all guarded, and a one
+beat dispatch gets its own artifact carrying that beat alone.
+
+When the beat is right, **run the workflow again with `beat` empty**. That run assembles every beat,
+restores the unchanged ones from the cache, and gates the result. Only that run produces something
+you may upload.
+
+The same sentence is stated in `video/build_video.py`, in `.github/workflows/video.yml` and in
+[`video/README.md`](../../video/README.md). Check I of `video/sync_gate.py` fails when any of the
+four drifts, or when a step in the workflow's build job that could hand back a cut loses its guard,
+so the three cannot quietly disagree again.
+
+## Two things this pipeline will refuse, so you know what you are reading
+
+- **A frozen beat.** If a take is shorter than its narration, the last frame is held. Every gate
+  stays green through that, because a frozen frame is a frame, so the builder refuses a hold longer
+  than 1.5 seconds outright and names the take and the shortfall. Record long.
+- **A page it cannot name.** Before any beat is built, the builder fetches every on camera file from
+  the live host and compares it to the tree and to the commit it is about to write into the
+  manifest. There is no flag that skips this. If the host is behind, wait for the deployment.
 
 ## Uploading
 

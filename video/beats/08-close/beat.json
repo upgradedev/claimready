@@ -2,7 +2,7 @@
   "id": "08-close",
   "title": "The one sentence",
   "kind": "machine",
-  "target_seconds": 16,
+  "target_seconds": 15,
   "capture": {
     "viewport": {
       "width": 1440,

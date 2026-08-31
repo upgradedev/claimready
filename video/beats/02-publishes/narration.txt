@@ -1,1 +1,1 @@
-So the insurer publishes its rules instead of a chatbot. The page loads, and the strip reads eight tools registered against the browser's own model context. Your agent gets typed tools, and the policy stays on the insurer's origin.
+So the insurer publishes its rules instead of a chatbot. Filmed against a simulated host standing in for an agent browser, the page's own code registers eight tools into it. The policy stays on the insurer's origin.

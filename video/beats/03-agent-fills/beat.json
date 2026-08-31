@@ -13,8 +13,9 @@
     "must_show": [
       "the status strip reading 8 tools registered, and the API name it found",
       "the tool call ledger filling with read_claim_state, get_requirements and apply_claim_patch",
-      "claim rows changing from not set to a value, each with the agent badge",
+      "claim rows changing from not set to a value, each with the via tool badge",
       "the draft revision number in the header rising as the patches land"
-    ]
+    ],
+    "note": "The badge words are via tool and via page, not agent and you. BADGE_WORDS in src/ui/render.js names the SURFACE an answer arrived on, deliberately, because the page cannot know who was at the keyboard: an agent that drives a control rather than calling a tool is recorded the same way a person is. The narration says the same thing the badge says and claims nothing about authorship."
   }
 }
