@@ -422,7 +422,7 @@ Honest state, so nobody trusts a limb that has never moved.
 | check I, the one beat contract | run against this repository and against four fixture repositories: three broken one way each and refused, one whole and passed |
 | the camera digest in `beat_hash` | run, 2026-08-27. `index.html` was edited in place, the three machine beats were hashed before and after, all three moved, and the same beats hashed with the old function did not move. The file was put back byte for byte |
 | `verify_deployed` | run, 2026-08-27, against a stand in host on the filesystem. Seen to pass when the host, the tree and the named commit agree, and seen to refuse on each of: no commit named, the tree not being the named commit, the host serving one camera file as it was at `cfc5c0c`, and a camera file the host would not serve |
-| `verify_deployed` against the real host | **not run here.** `CLAIMREADY_URL` is not set on this machine. Its first real run is the workflow |
+| `verify_deployed` against the real host | **run, 2026-08-31**, against `https://upgradedev.github.io/claimready/` from this machine, through the new `--verify-deployed` flag, which films nothing and spends nothing. All 22 camera sources fetched, `the deployed page is 1ee157d, on every one of those files`, exit 0. Refused three ways in the same session: a commit the tree is not, which named `assets/styles.css`; no URL given; and a URL whose files answer 404 |
 | `CAPTURE_JS` | syntax checked with `node --check` against the emitted file. Not executed |
 | `capture_machine_beat`, Playwright | **not run.** It first runs in CI, where the browser exists |
 
