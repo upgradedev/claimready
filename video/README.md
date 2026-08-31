@@ -17,7 +17,14 @@ video/
     02-publishes/       beat.json, narration.txt
     03-agent-fills/     beat.json, narration.txt, take.mp4   (recorded by the owner)
     ...
+    06b-declared-form/  beat.json, narration.txt, take.mp4   (recorded by the owner)
+    ...
 ```
+
+Beat order is directory order, sorted. That is why the declarative beat is called
+`06b-declared-form`: it has to sit between `06-refusal` and `07-human-files`, because
+`renderDeclaredForm` in `src/ui/render.js` disables every control on that form once the claim is
+filed, so after `07` there is nothing left to record.
 
 Everything the build writes goes to `tmp/video`, which the repository already ignores. Nothing
 generated is ever committed. The inputs are committed: the narration, the beat specifications, and
@@ -27,9 +34,18 @@ the owner's takes.
 
 **Machine beats** are captured here by Playwright driving the real deployed page at
 `CLAIMREADY_URL`. They are reproducible and they assert what has to be on screen. If the page stops
-registering its eight tools, `02-publishes` fails the build rather than being filmed in that state.
-The number spoken in the narration of that beat is therefore a measured number, not a claim: the
-capture step `expect_tool_count` fails if the page registers anything other than eight.
+registering its tools, `02-publishes` fails the build rather than being filmed in that state. The
+number spoken in the narration of that beat is therefore a measured number, not a claim: the capture
+step `expect_tool_count` fails if the page registers anything other than eight.
+
+**Two counts, and they are not the same count.** The status strip counts what the browser accepted
+right now, which is eight on a freshly loaded draft. The tools panel counts what the page publishes,
+which is ten: nine that register through `registerTool`, of which `get_assistance_options` only
+registers once the claim says the car cannot be driven, plus one declared by four attributes on a
+form in `index.html` that nothing registers at all. `01-problem` asserts the ten on the panel with
+no agent in the browser, and `02-publishes` asserts the eight on the strip and the panel reading
+`8 of 9 tools registered with your agent`, so both numbers are read off the deployed page rather
+than asserted here. `05-reconcile` is where a viewer sees the ninth register.
 
 **Owner beats** are an mp4 the owner records of their own screen while their own agent drives the
 page. That is the money shot for this entry, and it cannot run in CI: the ChatGPT desktop built in
@@ -111,8 +127,8 @@ they cannot be captured here.
 
 The narration is rendered first and its duration is measured from the encoded file. The picture is
 then cut to `ceil(audio * 30) / 30` seconds, so the video is at most one frame longer than the audio
-and never shorter. That is arithmetic, not a tolerance, which is why the measured drift across all
-eight beats is zero.
+and never shorter. That is arithmetic, not a tolerance, which is why the measured drift across
+every beat that has been rendered is zero.
 
 The picture follows the voice. The voice is never stretched to fit a picture.
 
@@ -137,7 +153,8 @@ python video/build_video.py --check-takes
 # the whole cut
 python video/build_video.py
 
-# one beat, after fixing one sentence or replacing one take
+# one beat, after fixing one sentence or replacing one take. It renders that beat and stops:
+# see the one beat contract below
 python video/build_video.py --beat 05-reconcile
 
 # gate the result, reading the encoded files rather than the plan
@@ -150,6 +167,41 @@ run the **Video** workflow, which installs ffmpeg and a browser inside the job a
 
 Without the secret the build stops and names it. There is no silent fallback, because a voiceless
 cut looks finished and is not.
+
+## The one beat contract
+
+Three files used to say three different things about `--beat`, and the disagreement was not
+academic. The builder rendered one beat and assembled nothing. The workflow rendered one beat,
+skipped the assembly and skipped the gate, and then ran an upload step and a "what happens next"
+step that were not guarded at all, so a one beat dispatch either failed on `if-no-files-found` or
+handed back whatever `cut.mp4` the cache had restored from an earlier run, beside a freshly rendered
+beat, with no gate having read that pair. This file said the cut was reassembled around the beat
+that changed, which it never was.
+
+One sentence now, stated in four places:
+
+> A --beat run renders one beat and never assembles or gates a cut, so nothing it produces may be uploaded.
+
+It lives once, as `ONE_BEAT_CONTRACT` in `sync_gate.py`. `build_video.py` imports it and prints it.
+`.github/workflows/video.yml` and [`docs/submission/video.md`](../docs/submission/video.md) carry it
+word for word.
+
+The safe behaviour is the one that ships, in three parts:
+
+- A one beat run **deletes** any `cut.mp4`, `captions.vtt`, `manifest.json` and `concat.txt` left in
+  the build directory by an earlier run, and says which files it removed. The per beat cache is left
+  alone, so the next full build still restores every beat it can.
+- In the workflow, the assembly step, the sync gate step, the upload of the cut and the upload
+  instructions are all guarded on `if: inputs.beat == ''`. A one beat dispatch gets its own
+  artifact, `claimready-beat-<id>`, carrying that beat and its captions and nothing else, plus a
+  step that says what it is not.
+- Check I of the sync gate asserts all of that: the sentence in every file that has to state it,
+  `ONE_BEAT_CONTRACT` named in the builder, and a guard on every step of the build job that could
+  hand back a cut. It reads no media, so it runs on every push inside `--selftest`, and it runs
+  first on a real gate so a broken contract is refused before `ffprobe` is asked anything.
+
+To ship, run the build with `beat` empty. That assembles every beat, restores the unchanged ones
+from the cache, and gates the result.
 
 ## The cap, and why it lives in two files
 
@@ -174,6 +226,7 @@ believes it.
 | F | beats make the cut | a cut that is not the beats that were gated |
 | G | total under cap | a cut at or over 170 seconds |
 | H | audible | a beat below the silence floor, which is what a lost narration looks like |
+| I | one beat contract | the builder, the workflow, this file and the runbook disagreeing about `--beat`, or a workflow step that could ship a cut losing its beat guard |
 
 ## Proof that the gate fails
 
@@ -187,7 +240,7 @@ and asserts it passes, because a gate that refuses everything is as useless as o
 nothing. It builds real encoded media with ffmpeg, needs no secret, no network and no deployed page,
 and it is the step that runs on every push.
 
-Run on 2026-08-27, all eight checks fired and the good tree passed:
+Re-run on 2026-08-31, after check I was added. Every check fired and both good trees passed:
 
 ```
   ok   A  the cap moved in one file only
@@ -198,11 +251,22 @@ Run on 2026-08-27, all eight checks fired and the good tree passed:
   ok   F  the cut does not match its beats
   ok   G  a cut longer than the cap
   ok   H  a beat with no voice on it
+  ok   I  a workflow step that could ship a cut with no beat guard
+  ok   I  the owner runbook not stating the contract
+  ok   I  the builder not carrying the one contract sentence
+  ok   I  the unbroken contract fixture passes
+  ok   I  this repository states the contract in 3 files and the builder, and guards 4 shipping step(s)
 
   ok   --  the unbroken fixture passes
 
 sync gate self test: PASS. Every check above was seen to fail, and the good tree passed.
 ```
+
+Check I found a real defect in its own first run, which is the only reason to trust it at all. Its
+first version looked for `sync_gate.py` and `build_video.py` anywhere in a workflow step, and it
+flagged the cache step, whose key hashes both of those files **by name**. Naming a file is not
+running it. `step_ships_a_cut` now requires the interpreter on the same line as the script, and the
+selftest run above is the one taken after that fix.
 
 ### One beat, broken by hand, once
 
@@ -279,7 +343,16 @@ to record.
 Measured 2026-08-27. Every number below came back from `ffprobe` through `video/sync_gate.py`, run
 against the encoded beat files.
 
-**Five of these rows are superseded.** The narration was rewritten on 2026-08-27, after the render,
+**Every row below is now historical, and one beat is missing from the table entirely.** On
+2026-08-31 the narration was rewritten again in `01`, `02`, `04`, `05` and `07`, the targets moved
+in `01`, `02`, `04`, `06` and `08`, and a ninth beat, `06b-declared-form`, was added and has never
+been rendered. So the cut row below is not this cut, and no replacement figure is invented. The
+targets now add to 166s against the 170s cap, which
+`python video/build_video.py --plan` prints on its first line.
+
+The paragraph that follows was written on 2026-08-28 and is kept because the reasoning still holds.
+
+**Five of these rows were superseded then, and more are now.** The narration was rewritten on 2026-08-27, after the render,
 to take a false sentence out of `04` and to rewrite `06` around the refusal the page now actually
 produces. It was rewritten again on 2026-08-28, in `05`, `06` and `07`, after a review found that
 `07` filed the claim over an insurer requirement `05` had just spent its whole length showing as
@@ -304,15 +377,23 @@ each of those beats now has more to say. The current numbers are the ones
 | `06-refusal` | 13s | 12.20s | 0.0 ms | 23s | no, rewritten twice, 34 words then, 52 now |
 | `07-human-files` | 12s | 11.60s | 0.0 ms | 16s | no, rewritten, 37 words then, 40 now |
 | `08-close` | 16s | 14.20s | 0.0 ms | 16s | yes |
-| **cut** | **145s** | **135.80s** | | **161s** | five of eight beats changed, so 135.80s is not this cut |
+| **cut** | **145s** | **135.80s** | | **166s over nine beats** | six of the nine changed and one did not exist, so 135.80s is not this cut |
 
 Two things still follow. The targets in `beat.json` are all a little longer than the narration on
 purpose, because a take that runs long is trimmed and a take that runs short is held on its last
-frame, which reads on screen as a freeze. Record long. And at 161s of targets against a 170s cap,
+frame, which reads on screen as a freeze. Record long. And at 166s of targets against a 170s cap,
 the cut has room even if every beat renders at its full target, which none of them does. The margin
-is 9s of targets rather than 16s, which is still comfortable because the finished length is the
-narration and the narration has always come in under its target. It is not comfortable enough to
-spend again without re-reading this paragraph.
+is 4s of targets rather than 9s, which is still comfortable because the finished length is the
+narration and the narration has always come in under its target by five to ten percent. It is not
+comfortable enough to spend again without re-reading this paragraph.
+
+Where the 5s that `06b-declared-form` needed came from, since the cap does not move: 2s off
+`01-problem`, which is atmosphere over the draft as the page boots it, three rows answered and seven
+reading `not set`, and was the beat doing the least work, 3s off
+`04-human-corrects` because a false clause came out of its narration, and 2s off `06-refusal` and
+1s off `08-close`, both of which had targets well above what their word counts imply. `02-publishes`
+kept its 15s while its narration got shorter. The cap in `sync_gate.py` and in the workflow is
+untouched at 170s.
 
 The measurement used stand in pictures, so it said nothing about what the beats look like. It said
 that the render path completes, that the sync arithmetic holds on real speech rather than on a test
@@ -321,8 +402,9 @@ tone, and that the finished length fitted the narration of the day.
 **That table is one render, not a constant.** Rendering the same `narration.txt` twice does not
 return the same duration: `07-human-files` came back at 11.60s in the run above and at 10.70s when
 it was rendered again later the same day, a difference of about eight percent. So treat every figure
-as a sample. The 34 seconds of headroom under the cap absorbs that variation many times over, which
-is the reason to keep the headroom rather than fill it. The beat cache means a beat that has already
+as a sample. The headroom under the cap, which is the gap between the finished narration and 170s
+rather than the 4s gap between the targets and 170s, absorbs that variation many times over, and
+that is the reason to keep it rather than fill it. The beat cache means a beat that has already
 been rendered keeps the audio it was rendered with, so a cut does not change length underneath you
 between runs.
 
@@ -332,11 +414,12 @@ Honest state, so nobody trusts a limb that has never moved.
 
 | Part | Evidence |
 | --- | --- |
-| narration, encode, fit, mux, captions, concat, gate | run end to end on real narration for all eight beats, 2026-08-27 |
+| narration, encode, fit, mux, captions, concat, gate | run end to end on real narration for the eight beats that existed on 2026-08-27. Six of the nine beats have been rewritten since, and `06b-declared-form` has never been rendered at all |
 | the trim branch of `fit_picture` | run, every beat in that dry run |
 | the freeze branch, `tpad=stop_mode=clone` | run against a deliberately short card, 0.0 ms drift |
 | the freeze guard past 1.5s | run through the real build path, refused with the take path named |
-| all eight gate checks | each seen to fail, and the good tree seen to pass |
+| all nine gate checks | each seen to fail, and the good tree seen to pass, 2026-08-31 |
+| check I, the one beat contract | run against this repository and against four fixture repositories: three broken one way each and refused, one whole and passed |
 | the camera digest in `beat_hash` | run, 2026-08-27. `index.html` was edited in place, the three machine beats were hashed before and after, all three moved, and the same beats hashed with the old function did not move. The file was put back byte for byte |
 | `verify_deployed` | run, 2026-08-27, against a stand in host on the filesystem. Seen to pass when the host, the tree and the named commit agree, and seen to refuse on each of: no commit named, the tree not being the named commit, the host serving one camera file as it was at `cfc5c0c`, and a camera file the host would not serve |
 | `verify_deployed` against the real host | **not run here.** `CLAIMREADY_URL` is not set on this machine. Its first real run is the workflow |

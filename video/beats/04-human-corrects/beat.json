@@ -2,21 +2,23 @@
   "id": "04-human-corrects",
   "title": "A person corrects something material",
   "kind": "owner",
-  "target_seconds": 25,
+  "target_seconds": 22,
   "take": "take.mp4",
   "record": {
-    "surface": "the same page, the same session, the conversation left alone while you use the page directly",
+    "surface": "the same page, the same session, the conversation left alone while you use the page directly. Keep the status strip and the WebMCP tools panel in frame as well as the Still drivable row, because the tool surface reacts to this edit inside this take",
     "prompts": [],
     "actions": [
       "read the draft revision number in the header out of shot before you start, so the before and after are both on the take",
-      "set the Still drivable row to No, using the control on the page",
+      "set the Still drivable row to No, it could not be driven, using the select on the page",
       "press Pin on that same row, so the lock state is visible"
     ],
     "must_show": [
       "the Still drivable row moving to No",
-      "the badge on that row changing to you",
+      "the badge on that row reading via page",
       "the draft revision number in the header stepping up",
-      "the pin control on that row reading as pinned"
-    ]
+      "the pin control on that row reading as pinned",
+      "the status strip count stepping from 8 tools registered to 9, the instant Still drivable becomes No"
+    ],
+    "note": "No agent patch is sent anywhere in this take, so no refusal can appear in it and the narration does not claim one. The refusal this entry turns on is produced in 06-refusal, where the planted note reaches the row that was pinned here. What this beat has to carry is the correction, the revision moving and the pin, because 06 has nothing to refuse without them. It also has to carry the tool surface changing, and that is not a preference either: registerToolSurface in src/webmcp/register.js subscribes to the store, so the ninth tool registers synchronously the moment this edit lands. The 8 to 9 transition therefore belongs to THIS take. 05-reconcile shows the strip already reading 9 and the agent explaining it, which is why 05 asks for the count as a state rather than as a change. Do not ask for the page announcement here. It goes to the live region, which the stylesheet clips to one pixel for screen readers, so it is never on camera. The visible evidence that a tool was published is the strip count here, and the reason line on the tool row in 05-reconcile."
   }
 }

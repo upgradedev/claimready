@@ -1,0 +1,25 @@
+{
+  "id": "06b-declared-form",
+  "title": "The other half of the standard",
+  "kind": "owner",
+  "target_seconds": 13,
+  "take": "take.mp4",
+  "record": {
+    "surface": "the same page and the same session, scrolled so the Supporting details form and the Draft revision number in the header are both in frame",
+    "prompts": [],
+    "actions": [
+      "read the draft revision number in the header out of shot before you start, so the before and after are both on the take",
+      "type a witness name into Name of the witness. Any short synthetic name will do, the whole file is invented",
+      "leave Draft revision your agent read empty, and let the hint beside it stay on camera. It is the box an agent fills and a person does not",
+      "press Add these details, with the pointer, slowly enough to see"
+    ],
+    "must_show": [
+      "the Supporting details form, with the witness box being typed into by hand",
+      "the hint under the revision box saying it is there for an agent and naming the revision the draft is at",
+      "the line under the button reading Recorded the name of the witness on the draft, submitted through the page UI, and naming the new revision",
+      "the draft revision number in the header stepping up",
+      "the optional group above the form opening by itself, with Witness name now carrying a value and a via page badge"
+    ],
+    "note": "This is a person using the form, and the narration says so: it names the four attributes as what publishes the form to an agent and stops there. It never says an agent was seen using it. The declarative API needs a browser that implements it, the ChatGPT desktop browser's support for it is unverified, and a take that depended on an agent submitting this form might not be recordable at all. The page prints the route it was submitted through, so the take carries that word for word rather than the narration asserting it. Record this BEFORE 07-human-files. renderDeclaredForm in src/ui/render.js disables every control on this form once the claim is filed, so after 07 the form cannot be submitted at all. The four attributes are markup and are not visible on a rendered page, so do not try to put them on camera. What is on camera is the form and what it did."
+  }
+}

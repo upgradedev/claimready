@@ -9,6 +9,14 @@ name: Video
 # The build spends money on narration, so it runs on demand. Every push runs the gate self test
 # instead, which needs no secret, no deployed page and no network, and which proves that each
 # assertion in video/sync_gate.py can still fail.
+#
+# THE ONE BEAT CONTRACT. A --beat run renders one beat and never assembles or gates a cut, so
+# nothing it produces may be uploaded. video/build_video.py, video/README.md and
+# docs/submission/video.md state the same sentence, and check I of video/sync_gate.py fails when
+# any of the four drifts, or when a step in the build job that could hand back a cut loses its
+# `if: inputs.beat == ''` guard. That guard is not cosmetic: without it a one beat dispatch
+# uploaded whatever cut the cache had restored from an earlier run, beside a freshly rendered
+# beat, with nothing having gated the pair.
 
 on:
   push:
@@ -17,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       beat:
-        description: "One beat id to re render, for example 05-reconcile. Leave empty to build every beat."
+        description: "One beat id to re render, for example 05-reconcile. A --beat run renders one beat and never assembles or gates a cut, so nothing it produces may be uploaded. Leave empty to build every beat, assemble and gate."
         type: string
         required: false
         default: ""
@@ -249,7 +257,11 @@ jobs:
         if: inputs.beat == ''
         run: python3 video/sync_gate.py
 
+      # Guarded, and check I of the sync gate fails if this guard is ever removed. A one beat run
+      # assembles nothing, so tmp/video/cut.mp4 here would be whatever the cache restored from an
+      # earlier run: an old cut beside a new beat, gated as a pair by nothing.
       - name: Upload the cut, the captions and every beat
+        if: inputs.beat == ''
         uses: actions/upload-artifact@v4
         with:
           name: claimready-video
@@ -262,8 +274,31 @@ jobs:
             tmp/video/beats/*/beat.mp4
             tmp/video/beats/*/captions.vtt
 
+      # The one beat run gets its own artifact, carrying only the beat that was named. It is not a
+      # deliverable and the next step says so. The builder has already deleted any cut, caption
+      # file and manifest left in the build directory, so there is nothing else here to pick up.
+      - name: Upload the one beat that was re rendered
+        if: inputs.beat != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: claimready-beat-${{ inputs.beat }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            tmp/video/beats/${{ inputs.beat }}/beat.mp4
+            tmp/video/beats/${{ inputs.beat }}/captions.vtt
+
       - name: What happens next
+        if: inputs.beat == ''
         run: |
           echo "Download the claimready-video artifact, upload cut.mp4 to YouTube, set the"
           echo "visibility to Public, and paste the watch link into docs/submission/video.md."
           echo "The readiness gate row D4 stays red until that link is in the file."
+
+      - name: What happens next, after one beat
+        if: inputs.beat != ''
+        run: |
+          echo "A --beat run renders one beat and never assembles or gates a cut, so nothing it"
+          echo "produces may be uploaded. Watch the beat in the claimready-beat artifact, and when"
+          echo "it is right, run this workflow again with beat empty. That run assembles every"
+          echo "beat, restores the unchanged ones from the cache, and gates the result."

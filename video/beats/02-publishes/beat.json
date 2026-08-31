@@ -25,6 +25,16 @@
         "count": 8
       },
       {
+        "do": "wait_text",
+        "selector": "[data-el=\"tools-count\"]",
+        "contains": "8 of 9 tools registered with your agent"
+      },
+      {
+        "do": "wait_text",
+        "selector": "[data-el=\"tools-count\"]",
+        "contains": "declared by a form in the page"
+      },
+      {
         "do": "wait",
         "ms": 2500
       },

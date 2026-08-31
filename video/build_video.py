@@ -24,13 +24,24 @@ voice. Nothing stretches the voice to fit a picture.
 
 Usage:
   python video/build_video.py                       build every beat and assemble the cut
-  python video/build_video.py --beat 05-reconcile   rebuild one beat, no assembly
+  python video/build_video.py --beat 05-reconcile   render one beat only, see the contract below
   python video/build_video.py --force               ignore the cache
   python video/build_video.py --plan                say what would be built, spend nothing
   python video/build_video.py --check-takes         list the owner takes that are missing
 
 Needs ffmpeg and ffprobe on PATH, node with playwright for machine beats, and ELEVENLABS_API_KEY
 for narration. Nothing is installed by this script. In CI the workflow provides all three.
+
+THE ONE BEAT CONTRACT, stated here, in the workflow, in video/README.md and in the runbook,
+and asserted by check I of video/sync_gate.py so the four can never drift apart again:
+
+  A --beat run renders one beat and never assembles or gates a cut, so nothing it produces
+  may be uploaded.
+
+The sentence lives once, as ONE_BEAT_CONTRACT in sync_gate.py, and is imported below. A one
+beat run also DELETES any cut, caption file and manifest left in the build directory by an
+earlier run, because a stale cut sitting beside a fresh beat, with nothing gating the pair,
+is the exact artifact somebody uploads by mistake.
 """
 
 import argparse
@@ -54,7 +65,13 @@ REPO = os.path.dirname(HERE)
 sys.dont_write_bytecode = True
 sys.path.insert(0, HERE)
 
-from sync_gate import MAX_TOTAL_SECONDS, FPS, probe_streams, write_vtt  # noqa: E402
+from sync_gate import (  # noqa: E402
+    MAX_TOTAL_SECONDS,
+    FPS,
+    ONE_BEAT_CONTRACT,
+    probe_streams,
+    write_vtt,
+)
 
 # Bump this when the render itself changes shape. It is part of every beat hash, so a change to the
 # pipeline invalidates the cache the same way a change to a narration line does.
@@ -982,9 +999,36 @@ def assemble(entries, out_root, url=None, sha=None, sources=None, camera=None):
 
 # ---------------------------------------------------------------------- main
 
+def discard_stale_cut(out_root):
+    """
+    Delete anything in the build directory that looks like a finished cut.
+
+    A --beat run rebuilds one beat and assembles nothing. Whatever cut, caption file and
+    manifest an earlier run left behind therefore describe a set of beats that no longer
+    exists on disk, and no gate has read that pair. Leaving them there is how a stale cut ends
+    up uploaded beside a freshly rendered beat, which is the one failure the beat input has
+    actually caused.
+
+    The per beat cache under <out>/cache is deliberately untouched. It is keyed on the beat
+    hash, so it is still correct, and clearing it would make the next full build re render
+    every beat and spend a narration credit on each one for nothing.
+
+    @param out_root the build directory
+    @returns the file names that were removed, in the order they were removed
+    """
+    removed = []
+    for name in ("cut.mp4", "captions.vtt", "manifest.json", "concat.txt"):
+        path = os.path.join(out_root, name)
+        if os.path.isfile(path):
+            os.remove(path)
+            removed.append(name)
+    return removed
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build the demo video, one beat at a time.")
-    parser.add_argument("--beat", default=None, help="rebuild one beat id and do not assemble")
+    parser.add_argument("--beat", default=None,
+                        help="render one beat id. " + ONE_BEAT_CONTRACT)
     parser.add_argument("--out", default=DEFAULT_OUT, help="build directory. Default <repo>/tmp/video")
     parser.add_argument("--url", default=os.environ.get("CLAIMREADY_URL", "").strip() or None,
                         help="the deployed page the machine beats are filmed against")
@@ -1122,9 +1166,22 @@ def main(argv=None):
     if single:
         print(f"building one beat into {args.out}\n")
         build_beat(single, args.out, args.url, args.force, sha, sources)
+        removed = discard_stale_cut(args.out)
+        print(f"\n{ONE_BEAT_CONTRACT}")
+        if removed:
+            print(
+                "\nA cut from an earlier run was sitting in this directory beside the beat "
+                "that was just rendered, so it was deleted rather than left to be picked up:"
+            )
+            for name in removed:
+                print(f"  removed {name}")
+            print(
+                "  the per beat cache was left alone, so the next full build still restores "
+                "every beat it can"
+            )
         print(
-            f"\nOne beat rebuilt. The cut was not assembled and the manifest was not touched, so "
-            f"run the whole build before gating:\n"
+            f"\nTo produce something that may be uploaded, assemble the whole cut and gate "
+            f"it:\n"
             f"  python video/build_video.py\n"
             f"  python video/sync_gate.py --root {args.out}"
         )

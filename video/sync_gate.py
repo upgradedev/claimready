@@ -21,6 +21,10 @@ What it asserts, and every one of these exits non zero on failure:
   G  total under cap    the cut, probed with ffprobe, is shorter than MAX_TOTAL_SECONDS.
   H  audible            every beat carries audio above the silence floor, so a build that lost its
                         narration fails here instead of shipping voiceless.
+  I  one beat contract  the builder, the workflow, video/README.md and the owner runbook all state
+                        the same thing about --beat, and every workflow step that could ship a cut
+                        is guarded so a one beat run cannot upload one. This check reads no media,
+                        so it runs before the media checks and on every push.
 
 Usage:
   python video/sync_gate.py                     gate the build in <repo>/tmp/video
@@ -58,6 +62,53 @@ SILENCE_FLOOR_DB = -50.0
 
 WORKFLOW_RELATIVE = os.path.join(".github", "workflows", "video.yml")
 WORKFLOW_KEY = "VIDEO_MAX_TOTAL_SECONDS"
+
+# --------------------------------------------------------- the one beat contract
+
+# THE SENTENCE, ONCE. The builder imports it, and check I asserts that the workflow, the pipeline
+# README and the owner runbook all carry it word for word.
+#
+# Three files used to say three different things about --beat. The builder rendered one beat and
+# assembled nothing. The workflow rendered one beat, skipped the assembly AND skipped the gate, and
+# then ran an unguarded upload step and an unguarded "what happens next" step that told the owner to
+# put cut.mp4 on YouTube. The runbook said the cut was reassembled around the beat that changed. So
+# a one beat dispatch either failed on if-no-files-found, or shipped a cache restored cut from an
+# older run beside a freshly rendered beat, with no gate having read that pair.
+#
+# The safe behaviour is the one that ships: a one beat run produces no cut at all. The builder now
+# deletes any cut, caption file and manifest left in the build directory, and the workflow uploads
+# only the one beat and says plainly that it is not a deliverable.
+ONE_BEAT_CONTRACT = (
+    "A --beat run renders one beat and never assembles or gates a cut, so nothing it produces "
+    "may be uploaded."
+)
+
+# The files that have to say it. Relative to the repository root.
+CONTRACT_FILES = (
+    os.path.join(".github", "workflows", "video.yml"),
+    os.path.join("video", "README.md"),
+    os.path.join("docs", "submission", "video.md"),
+)
+
+# The builder does not carry the sentence as a literal, it imports the name, so that is what is
+# looked for there. One sentence, one definition, four readers.
+BUILDER_RELATIVE = os.path.join("video", "build_video.py")
+
+# The guard every shipping step in the build job must carry.
+BEAT_GUARD = "if: inputs.beat == ''"
+
+# A step in the build job is treated as shipping a cut when it names the cut file, or when it RUNS
+# the gate or the assembling build.
+#
+# "Runs" is load bearing and was learned the hard way. The first version of this check looked for
+# the strings anywhere in the step, and flagged the cache step, whose key hashes 'video/sync_gate.py'
+# and 'video/build_video.py' by name. Naming a file is not running it. So a command line has to look
+# like one: it carries the interpreter as well as the script.
+CUT_FILE = "cut.mp4"
+INTERPRETER = "python"
+GATE_SCRIPT = "sync_gate.py"
+BUILDER_SCRIPT = "build_video.py"
+READ_ONLY_FLAGS = ("--check-takes", "--plan", "--capture-only")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -254,6 +305,170 @@ def read_workflow_cap(workflow_path):
             f"{sorted(values)}. Pick one.",
         )
     return values.pop()
+
+
+def workflow_build_steps(text):
+    """
+    The steps of the build job, split by hand.
+
+    There is no YAML parser here for the same reason there is no anything else here: this
+    repository installs nothing. read_workflow_cap already reads this file with a regex, and this
+    is the same trade. It is crude, and it is crude in the safe direction: a step it fails to
+    recognise is reported as unguarded rather than skipped.
+
+    @param text the whole workflow file
+    @returns a list of (name, body) for every step under jobs.build.steps
+    """
+    lines = text.splitlines()
+
+    start = None
+    for index, line in enumerate(lines):
+        if line.rstrip() == "  build:":
+            start = index
+            break
+    if start is None:
+        raise GateFailure("I", "the workflow has no build job, so nothing states the one beat "
+                               "contract in CI.")
+
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        line = lines[index]
+        if line.strip() and not line.startswith("   ") and line.startswith("  "):
+            end = index
+            break
+    job = lines[start:end]
+
+    steps = []
+    current = None
+    for line in job:
+        if line.startswith("      - "):
+            if current is not None:
+                steps.append(current)
+            current = [line]
+        elif current is not None:
+            current.append(line)
+    if current is not None:
+        steps.append(current)
+
+    out = []
+    for block in steps:
+        body = "\n".join(block)
+        name = ""
+        for line in block:
+            stripped = line.strip()
+            if stripped.startswith("- name:"):
+                name = stripped[len("- name:"):].strip()
+                break
+            if stripped.startswith("name:"):
+                name = stripped[len("name:"):].strip()
+                break
+        out.append((name or "an unnamed step", body))
+    if not out:
+        raise GateFailure("I", "the build job in the workflow has no steps this check could read.")
+    return out
+
+
+def step_ships_a_cut(body):
+    """
+    Whether a workflow step could put a finished cut in front of the owner.
+
+    Three ways it can: it names the cut file, it runs the gate, or it runs the builder in the mode
+    that assembles. A builder line carrying --beat, or one of the flags that render nothing, is not
+    one of them.
+
+    @param body the step, as text
+    @returns True when the step must carry the beat guard
+    """
+    if CUT_FILE in body:
+        return True
+    for line in body.splitlines():
+        if INTERPRETER not in line:
+            continue
+        if GATE_SCRIPT in line:
+            return True
+        if BUILDER_SCRIPT not in line:
+            continue
+        if "--beat" in line:
+            continue
+        if any(flag in line for flag in READ_ONLY_FLAGS):
+            continue
+        return True
+    return False
+
+
+def check_i_one_beat_contract(repo=None, workflow_path=None, verbose=True):
+    """
+    One contract, stated in four places, and enforced in the one place it can be broken.
+
+    This reads no media and needs no build, which is why it runs on every push rather than only
+    when somebody spends a narration credit.
+    """
+    root = repo or REPO
+    workflow = workflow_path or os.path.join(root, WORKFLOW_RELATIVE)
+
+    builder = os.path.join(root, BUILDER_RELATIVE)
+    if not os.path.isfile(builder):
+        raise GateFailure("I", f"{BUILDER_RELATIVE} is missing, so nothing implements --beat.")
+    with open(builder, "r", encoding="utf-8") as handle:
+        builder_text = handle.read()
+    if "ONE_BEAT_CONTRACT" not in builder_text:
+        raise GateFailure(
+            "I",
+            f"{BUILDER_RELATIVE} does not mention ONE_BEAT_CONTRACT, so the builder is free to "
+            f"tell the owner something the workflow and the runbook do not say. Import the name "
+            f"from sync_gate.py and print it on the one beat path.",
+        )
+
+    said = []
+    for relative in CONTRACT_FILES:
+        path = workflow if relative == WORKFLOW_RELATIVE else os.path.join(root, relative)
+        if not os.path.isfile(path):
+            raise GateFailure("I", f"{relative} is missing, and it is one of the files that has "
+                                   f"to state the one beat contract.")
+        with open(path, "r", encoding="utf-8") as handle:
+            text = handle.read()
+        if ONE_BEAT_CONTRACT not in text:
+            raise GateFailure(
+                "I",
+                f"{relative} does not carry the one beat contract word for word. It has to read: "
+                f"{ONE_BEAT_CONTRACT}",
+            )
+        said.append(relative)
+
+    with open(workflow, "r", encoding="utf-8") as handle:
+        workflow_text = handle.read()
+
+    unguarded = []
+    guarded = 0
+    for name, body in workflow_build_steps(workflow_text):
+        if not step_ships_a_cut(body):
+            continue
+        if BEAT_GUARD in body:
+            guarded += 1
+        else:
+            unguarded.append(name)
+
+    if unguarded:
+        raise GateFailure(
+            "I",
+            "these steps in the build job could hand back a cut and are not guarded on "
+            + repr(BEAT_GUARD)
+            + ", so a one beat dispatch would ship whatever cut an earlier run left in the cache:\n"
+            + "\n".join(f"  {name}" for name in unguarded),
+        )
+    if guarded == 0:
+        raise GateFailure(
+            "I",
+            "no step in the build job assembles, gates or uploads a cut. Either the workflow "
+            "stopped producing the deliverable, or this check stopped being able to see it.",
+        )
+
+    if verbose:
+        print(
+            f"I  one beat contract  stated in {len(said)} files and the builder, "
+            f"{guarded} shipping step(s) guarded"
+        )
+    return {"files": said, "guarded": guarded}
 
 
 def check_a_cap_agreement(workflow_path):
@@ -604,6 +819,49 @@ def make_fixture(root, beat_seconds=None, silent_beat=None, long_beat=None):
     return root
 
 
+def write_contract_fixture(root, guard_shipping_step=True, runbook_says_it=True,
+                           builder_names_it=True):
+    """
+    A tiny repository that satisfies check I, and three switches for breaking it.
+
+    Everything here is the smallest shape the check reads: a build job with one step that ships a
+    cut and one that does not, plus the three documents and the builder. Nothing in it is media,
+    because check I reads none.
+    """
+    workflow = os.path.join(root, WORKFLOW_RELATIVE)
+    os.makedirs(os.path.dirname(workflow), exist_ok=True)
+    guard = "        " + BEAT_GUARD + "\n" if guard_shipping_step else ""
+    with open(workflow, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            "name: fixture\n"
+            "# " + ONE_BEAT_CONTRACT + "\n"
+            "env:\n"
+            "  " + WORKFLOW_KEY + f": \"{MAX_TOTAL_SECONDS:g}\"\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: Render\n"
+            "        run: python3 video/build_video.py --check-takes\n"
+            "      - name: Upload the cut\n"
+            + guard +
+            "        run: echo tmp/video/cut.mp4\n"
+        )
+
+    for relative, body in (
+        (os.path.join("video", "README.md"), "# fixture\n\n" + ONE_BEAT_CONTRACT + "\n"),
+        (os.path.join("docs", "submission", "video.md"),
+         "# fixture\n\n" + (ONE_BEAT_CONTRACT if runbook_says_it else "one beat, no promises") + "\n"),
+        (BUILDER_RELATIVE,
+         "print(ONE_BEAT_CONTRACT)\n" if builder_names_it else "print('one beat')\n"),
+    ):
+        path = os.path.join(root, relative)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(body)
+    return root
+
+
 def write_workflow_stub(path, value):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
@@ -711,6 +969,48 @@ def selftest():
         make_fixture(silent, silent_beat=2)
         passed &= expect_failure("H", "a beat with no voice on it", silent, good_workflow)
 
+        # I: the one beat contract, broken three ways. This check reads no media, so it is proved
+        # against a tiny repository skeleton rather than against a build tree, and it is proved the
+        # same way as everything above: break it on purpose, and require it to refuse.
+        for index, (label, kwargs) in enumerate((
+            ("a workflow step that could ship a cut with no beat guard",
+             {"guard_shipping_step": False}),
+            ("the owner runbook not stating the contract", {"runbook_says_it": False}),
+            ("the builder not carrying the one contract sentence", {"builder_names_it": False}),
+        )):
+            broken = write_contract_fixture(
+                os.path.join(work, f"contract-broken-{index}"), **kwargs
+            )
+            try:
+                check_i_one_beat_contract(repo=broken, verbose=False)
+                print(f"  selftest FAIL  {label}: check I passed something it must refuse.")
+                passed = False
+            except GateFailure as failure:
+                if failure.check != "I":
+                    print(f"  selftest FAIL  {label}: expected check I, got {failure}")
+                    passed = False
+                else:
+                    print(f"  ok   I  {label}")
+                    print(f"       it said: {str(failure).splitlines()[0]}")
+
+        whole = write_contract_fixture(os.path.join(work, "contract-good"))
+        try:
+            check_i_one_beat_contract(repo=whole, verbose=False)
+            print("  ok   I  the unbroken contract fixture passes")
+        except GateFailure as failure:
+            print(f"  selftest FAIL  the unbroken contract fixture was refused: {failure}")
+            passed = False
+
+        # And the repository this file lives in, which is the one that ships.
+        try:
+            result = check_i_one_beat_contract(verbose=False)
+            print(f"  ok   I  this repository states the contract in "
+                  f"{len(result['files'])} files and the builder, and guards "
+                  f"{result['guarded']} shipping step(s)")
+        except GateFailure as failure:
+            print(f"  selftest FAIL  this repository breaks the one beat contract: {failure}")
+            passed = False
+
         # And the good tree, which must pass. A gate that fails everything is as useless as one
         # that passes everything.
         print()
@@ -725,7 +1025,12 @@ def selftest():
     if passed:
         print("sync gate self test: PASS. Every check above was seen to fail, and the good tree passed.")
         return 0
-    print("sync gate self test: FAIL. A check did not fire when it was supposed to.")
+    # Not "a check did not fire". This self test also fails when a check fires correctly and the
+    # tree it read is the thing that is wrong, and when a tree that had to pass was refused. A
+    # summary that always blamed the instrument would send the reader to sync_gate.py when the fix
+    # is in the workflow they just edited. The lines above say which of the two it was.
+    print("sync gate self test: FAIL. A line above marked selftest FAIL says which assertion "
+          "did not hold, and whether the instrument or the tree is the thing that is wrong.")
     return 1
 
 
@@ -754,6 +1059,9 @@ def main(argv=None):
         return 0
 
     try:
+        # Check I first. It reads no media, so a build that broke the one beat contract is refused
+        # before ffprobe is asked anything, and the reason names a file rather than a duration.
+        check_i_one_beat_contract(workflow_path=args.workflow)
         gate(args.root, args.workflow)
     except GateFailure as failure:
         print(f"sync gate: FAIL. {failure}", file=sys.stderr)

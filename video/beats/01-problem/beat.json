@@ -2,7 +2,7 @@
   "id": "01-problem",
   "title": "The intake that arrives wrong",
   "kind": "machine",
-  "target_seconds": 14,
+  "target_seconds": 12,
   "capture": {
     "viewport": {
       "width": 1440,
@@ -18,8 +18,13 @@
         "contains": "No agent detected"
       },
       {
+        "do": "wait_text",
+        "selector": "[data-el=\"tools-count\"]",
+        "contains": "10 tools this page publishes to an agent"
+      },
+      {
         "do": "wait",
-        "ms": 2000
+        "ms": 1500
       },
       {
         "do": "scroll_to",
@@ -27,7 +32,7 @@
       },
       {
         "do": "wait",
-        "ms": 4000
+        "ms": 3500
       },
       {
         "do": "scroll_to",
@@ -35,7 +40,7 @@
       },
       {
         "do": "wait",
-        "ms": 4000
+        "ms": 3500
       },
       {
         "do": "scroll_to",
@@ -43,7 +48,7 @@
       },
       {
         "do": "wait",
-        "ms": 8000
+        "ms": 7000
       }
     ]
   }
