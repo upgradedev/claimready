@@ -127,7 +127,21 @@ jobs:
         run: |
           npm install --no-save --no-package-lock --no-audit --no-fund \
             "playwright@${PLAYWRIGHT_VERSION}"
-          npx playwright install --with-deps chromium
+          npx playwright install-deps chromium
+
+      # The machine beats are filmed against the browser's own WebMCP implementation, not against
+      # a host of ours, so the capture needs a Chrome that carries the feature. Playwright's
+      # bundled Chromium is not guaranteed to, and a beat filmed without the API would show a page
+      # saying no agent is present. The capture asks Playwright for this channel by name and fails
+      # rather than falling back.
+      - name: Install the Chrome Dev channel, the build the capture drives
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/chrome-dev.deb \
+            https://dl.google.com/linux/direct/google-chrome-unstable_current_amd64.deb
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq /tmp/chrome-dev.deb
+          google-chrome-unstable --version
 
       - name: Film every machine beat
         env:
@@ -208,7 +222,21 @@ jobs:
         run: |
           npm install --no-save --no-package-lock --no-audit --no-fund \
             "playwright@${PLAYWRIGHT_VERSION}"
-          npx playwright install --with-deps chromium
+          npx playwright install-deps chromium
+
+      # The machine beats are filmed against the browser's own WebMCP implementation, not against
+      # a host of ours, so the capture needs a Chrome that carries the feature. Playwright's
+      # bundled Chromium is not guaranteed to, and a beat filmed without the API would show a page
+      # saying no agent is present. The capture asks Playwright for this channel by name and fails
+      # rather than falling back.
+      - name: Install the Chrome Dev channel, the build the capture drives
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/chrome-dev.deb \
+            https://dl.google.com/linux/direct/google-chrome-unstable_current_amd64.deb
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq /tmp/chrome-dev.deb
+          google-chrome-unstable --version
 
       # Keyed on the beat inputs, so a run that changed one narration file re renders one beat and
       # restores the other seven. This is what makes a one beat fix cost one beat in CI too.
