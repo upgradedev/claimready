@@ -1,1 +1,1 @@
-Both halves of the standard ship here. This is an ordinary form. Four attributes publish it to an agent, the browser builds the schema from the markup, and my answer goes through the same rules.
+Both halves of the standard ship here. This is an ordinary form. Four attributes publish it to an agent, and Chrome builds the schema from that markup. My answer goes through the same rules.
