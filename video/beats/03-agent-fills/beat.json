@@ -8,14 +8,16 @@
     "surface": "the deployed page open in the ChatGPT desktop built in browser, signed in to your own account, with the claim draft visible beside the conversation",
     "prompts": [
       "Read this claim page and tell me what it still needs from me.",
-      "A delivery van reversed into my left front wing while the car was parked in the car park on Harbour Road. It is a dent at the 10 o'clock position and the car still drives. Fill that in for me and write the description."
+      "A delivery van reversed into my car while it was parked in the car park on Harbour Road. It caught the left front wing and left a dent. The car still drives, and it is still there in the Harbour Road car park. Fill that in for me and write the description."
     ],
     "must_show": [
       "the status strip reading 8 tools registered, and the API name it found",
       "the tool call ledger filling with read_claim_state, get_requirements and apply_claim_patch",
       "claim rows changing from not set to a value, each with the via tool badge",
+      "the damage position row reading 10 o'clock, left front wing, which nobody typed",
+      "where it happened carrying the car park, with a via tool badge. Open Optional details at the end of the take if it has not opened by itself, because without that row the session cannot file",
       "the draft revision number in the header rising as the patches land"
     ],
-    "note": "The badge words are via tool and via page, not agent and you. BADGE_WORDS in src/ui/render.js names the SURFACE an answer arrived on, deliberately, because the page cannot know who was at the keyboard: an agent that drives a control rather than calling a tool is recorded the same way a person is. The narration says the same thing the badge says and claims nothing about authorship."
+    "note": "TWO THINGS ABOUT THE CLAIMANT SENTENCE, AND BOTH ARE THE BEAT. It never says 10 o'clock: an earlier version did, which put the insurer's vocabulary in the claimant's mouth and left the agent nothing to translate, so the row filled by copying. A person says the left front wing. The clock face is the insurer's, it lives in the tool's enum and in the row's own label, and watching a model cross that gap is the thing worth filming. And it says where the car is, which is not padding: answering that the car cannot be driven in beat 04 raises the roadside collection AND the collection address, the address is a field, and without it beat 07 presses the roadside control and File this claim stays disabled. That is how the first attempt at filming this stopped. tests/unit/beat_metadata.test.js holds this file and the runbook to the same sentence, and tests/unit/filmed_journey.test.js runs the whole sequence three times. The badge words are via tool and via page, not agent and you: BADGE_WORDS in src/ui/render.js names the SURFACE an answer arrived on, because the page cannot know who was at the keyboard."
   }
 }
