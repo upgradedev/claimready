@@ -1,7 +1,7 @@
 # ClaimReady, motor first notice of loss
 
-The insurer's page hands your own agent its policy rules as typed tools, so you learn what you
-are covered for while you are still describing the crash.
+The insurer's page hands your own agent its rules as typed tools, so you learn what you
+are covered for while still describing the crash.
 
 Live, no account: https://upgradedev.github.io/claimready/
 Code: https://github.com/upgradedev/claimready
@@ -29,12 +29,22 @@ this insurer in advance, and says what a service offers, never what it offers ri
 
 ## A better experience
 
-The driver hears what their policy says, not after a call queue and a letter. Every field shows the
-route its answer arrived on, via page or via tool, and any row can be pinned so no patch moves it.
+The driver hears what their policy says, not after a call queue and a letter. Every answer on the
+draft carries the route it arrived on. on file is what the insurer already had, via page came
+through a control on this page, via tool came through a WebMCP call. A field nobody has answered
+reads not set. Any row can be pinned so no patch moves it.
+
+That badge names a surface, and it is worth saying what it does not name. The page cannot see who
+is at the keyboard, so an agent that clicks a control instead of calling a tool is recorded via
+page exactly as a person is. A tool call records the word the caller used for itself, and nothing
+here authenticates that word. It is a route, not an identity, and the badge says so when you hover
+it.
 
 Filing leaves something behind: a handler packet built from that exact revision, carrying the
 facts, the clause and excess, every requirement with what answered it, the pinned rows, the tool
-calls and a SHA-256 that scripts/verify_packet.mjs recomputes.
+calls and a SHA-256 that scripts/verify_packet.mjs recomputes. That script shares a module with
+the thing that made the digest, so docs/handler-verification.md gives two routes that share
+nothing with it, and one worked example where all three agree.
 
 ## What people and agents can do together that was difficult or impossible before
 
@@ -68,3 +78,20 @@ for comes back PATCH_REJECTED_LOCKED.
 Insurer, policy, vehicle and claimant are invented. No integration, no adjudication. Nobody has run
 this on real intakes, so there is no measurement of claims arriving more complete and I have not
 invented one.
+
+## Display title, three options. Not chosen
+
+The submission form needs one display title and none of these is picked. The owner chooses, and
+until then no file in this repository names one as the title.
+
+1. ClaimReady
+   Leads with the name alone. Aimed at a judge who checks that the entry, the repository and the
+   live page are one thing, and who will search the name and find the unrelated products.
+
+2. ClaimReady, the insurer hands your agent its policy rules
+   Leads with the mechanism. Aimed at a judge skimming a gallery who has a few seconds and needs
+   to see what WebMCP is doing here before they open anything.
+
+3. ClaimReady, first notice of loss for the driver at the roadside
+   Leads with the buyer and the moment. Aimed at a judge scoring impact, who wants to know whose
+   problem this is before they judge whether the mechanism is worth it.

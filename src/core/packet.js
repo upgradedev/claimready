@@ -329,5 +329,13 @@ export function packetAsMarkdown(content, digest) {
   }
 
   lines.push('Verify the digest with: `node scripts/verify_packet.mjs <this packet as JSON>`');
+  lines.push('');
+  // A HANDLER HOLDING THIS DOES NOT HOLD THE REPOSITORY. The line above is the only route this
+  // document used to offer, and it asks a stranger to fetch our code and run it, which is us
+  // marking our own work. The page it now names is a specification of the canonical form with two
+  // routes written from it, so the check survives being separated from us.
+  lines.push('Or with no copy of this repository at all. `docs/handler-verification.md` states the '
+    + 'canonical form in five rules and gives a plain Node route and a plain Python route that '
+    + 'recompute the digest from those rules, importing nothing from here.');
   return `${lines.join('\n')}\n`;
 }

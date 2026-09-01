@@ -1,0 +1,158 @@
+{
+  "content": {
+    "claim": {
+      "damage_zone": {
+        "label": "where the impact was",
+        "value": 10
+      },
+      "description": {
+        "label": "your account of what happened",
+        "value": "A delivery van reversed into the left front wing while parked."
+      },
+      "driver": {
+        "label": "who was driving",
+        "value": "Maria K."
+      },
+      "incident_date": {
+        "label": "the date it happened",
+        "value": "2026-08-20"
+      },
+      "incident_type": {
+        "label": "what kind of incident it was",
+        "value": "collision"
+      },
+      "location": {
+        "label": "where it happened",
+        "value": "Car park on Harbour Road"
+      },
+      "severity": {
+        "label": "how bad the damage is",
+        "value": "dent"
+      },
+      "vehicle_drivable": {
+        "label": "whether the car still drives",
+        "value": false
+      }
+    },
+    "coverage": {
+      "clause": "OD-4.1",
+      "covered": true,
+      "currency": "EUR",
+      "deductible": 250,
+      "exclusions": [],
+      "reason": "A collision claim is covered under Own damage, clause OD-4.1. You pay the first 250 EUR as the excess.",
+      "recomputed_from": "the filed claim and the loaded rule pack, not from the page"
+    },
+    "filed": {
+      "at": "2026-09-01T09:15:00.000Z",
+      "revision": 4,
+      "through": "a control on the page. Filing is not exposed as a WebMCP tool."
+    },
+    "human_actions_completed": [
+      "roadside_collection"
+    ],
+    "kind": "claimready.fnol.packet",
+    "notice": "Synthetic, export ready FNOL packet. No insurer backend is connected and nothing was sent anywhere. Every name, policy number and vehicle in it is invented for this demonstration.",
+    "pinned_by_the_claimant": [
+      "vehicle_drivable"
+    ],
+    "policy": {
+      "insurer": "Northwind Mutual",
+      "number": "MTR-2026-0417",
+      "pack_contract": "claim-intake.v1",
+      "pack_id": "northwind",
+      "pack_period": {
+        "clause": "PL-1.2",
+        "end": "2026-12-31",
+        "start": "2026-01-01"
+      },
+      "pack_product": "Motor Comprehensive"
+    },
+    "provenance": {
+      "damage_zone": "via tool",
+      "description": "via tool",
+      "driver": "policy",
+      "incident_date": "policy",
+      "incident_type": "policy",
+      "location": "via tool",
+      "severity": "via tool",
+      "vehicle_drivable": "via page"
+    },
+    "reference": "CR-MTR-2026-0417-R4",
+    "requirements": [
+      {
+        "answered_by_field": "incident_date",
+        "answered_by_person": null,
+        "id": "date_of_loss",
+        "label": "The date the incident happened",
+        "satisfied": true
+      },
+      {
+        "answered_by_field": "description",
+        "answered_by_person": null,
+        "id": "claimant_account",
+        "label": "Your own account of what happened",
+        "satisfied": true
+      },
+      {
+        "answered_by_field": "damage_zone",
+        "answered_by_person": null,
+        "id": "impact_position",
+        "label": "Where on the car the impact landed",
+        "satisfied": true
+      },
+      {
+        "answered_by_field": "severity",
+        "answered_by_person": null,
+        "id": "damage_severity",
+        "label": "How heavy the damage is",
+        "satisfied": true
+      },
+      {
+        "answered_by_field": "vehicle_drivable",
+        "answered_by_person": null,
+        "id": "drivable_status",
+        "label": "Whether the car can still be driven",
+        "satisfied": true
+      },
+      {
+        "answered_by_field": null,
+        "answered_by_person": "a person presses Request roadside assistance on this page. There is no tool for it, so an agent has to ask the claimant to do it.",
+        "id": "roadside_collection",
+        "label": "Roadside collection for a car that cannot be driven",
+        "satisfied": true
+      },
+      {
+        "answered_by_field": "location",
+        "answered_by_person": null,
+        "id": "collection_address",
+        "label": "Where the car is now, so it can be collected",
+        "satisfied": true
+      }
+    ],
+    "synthetic": true,
+    "tool_calls": [
+      {
+        "at": "09:12:10",
+        "code": null,
+        "refused": false,
+        "tool": "read_claim_state"
+      },
+      {
+        "at": "09:13:41",
+        "code": "PATCH_REJECTED_LOCKED",
+        "refused": true,
+        "tool": "apply_claim_patch"
+      },
+      {
+        "at": "09:14:02",
+        "code": null,
+        "refused": false,
+        "tool": "validate_claim"
+      }
+    ],
+    "version": 1
+  },
+  "content_digest": "sha256:ccc10dfbcb21853e30bca4042208e85e5c4984fed3d8e4a2d0d099169df3de46",
+  "generated_at": "2026-09-01T09:15:31.000Z"
+}

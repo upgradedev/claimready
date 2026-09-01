@@ -95,7 +95,15 @@ const BADGE_TITLES = {
   human: 'This answer arrived through a control on this page. That is the surface it came in on, '
     + 'not who was at the keyboard: an agent that drives the page rather than calling a tool '
     + 'arrives this way too.',
-  agent: 'This answer arrived through a tool call, and the call is in the ledger below.',
+  // THE SAME CAVEAT AS THE HUMAN BADGE, AND FOR THE SAME REASON. The description says every badge
+  // says on hover that it names a route rather than an identity. That was true of this one's
+  // sibling and not of this one, which made a sentence in the primary judge-facing document false
+  // about half the surface it described. A tool call carries the word the caller used for itself
+  // and nothing here authenticates that word, so the badge says so rather than the document
+  // claiming it does.
+  agent: 'This answer arrived through a tool call, and the call is in the ledger below. That is '
+    + 'the surface it came in on, not who called it: the caller names itself and nothing here '
+    + 'checks that name.',
   policy: 'This answer was already on file when the page opened.',
   derived: 'This answer was worked out by the page.',
   none: 'Nothing has answered this yet.'

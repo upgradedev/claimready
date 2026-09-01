@@ -37,7 +37,7 @@ import {
 } from '../core/packet.js';
 import { checkCoverage } from '../core/coverage.js';
 import { estimateRepair } from '../core/estimate.js';
-import { loadPolicyPack, describePack } from '../core/policy.js';
+import { loadPolicyPack, describePack, planPackManifest } from '../core/policy.js';
 import { deriveRequirements, outstandingRequirements, summariseRequirements } from '../core/requirements.js';
 
 import { createView } from './render.js';
@@ -314,7 +314,14 @@ async function boot() {
       ? fixture.available_packs
       : FALLBACK_FIXTURE.available_packs;
 
-    const results = await Promise.all(listed.map((entry) => fetchPack(entry)));
+    // The list itself is checked before anything is fetched, because some of what can be wrong with
+    // it is about the list rather than about any one file. planPackManifest states the rules and
+    // says why. An entry it refuses is carried on as a pack that did not load, which is a state this
+    // page already draws, rather than being dropped: a row that vanishes tells a reader nothing.
+    const planned = planPackManifest(listed);
+    const results = await Promise.all(planned.map((entry) => (entry.refusal
+      ? { id: entry.id, path: entry.path, pack: null, error: entry.refusal, label: entry.id }
+      : fetchPack(entry))));
     for (const entry of results) packs.set(entry.id, entry);
 
     // The sample file names the pack this customer is on. A pack that failed to load cannot be the
@@ -334,7 +341,9 @@ async function boot() {
     try {
       const response = await fetch(path, { cache: 'no-store' });
       if (!response.ok) throw new Error(`status ${response.status}`);
-      const pack = loadPolicyPack(await response.json());
+      // The manifest's id goes in, so a file that calls itself something else is refused here
+      // rather than answering under a name the page took from the list. See loadPolicyPack.
+      const pack = loadPolicyPack(await response.json(), { expectedId: id });
       return { id, path, pack, error: null, label: pack.insurer };
     } catch (error) {
       return { id, path, pack: null, error: error && error.message ? error.message : String(error), label: id };
