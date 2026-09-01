@@ -21,30 +21,55 @@ and the path to save to.
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
-| Freeze commit | `9b64fb2`. Declared 2026-09-01, before any take was shot |
+| Freeze commit | `c93b138`. Declared 2026-09-02, before any take was shot. It supersedes `9b64fb2`, and the reason is recorded below |
 
 ## The freeze, declared before the takes
 
-**Freeze commit: `9b64fb2`.** Everything the page loads is at that commit. It was verified against
-the live host on 2026-09-01 with
+**Freeze commit: `c93b138`.** Everything the page loads is at that commit. Verified against the live
+host on 2026-09-02 with
 
 ```sh
-python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha 9b64fb2
+python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha c93b138
 ```
 
-which printed `the deployed page is 9b64fb2, on every one of those files` and exited 0. All 26 of
+which printed `the deployed page is c93b138, on every one of those files` and exited 0. All 26 of
 them, the three insurer and demo JSON fixtures among them.
 
-**What may still change after this line, and what may not.** Commits after `9b64fb2` may touch
+**Native evidence against that same commit**, rather than against an earlier one:
+[run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732), `headSha`
+`c93b138`, `Passed steps: 16/16 across 3 case(s)`, the negative control `7/8` with the verdict
+`PROVEN`, and our own probe `probe: PASS. 71 checks against the deployed page, none failed`.
+
+### The unfreeze that produced this one, recorded as this file requires
+
+The previous freeze was **`9b64fb2`, declared 2026-09-01**. It was broken deliberately on
+2026-09-01, before any take was shot, and the reason is the first of the three this file allows: a
+judge-facing statement that was false.
+
+**The defect.** `src/core/coverage.js` returns `provisional: true` for a covered claim whose driver
+is not yet named. The page drew `Covered, provisionally` and `check_coverage` answered
+`COVERED, PROVISIONALLY`, while `src/core/packet.js` carried no reference to `provisional` at all
+and sealed a flat `covered` inside a SHA-256 digest. So the artifact a handler receives contradicted
+the page it came from, and the digest made it look settled.
+
+**A second runtime defect was closed in the same unfreeze**: filing failed open when the
+authoritative home insurer was missing, so a policy the file says is with one insurer could be filed
+under another's rules.
+
+**Which takes it invalidates: none.** No take had been recorded. The six owner takes are still to be
+shot, and they are shot against `c93b138`.
+
+**What may still change after this line, and what may not.** Commits after `c93b138` may touch
 documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/` or
 `fixtures/`, because those are the 26 files the page serves and the takes are shot against them.
-The command above is how anyone checks that promise was kept: run it with `9b64fb2` after any later
+The command above is how anyone checks that promise was kept: run it with `c93b138` after any later
 commit and it still has to exit 0.
 
-**Unfreezing needs a stated reason and only three of them count**: a judge-facing statement that is
-false, a mandatory deliverable that is broken, or a rule violation that risks disqualification. Not
-making something better. To unfreeze, write the defect here, say which takes it invalidates, then
-re-freeze at the new commit and record the new SHA beside `9b64fb2` rather than replacing it.
+**Unfreezing again needs a stated reason and only three of them count**: a judge-facing statement
+that is false, a mandatory deliverable that is broken, or a rule violation that risks
+disqualification. Not making something better. To unfreeze, write the defect here, say which takes
+it invalidates, then re-freeze at the new commit and record the new SHA beside the old ones rather
+than replacing them.
 
 **No gate has passed on a cut, because there is no cut.** What has passed is
 `python video/sync_gate.py --selftest`, which builds its own small media with ffmpeg and proves each
