@@ -502,3 +502,23 @@ test('get_assistance_options keeps its closing caveat under a crowded pack', asy
   assert.ok(said.length <= 1500, `the result is ${said.length} characters, over the tool budget`);
   assert.match(said, /not a booking and not a decision about the claim/);
 });
+
+// THE ONE FIELD WHOSE VALUES ARE A CONVENTION RATHER THAN A WORD.
+//
+// Found by watching a model fail at it. In a run of the impact harness a model was told "it caught
+// the left front wing" and left damage_zone empty, while the same model filled it in against a form
+// that spelled the clock out. The page's own select had always said "10 o'clock, left front wing";
+// the tool surface said only that the field was required. That is this entry's whole claim failing
+// in miniature, because the page is meant to hand the agent the insurer's vocabulary and it was
+// keeping this piece of it on screen.
+test('the requirement that wants a clock position tells an agent what the clock means', async () => {
+  const said = await run(getRequirementsTool, makeContext({ incident_type: 'collision' }), { include: 'all' });
+
+  assert.match(said, /clock hours seen from above with 12 at the front/);
+  assert.match(said, /10 is the left front wing/);
+  assert.equal(
+    said.split('\n').filter((line) => /clock hours/.test(line)).length,
+    1,
+    'the convention is stated once, beside the field that needs it, and nowhere else',
+  );
+});

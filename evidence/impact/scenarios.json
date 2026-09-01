@@ -1,0 +1,78 @@
+{
+  "contract": "claimready.impact.scenarios.v1",
+  "written_before_any_run": "2026-09-01",
+  "note": "Six synthetic incidents, written the way a driver would say them out loud. The truth sheet beside each one is what a correct draft has to contain, decided here rather than after seeing what any model produced. Nothing in these is real: no policy, no vehicle, no person, no place beyond an invented street.",
+  "scenarios": [
+    {
+      "id": "S1-carpark-dent",
+      "brief": "A delivery van reversed into my car while it was parked in the car park on Harbour Road. It caught the left front wing and left a dent. The car still drives, and it is still there in the Harbour Road car park.",
+      "truth": {
+        "incident_type": "collision",
+        "damage_zone": 10,
+        "severity": "dent",
+        "vehicle_drivable": true,
+        "location_mentions": ["harbour road"]
+      },
+      "why_this_one": "The common case, and the one the page opens on. Nothing conditional fires."
+    },
+    {
+      "id": "S2-rear-scratch",
+      "brief": "Someone backed into me at the supermarket and scraped the rear bumper. It is a scratch, nothing worse. The car is fine to drive and it is on my drive at home now.",
+      "truth": {
+        "incident_type": "collision",
+        "damage_zone": 6,
+        "severity": "scratch",
+        "vehicle_drivable": true,
+        "location_mentions": ["drive", "home"]
+      },
+      "why_this_one": "A different panel and the lightest severity, so a run cannot pass by memorising S1."
+    },
+    {
+      "id": "S3-undrivable-front",
+      "brief": "I hit a bollard head on coming out of a junction. The front is caved in and the car will not drive, it is sitting at the junction of Mill Lane and Rope Street where it stopped.",
+      "truth": {
+        "incident_type": "collision",
+        "damage_zone": 12,
+        "severity": "structural",
+        "vehicle_drivable": false,
+        "location_mentions": ["mill lane", "rope street"]
+      },
+      "why_this_one": "The car is off the road AND the damage is structural, so Northwind raises the roadside collection, the collection address and the police report reference at once. A static form knows about none of the three."
+    },
+    {
+      "id": "S4-undrivable-side",
+      "brief": "A car came through a give way sign and hit my passenger side. The wheel is pointing the wrong way and I cannot drive it. It is outside number 40 on Cross Street.",
+      "truth": {
+        "incident_type": "collision",
+        "damage_zone": 3,
+        "severity": "structural",
+        "vehicle_drivable": false,
+        "location_mentions": ["cross street"]
+      },
+      "why_this_one": "The same conditional pair as S3 from a different side of the car, so the result is not one scenario's accident."
+    },
+    {
+      "id": "S5-theft",
+      "brief": "My car was taken overnight from the street outside my house. I reported it to the police this morning and they gave me a reference, CR-4471-B. There is nothing to describe about damage because the car is gone.",
+      "truth": {
+        "incident_type": "theft",
+        "vehicle_drivable": null,
+        "police_report_mentions": ["cr-4471-b"],
+        "location_mentions": ["street", "house"]
+      },
+      "why_this_one": "Theft is the case where Northwind asks for a police report reference and does not ask where the impact landed. It is also the case the original filing defect got wrong."
+    },
+    {
+      "id": "S6-structural-drivable",
+      "brief": "A lorry clipped my nearside rear as it pulled out. The panel is pushed in badly and the door frame is bent, but I drove it home and it is on my drive.",
+      "truth": {
+        "incident_type": "collision",
+        "damage_zone": 8,
+        "severity": "structural",
+        "vehicle_drivable": true,
+        "location_mentions": ["drive", "home"]
+      },
+      "why_this_one": "Structural damage on a car that still drives. The police report requirement fires on severity alone, and the collection requirements do not, which no static form can distinguish."
+    }
+  ]
+}
