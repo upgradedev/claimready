@@ -1,0 +1,54 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S1-carpark-dent",
+  "arm": "published-rules",
+  "repeat": 3,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:40:39.650Z",
+  "finished": "2026-09-01T07:41:41.836Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "description": "A delivery van reversed into my car while it was parked in the car park on Harbour Road. It caught the left front wing and left a dent. The car still drives, and it is still there in the Harbour Road car park.",
+    "severity": "dent",
+    "vehicle_drivable": true,
+    "location": "car park on Harbour Road",
+    "damage_zone": 10
+  },
+  "turns": 6,
+  "tool_calls": [
+    {
+      "tool": "read_claim_state",
+      "args": "{}",
+      "refused": false,
+      "answered": "Claim draft on policy MTR-2026-0417, revision 0, status draft.\nStill missing: damage_zone, severity, vehicle_drivable, description.\nincident_date = \"2026-08-20\" (already on file when the page opened)\nincident_type = \"collision\" (already on file when the page opened)\ndamage_zone = empty, required\nseverity = empty, required\nvehicle_drivable = empty, required\ndescription = empty, required\ndriver = \"M"
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\":0,\"changes\":[{\"field\":\"description\",\"value\":\"A delivery van reversed into my car while it was parked in the car park on Harbour Road. It caught the left front wing and left a dent. The car still drives, and it is still there in the Harbour Road car park.\"},{\"field\":\"severity\",\"value\":\"dent\"},{\"field\":\"vehicle_drivable\",\"value\":true},{\"field\":\"location\",\"value\":\"car park on Harbour Road\"}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 1.\nSet description (209 characters stored), severity to \"dent\", vehicle_drivable to true, location (24 characters stored).\nStill missing: damage_zone.\nThe draft cannot be filed yet: FILE_REFUSED_INCOMPLETE. Call validate_claim for the reason in full.\n1 of 5 intake requirements are still open: Where on the car the impact landed.\nCall get_requirements if that li"
+    },
+    {
+      "tool": "get_requirements",
+      "args": "{\"include\":\"outstanding\"}",
+      "refused": false,
+      "answered": "Northwind Mutual intake rules, claim revision 1. 1 of 5 requirement(s) still open.\n- impact_position: Where on the car the impact landed\n  Answered by sending damage_zone with apply_claim_patch. Positions are clock hours seen from above with 12 at the front: 12 is the front centre, 3 is the right side, 6 is the rear centre, 9 is the left side, 10 is the left front wing. Brought in by incident_type"
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\":1,\"changes\":[{\"field\":\"damage_zone\",\"value\":10}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 2.\nSet damage_zone to 10.\nNothing required is missing.\nThe draft can be filed now. Tell the person on the page that they can press File this claim.\nAll 5 intake requirements are answered.\nCall get_requirements if that list has changed since you last looked.\nSend baseRevision 2 on your next patch, or read the claim again first if you want to see what else moved"
+    },
+    {
+      "tool": "validate_claim",
+      "args": "{}",
+      "refused": false,
+      "answered": "READY TO FILE at revision 2.\nWhy: The draft is complete. Filing is yours to do.\nThis insurer's intake requirements are all answered as well.\nTell the person on the page that they can press File this claim. Filing is a control on this page and is not exposed as a WebMCP tool."
+    }
+  ],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

@@ -1,0 +1,23 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S5-theft",
+  "arm": "static-form",
+  "repeat": 2,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:56:57.706Z",
+  "finished": "2026-09-01T07:57:37.491Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "incident_type": "theft",
+    "vehicle_drivable": "no",
+    "description": "My car was taken overnight from the street outside my house. I reported it to the police this morning; ref CR-4471-B. There is nothing to describe about damage because the car is gone.",
+    "location": "street outside my house",
+    "police_report_ref": "CR-4471-B"
+  },
+  "turns": 1,
+  "tool_calls": [],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

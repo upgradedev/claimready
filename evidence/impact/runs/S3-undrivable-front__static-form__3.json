@@ -1,0 +1,25 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S3-undrivable-front",
+  "arm": "static-form",
+  "repeat": 3,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:49:02.002Z",
+  "finished": "2026-09-01T07:49:24.657Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "incident_type": "collision",
+    "damage_zone": 12,
+    "severity": "structural",
+    "vehicle_drivable": "no",
+    "description": "Hit a bollard head-on coming out of a junction. Front is caved in and the car will not drive.",
+    "driver": "me",
+    "location": "Junction of Mill Lane and Rope Street"
+  },
+  "turns": 1,
+  "tool_calls": [],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

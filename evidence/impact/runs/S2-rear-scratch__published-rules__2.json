@@ -1,0 +1,47 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S2-rear-scratch",
+  "arm": "published-rules",
+  "repeat": 2,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:43:10.753Z",
+  "finished": "2026-09-01T07:43:54.733Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "severity": "scratch",
+    "vehicle_drivable": true,
+    "description": "Someone backed into me at the supermarket and scraped the rear bumper. It is a scratch, nothing worse. The car is fine to drive and it is on my drive at home now.",
+    "damage_zone": 6
+  },
+  "turns": 5,
+  "tool_calls": [
+    {
+      "tool": "read_claim_state",
+      "args": "{}",
+      "refused": false,
+      "answered": "Claim draft on policy MTR-2026-0417, revision 0, status draft.\nStill missing: damage_zone, severity, vehicle_drivable, description.\nincident_date = \"2026-08-20\" (already on file when the page opened)\nincident_type = \"collision\" (already on file when the page opened)\ndamage_zone = empty, required\nseverity = empty, required\nvehicle_drivable = empty, required\ndescription = empty, required\ndriver = \"M"
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\": 0, \"changes\": [{\"field\": \"severity\", \"value\": \"scratch\"}, {\"field\": \"vehicle_drivable\", \"value\": true}, {\"field\": \"description\", \"value\": \"Someone backed into me at the supermarket and scraped the rear bumper. It is a scratch, nothing worse. The car is fine to drive and it is on my drive at home now.\"}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 1.\nSet severity to \"scratch\", vehicle_drivable to true, description (162 characters stored).\nStill missing: damage_zone.\nThe draft cannot be filed yet: FILE_REFUSED_INCOMPLETE. Call validate_claim for the reason in full.\n1 of 5 intake requirements are still open: Where on the car the impact landed.\nCall get_requirements if that list has changed since you last "
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\":1,\"changes\":[{\"field\":\"damage_zone\",\"value\":6}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 2.\nSet damage_zone to 6.\nNothing required is missing.\nThe draft can be filed now. Tell the person on the page that they can press File this claim.\nAll 5 intake requirements are answered.\nCall get_requirements if that list has changed since you last looked.\nSend baseRevision 2 on your next patch, or read the claim again first if you want to see what else moved."
+    },
+    {
+      "tool": "validate_claim",
+      "args": "{}",
+      "refused": false,
+      "answered": "READY TO FILE at revision 2.\nWhy: The draft is complete. Filing is yours to do.\nThis insurer's intake requirements are all answered as well.\nTell the person on the page that they can press File this claim. Filing is a control on this page and is not exposed as a WebMCP tool."
+    }
+  ],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

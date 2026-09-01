@@ -1,0 +1,24 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S6-structural-drivable",
+  "arm": "static-form",
+  "repeat": 1,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T08:02:55.326Z",
+  "finished": "2026-09-01T08:03:22.063Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "incident_type": "collision",
+    "damage_zone": 8,
+    "severity": "structural",
+    "vehicle_drivable": "yes",
+    "description": "A lorry clipped my nearside rear as it pulled out. The panel is pushed in badly and the door frame is bent, but I drove it home and it is on my drive.",
+    "location": "On my drive"
+  },
+  "turns": 1,
+  "tool_calls": [],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

@@ -1,0 +1,23 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S4-undrivable-side",
+  "arm": "static-form",
+  "repeat": 1,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:50:38.345Z",
+  "finished": "2026-09-01T07:50:59.652Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "incident_type": "collision",
+    "severity": "structural",
+    "vehicle_drivable": "no",
+    "description": "A car came through a give way sign and hit my passenger side. The wheel is pointing the wrong way and I cannot drive it. It is outside number 40 on Cross Street.",
+    "location": "Outside number 40 on Cross Street"
+  },
+  "turns": 1,
+  "tool_calls": [],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}
