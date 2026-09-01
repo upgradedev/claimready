@@ -7,7 +7,7 @@ submission form, and if any figure here ever turns up in a judge-facing file, th
 not the figure.
 
 Run against `7b50d4a`, which is the working commit. The public repository has the same work merged
-as `39f72f6`, and `39f72f6` is what the live page serves on 2026-09-01. Reviewed 2026-09-01,
+as `9b64fb2`, and `9b64fb2` is what the live page serves on 2026-09-01. Reviewed 2026-09-01,
 two days before the deadline, with the video still unrecorded.
 
 ## What the criteria actually are
@@ -61,10 +61,13 @@ What a judge marks down.
   made and output comes back, and a refusal travels inside an ordinary result envelope. Only the
   negative control tests the other direction. A judge who reads the row carefully finds this stated;
   a judge who reads the headline finds a number that means less than it looks like.
-- **The browser evidence is against bytes the host no longer serves.** On 2026-09-01 the newest
-  eval run drove `a9c3ba4` and the page serves `39f72f6`, with four commits in between that changed
-  files the page loads. The workflow runs on a daily schedule rather than on push, so this gap is
-  structural and will reappear. It is written into the Status row now instead of being smoothed over.
+- **The browser evidence goes stale on every push, and did twice.** When this review was written
+  the newest eval run drove `a9c3ba4` while the page served a commit five changes later. It was
+  closed the same day by dispatching the workflow against `main`: run 33512549120 drove `9b64fb2`,
+  which is the commit the host serves. The workflow runs on a daily schedule and on dispatch rather
+  than on push, so the gap reappears on the next commit that touches a file the page loads. That is
+  written into the Status row instead of being smoothed over, and a judge should re-check it with
+  the `--verify-deployed` command rather than believe the row.
 
 Cannot answer: whether a model, rather than a script, drives the declared form in any browser.
 

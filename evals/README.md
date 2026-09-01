@@ -56,12 +56,13 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33458929502](https://github.com/upgradedev/claimready/actions/runs/33458929502), workflow `WebMCP evals`, conclusion success, run 2026-09-01 01:29 UTC, after the filing and rule pack fixes landed |
-| Commit under test | `21fc9f2`, and **that run no longer stands as evidence about the live page.** Re-checked 2026-09-01: four commits since have changed files the page loads, and the host now serves `39f72f6`. Do not take that on trust in either direction, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 39f72f6` fetches all 26 files the page loads and compares each to that commit. Run in a fresh clone on 2026-09-01 it printed `the deployed page is 39f72f6, on every one of those files` and exited 0. Naming `21fc9f2` in that flag now prints `what is on disk is not the SHA you named` and exits 1, which is this row proving its own first sentence wrong. There is a newer run, [33478855275](https://github.com/upgradedev/claimready/actions/runs/33478855275) at `a9c3ba4`, with the same 16 of 16 and the same 7 of 8, and it is stale for the same reason. The workflow runs on a daily schedule and on dispatch rather than on push, so it lags `main` by up to a day and this gap is structural rather than an oversight. Python 3, no account and no token, so a reader outside this repository can run it. This matters more than it sounds: an earlier run of record drove `4023446`, and `src/` changed substantially afterwards, so that run had stopped being evidence about the live page. This file was re-run the moment `index.html` changed again, for the same reason. A green run against bytes the host no longer serves is not evidence |
+| Run | [33512549120](https://github.com/upgradedev/claimready/actions/runs/33512549120), workflow `WebMCP evals`, conclusion success, run 2026-09-01 13:18 UTC, dispatched against `main` so that the run and the deployment are the same commit |
+| Commit under test | `9b64fb2`, **and that is the commit the host serves.** Do not take it on trust in either direction, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 9b64fb2` fetches all 26 files the page loads and compares each to that commit. Run on 2026-09-01 it printed `the deployed page is 9b64fb2, on every one of those files` and exited 0. Naming an older commit such as `21fc9f2` in that flag prints `what is on disk is not the SHA you named` and exits 1. This row has twice said a run stood against the served bytes when it did not: the workflow runs on a daily schedule and on dispatch rather than on push, so it lags `main` by up to a day by design, and the gap opens again on the next commit that touches a file the page loads. A green run against bytes the host no longer serves is not evidence about the live page |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
-| Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `7/8` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
+| Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
+| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 53 checks against the deployed page, none failed`. It had never run anywhere but a desktop before this run |
 
 Earlier runs were green as well:
 [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
@@ -71,11 +72,11 @@ the one quoted here for a reason worth stating: each of the others was driven ag
 later commits superseded, and two of those commits changed what the browser loads. A green run
 against bytes the host no longer serves is not evidence about the live page, so this file is
 re-run rather than left pointing at the old number. Read it for yourself with
-`gh run view 33458929502 --repo upgradedev/claimready --log`, and confirm the commit with
-`gh run view 33458929502 --repo upgradedev/claimready --json headSha`.
+`gh run view 33512549120 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33512549120 --repo upgradedev/claimready --json headSha`.
 
 **The negative control HAS now run in a browser, twice.** This paragraph used to say it had not, at
-any commit. In runs 33334936720 and 33458929502 its own job reported `Passed steps: 7/8 across 1
+any commit. In runs 33334936720, 33458929502 and 33512549120 its own job reported `Passed steps: 7/8 across 1
 case(s).` and named the step that had to fail: `step 8 (get_assistance_options): tool
 "get_assistance_options" is not available.` The workflow asserts both the summary and that sentence,
 so a browser that quietly kept the tool would have turned the job green and failed the assertion

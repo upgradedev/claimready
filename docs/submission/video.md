@@ -21,6 +21,30 @@ and the path to save to.
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
+| Freeze commit | `9b64fb2`. Declared 2026-09-01, before any take was shot |
+
+## The freeze, declared before the takes
+
+**Freeze commit: `9b64fb2`.** Everything the page loads is at that commit. It was verified against
+the live host on 2026-09-01 with
+
+```sh
+python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha 9b64fb2
+```
+
+which printed `the deployed page is 9b64fb2, on every one of those files` and exited 0. All 26 of
+them, the three insurer and demo JSON fixtures among them.
+
+**What may still change after this line, and what may not.** Commits after `9b64fb2` may touch
+documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/` or
+`fixtures/`, because those are the 26 files the page serves and the takes are shot against them.
+The command above is how anyone checks that promise was kept: run it with `9b64fb2` after any later
+commit and it still has to exit 0.
+
+**Unfreezing needs a stated reason and only three of them count**: a judge-facing statement that is
+false, a mandatory deliverable that is broken, or a rule violation that risks disqualification. Not
+making something better. To unfreeze, write the defect here, say which takes it invalidates, then
+re-freeze at the new commit and record the new SHA beside `9b64fb2` rather than replacing it.
 
 **No gate has passed on a cut, because there is no cut.** What has passed is
 `python video/sync_gate.py --selftest`, which builds its own small media with ffmpeg and proves each
