@@ -7,7 +7,7 @@ submission form, and if any figure here ever turns up in a judge-facing file, th
 not the figure.
 
 First written against `7b50d4a`, a working commit that reached the public repository squashed as
-`9b64fb2`. Revised 2026-09-01 against `ab2db69`, which is head. `9b64fb2` is still what the live
+`c93b138`. Revised 2026-09-01 against `ab2db69`, which is head. `c93b138` is still what the live
 page serves, because `ab2db69` changed only documentation and touched nothing under `index.html`,
 `src`, `assets` or `fixtures`. Reviewed two days before the deadline, with the video still
 unrecorded.
@@ -93,7 +93,7 @@ What a judge marks down.
   a judge who reads the headline finds a number that means less than it looks like.
 - **The browser evidence goes stale on every push, and did twice.** When this review was written
   the newest eval run drove `a9c3ba4` while the page served a commit five changes later. It was
-  closed the same day by dispatching the workflow against `main`: run 33512549120 drove `9b64fb2`,
+  closed the same day by dispatching the workflow against `main`: run 33560224732 drove `c93b138`,
   which is the commit the host serves. The workflow runs on a daily schedule and on dispatch rather
   than on push, so the gap reappears on the next commit that touches a file the page loads. That is
   written into the Status row instead of being smoothed over, and a judge should re-check it with
@@ -110,7 +110,7 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
 serves and it can be proved in one command. 771 unit tests, from `node --test tests/` printing
 `# pass 771` and `# fail 0` on 2026-09-01, which is the command this file is required to carry
-rather than a number somebody typed. A style gate over 175 text files, from
+rather than a number somebody typed. A style gate over 177 text files, from
 `node scripts/check_style.mjs`. A
 readiness gate that prints one row per deliverable and breaks every row it prints, in its own copy
 of the repository, to show that each one refuses. Numbers in the README come with the command that
@@ -121,8 +121,8 @@ What a judge marks down.
 - **The video does not exist.** It is a mandatory deliverable, the readiness gate is red on it in
   every mode, and this is the single largest thing between the repository and a finished entry.
   Everything else in this file is worth less than that one row.
-- **The gate says 19 of 24, not 24 of 24.** From `node scripts/readiness.mjs --ci` on 2026-09-01:
-  `READY TO SUBMIT: 19 of 24 proven, 79.2 percent`, with `automated rows: 19 of 20 PASS, 95 percent`
+- **The gate says 25 of 31, not 31 of 31.** From `node scripts/readiness.mjs --ci` on 2026-09-01:
+  `READY TO SUBMIT: 25 of 31 proven, 80.6 percent`, with `automated rows: 25 of 27 PASS, 92.6 percent`
   and mandatory at `4 of 5`. It exits 1. Reading only the green badges overstates the position. This
   is by design and it is still what a judge sees. The figure in this bullet was 17 of 24 and had
   been left behind by two rows going green, which is the same defect this file exists to catch.
@@ -234,9 +234,9 @@ seconds of video to land.
 Four of those five are answered somewhere in the repository. The first is not answerable by writing
 anything. It is answerable by recording.
 
-Number 5 is closed for now and will reopen on its own. Run 33512549120 drove `9b64fb2`, which is
+Number 5 is closed for now and will reopen on its own. Run 33560224732 drove `c93b138`, which is
 what the host serves, and `python video/build_video.py --verify-deployed --url
-https://upgradedev.github.io/claimready/ --deployed-sha 9b64fb2` says so over all 26 files the page
+https://upgradedev.github.io/claimready/ --deployed-sha c93b138` says so over all 26 files the page
 loads. The evals workflow runs daily and on dispatch rather than on push, so the next commit that
 touches a file the page loads reopens the gap. Anyone finishing this entry re-dispatches that
 workflow against `main` after the last such commit, and before the video is uploaded.
