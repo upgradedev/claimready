@@ -164,6 +164,8 @@ export function createView(doc) {
     packetCopy: pick('packet-copy'),
     packetSaid: pick('packet-said'),
     packetView: pick('packet-view'),
+    packetFallback: pick('packet-fallback'),
+    packetJson: pick('packet-json'),
     reqSummary: pick('req-summary'),
     reqProgress: pick('req-progress'),
     reqProgressFill: pick('req-progress-fill'),
@@ -501,17 +503,30 @@ export function createView(doc) {
     renderDeclaredForm(state) {
       const filed = Boolean(state && state.filed);
       const revision = Number.isInteger(state && state.revision) ? state.revision : 0;
+      // The form is part of the draft, so it closes when the draft is closed, for the same reason
+      // the rows above it do and read from the same flag. See setClaimBusy.
+      const busy = Boolean(busyReason);
 
       for (const control of [els.declaredWitness, els.declaredPolice, els.declaredRevision]) {
-        control.disabled = filed;
+        control.disabled = filed || busy;
       }
-      els.declaredSubmit.disabled = filed;
+      els.declaredSubmit.disabled = filed || busy;
 
-      text(els.declaredRevisionHint, filed
-        ? 'The claim is filed, so this form is closed along with the rows above it.'
-        : 'Leave this box empty. It is here for an agent, which has to quote the revision it read '
+      // THREE STATES, AND EVERY ONE OF THEM SAYS SOMETHING. A closed control with the ordinary
+      // hint beside it reads as a control that is broken, and the loading state is the one a first
+      // time visitor on a slow connection meets before any other.
+      let hint;
+      if (busy) {
+        hint = `${busyReason} This form is closed until they are, and a submission sent to it now `
+          + 'is refused rather than written.';
+      } else if (filed) {
+        hint = 'The claim is filed, so this form is closed along with the rows above it.';
+      } else {
+        hint = 'Leave this box empty. It is here for an agent, which has to quote the revision it read '
           + 'so a change written against an older draft is refused rather than applied to this one. '
-          + `The draft is at revision ${revision} now.`);
+          + `The draft is at revision ${revision} now.`;
+      }
+      text(els.declaredRevisionHint, hint);
     },
 
     /** What the last submission of that form did, in the words src/core used. */
@@ -561,6 +576,18 @@ export function createView(doc) {
     renderPacket(state) {
       const available = Boolean(state && state.available);
       els.packetPanel.hidden = !available;
+
+      // THE CLIPBOARD FALLBACK GOES WITH THE PACKET, ON BOTH PATHS, AND IT IS EMPTIED RATHER THAN
+      // FOLDED AWAY. It holds the whole packet as text: the policy number, the claimant's account
+      // of what happened, the digest. A reset withdraws the packet, and a withdrawn packet whose
+      // bytes are still sitting in a hidden box is the page keeping what it said it had let go.
+      // This sits above the branch on purpose, because the branch below returns and the first
+      // version of these two lines was under it, where the one path that withdraws a packet never
+      // reached them. A new packet clears it too: two answers about one claim on one screen is the
+      // thing this panel exists to prevent.
+      els.packetFallback.hidden = true;
+      text(els.packetJson, '');
+
       if (!available) {
         els.packetView.hidden = true;
         text(els.packetView, '');
@@ -573,6 +600,22 @@ export function createView(doc) {
       // is better than an empty line that looks like a missing value.
       text(els.packetDigest, state.digest || 'computing');
       text(els.packetView, state.view || '');
+    },
+
+    /**
+     * The same packet as selectable JSON, offered only when the clipboard has refused.
+     *
+     * IT IS NOT DRAWN UNTIL THEN, ON PURPOSE. A box of JSON sitting under the readable packet on
+     * every filing is noise for the reader whose clipboard works, and it is one more place for a
+     * digest and its content to drift apart. This draws exactly what app.js tried to write to the
+     * clipboard, which is one string built once.
+     *
+     * @param {string} json the canonical envelope, digest included
+     */
+    showPacketJson(json) {
+      const offered = String(json || '');
+      els.packetFallback.hidden = offered.length === 0;
+      text(els.packetJson, offered);
     },
 
     /**
@@ -595,6 +638,19 @@ export function createView(doc) {
       busyReason = reason || null;
       els.claimBusy.hidden = !busyReason;
       text(els.claimBusy, busyReason || '');
+
+      // THE TWO CONTROLS THAT READ THE INSURER'S RULES CLOSE WITH THE DRAFT, AND THEY CLOSE HERE
+      // BECAUSE NOTHING ELSE DRAWS THEM. The field rows are redrawn by renderClaim and the file and
+      // collection buttons by renderActions, both of which read this same flag. These two are
+      // painted once, so the one place that knows the page is not ready is the place that has to
+      // shut them. The picker is opened again by renderPackChoices as soon as there is a list to
+      // pick from, and the cover button by the caller that clears this reason.
+      //
+      // Neither of these is the guard. Both handlers refuse on their own while the page is not
+      // ready, because a disabled control is a thing a browser paints and not a boundary anything
+      // has to pass. This is what a person sees; app.js is what a dispatched event meets.
+      els.checkCoverageBtn.disabled = Boolean(busyReason);
+      if (busyReason) els.insurerSelect.disabled = true;
     },
 
     /** Fold the packet open or closed, and say which state it is in. */

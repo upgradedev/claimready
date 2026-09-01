@@ -1,0 +1,31 @@
+# Line endings for the files a gate compares byte for byte.
+#
+# `node scripts/analyze_impact.mjs --check` rebuilds evidence/impact/results.md in memory and
+# compares it with the file on disk. Node writes "\n". Git on Windows with core.autocrlf set to
+# true rewrites text files to CRLF on checkout, so on a fresh Windows clone the artifact would
+# differ from what the analyzer produces on every single line, and the check would fail for a
+# reason that has nothing to do with the evidence.
+#
+# Measured here on 2026-09-01: `git config core.autocrlf` says true, and
+# evidence/impact/protocol-v1.md, which nothing has rewritten since checkout, has 77 CRLF line
+# endings while results.md, which the analyzer wrote, has none.
+#
+# So the three files the check touches are pinned to LF in the working tree. This is narrow on
+# purpose. Every other file in the repository keeps whatever it had, because changing that the
+# night before a deadline is a bigger change than the problem.
+evidence/impact/results.md text eol=lf
+evidence/impact/results-v2.md text eol=lf
+evidence/impact/interpretation-v1.md text eol=lf
+
+# The worked example a judge is invited to verify by hand, and the fourth file a gate measures in
+# bytes. tests/unit/handler_verification.test.js quotes its size, and docs/handler-verification.md
+# quotes the same number to a reader who is told to check it.
+#
+# Added 2026-09-01, after a fresh clone was watched failing. `git clone`, then `node --test
+# tests/unit`, which is the second command the README quickstart gives a judge, printed
+# `5022 !== 4864` at ab2db69 because the checkout had converted this file and the test then built
+# its own copy on top of that conversion. The test was repaired to normalise its base, which is the
+# half that protects a reader who already has a converted checkout. This line is the other half: it
+# stops the conversion happening in the first place, so the bytes a judge is told to count are the
+# bytes they get.
+docs/handler-packet.example.json text eol=lf

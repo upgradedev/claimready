@@ -47,6 +47,23 @@ const fixture = JSON.parse(readFileSync(FIXTURE_URL, 'utf8'));
 const PACK_URL = new URL('../../fixtures/insurers/northwind.json', import.meta.url);
 const pack = loadPolicyPack(JSON.parse(readFileSync(PACK_URL, 'utf8')));
 
+/**
+ * The two identity facts a filing asserts, which are not facts about the draft.
+ *
+ * A filing says this claim went to this insurer on this policy, so the gate refuses one that
+ * cannot name either. A scenario in the sample file carries claim fields and no policy number,
+ * which is right for a scenario and is why the filings below build their draft with the sample
+ * file's policy block rather than from the scenario alone.
+ */
+const HOME = { homePackId: 'northwind' };
+
+/** A scenario draft, on the policy the sample file states, so a filing has something to assert. */
+function filableScenario(id) {
+  const scenario = fixture.scenarios.find((entry) => entry.id === id);
+  assert.ok(scenario, `the sample file has no scenario called ${id}`);
+  return createClaim({ policy: fixture.policy, claim: scenario.claim });
+}
+
 function snapshot(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -732,8 +749,8 @@ test('nothing derived and nothing structural is patchable, by either actor', () 
 });
 
 test('a filed claim refuses every patch as protected', () => {
-  const ready = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
-  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z', pack });
+  const ready = filableScenario('covered-collision');
+  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z', pack, ...HOME });
 
   assert.equal(filed.ok, true);
   assert.equal(filed.claim.status, 'filed');
@@ -880,6 +897,61 @@ test('hydrateClaim refuses a stored string field that is not a string', () => {
     /Stored claim field "policy_id" is not usable/);
   assert.throws(() => hydrateClaim([]), /hydrateClaim needs a claim object/);
 });
+/**
+ * THE REST OF THE STORED CLAIM, AND WHY SILENCE HERE IS THE DANGEROUS ANSWER.
+ *
+ * The four values below are not claim answers. They are the bookkeeping that decides what any
+ * later writer is allowed to do: how many times this draft has moved, whether it is still open,
+ * which fields a person pinned, and when it was filed. Every one of them used to be repaired
+ * quietly. A revision of "17" became 0, a status of "archived" became draft, a lock on a name this
+ * model does not know was filtered out of the list, and a filing time could be any string at all.
+ *
+ * Each of those repairs moves the claim in the same direction: looser. A reset counter makes a
+ * stale patch look current. A dropped lock makes a pinned field writable. So a stored value that is
+ * present and wrong is refused here, loudly, with the field named.
+ *
+ * ABSENT IS NOT THE SAME AS PRESENT AND WRONG, and the test above this one is the reason. A claim
+ * written before the revision counter existed carries no revision, and reading it back at 0 with an
+ * empty lock list is the documented way to open an older draft. That path is untouched. This one is
+ * about a value somebody stored, which is a different thing from a value nobody ever wrote.
+ */
+test('hydrateClaim refuses stored bookkeeping rather than resetting it into something looser', () => {
+  const cases = [
+    ['revision', '17', /whole number/],
+    ['revision', -1, /whole number/],
+    ['revision', 2.5, /whole number/],
+    ['status', 'archived', /"draft" or "filed"/],
+    ['status', 'FILED', /"draft" or "filed"/],
+    ['locked', 'severity', /list of field names/],
+    ['locked', ['settlement_amount'], /settlement_amount/],
+    ['locked', ['severity', 'severity'], /pinned twice/],
+    ['filed_at', '10:31:00', /full UTC instant/],
+  ];
+
+  for (const [field, value, message] of cases) {
+    assert.throws(
+      () => hydrateClaim({ status: 'draft', severity: 'dent', [field]: value }),
+      (error) => error instanceof TypeError
+        && error.message.includes(`Stored claim field "${field}" is not usable`)
+        && message.test(error.message),
+      `${field}=${JSON.stringify(value)} was accepted`,
+    );
+  }
+});
+
+test('a stored lock a patch would honour still hydrates, so the refusal is about the bad ones only', () => {
+  const claim = hydrateClaim({ status: 'draft', severity: 'dent', locked: ['severity'], revision: 4 });
+  assert.deepEqual(claim.locked, ['severity']);
+  assert.equal(claim.revision, 4);
+
+  // And the older draft that carries none of this still opens, which is the case the refusals
+  // above must not have taken with them.
+  const older = hydrateClaim({ policy_id: 'MTR-2026-0417', severity: 'dent' });
+  assert.equal(older.revision, 0);
+  assert.equal(older.status, 'draft');
+  assert.deepEqual(older.locked, []);
+});
+
 
 // The pinned line is the one part of the summary that can grow without bound,
 // because a determined claimant can pin all ten fields. Measured at every cap
@@ -1137,8 +1209,8 @@ test('noteContextChange refuses anything that is not a claim', () => {
 // and the read tools go on reporting a revision that should describe the context
 // they are reading.
 test('a filed claim still records a context change', () => {
-  const ready = createClaim(fixture.scenarios.find((s) => s.id === 'covered-collision'));
-  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z', pack });
+  const ready = filableScenario('covered-collision');
+  const filed = fileClaim(ready, { at: '2026-08-26T09:30:00.000Z', pack, ...HOME });
   assert.equal(filed.ok, true, filed.error);
 
   const noted = noteContextChange(filed.claim, 'the insurer rule pack changed to Kestrel Assurance');

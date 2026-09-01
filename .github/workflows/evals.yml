@@ -303,32 +303,38 @@ jobs:
           retention-days: 30
 
   probe:
-    # MANUAL DISPATCH ONLY, AND THE REASON IS NOT THAT A RUNNER CANNOT DO THIS.
+    # ON THE SAME TRIGGERS AS THE JOB ABOVE, SINCE 2026-09-01.
     #
-    # A runner can. The Chrome Dev channel installs the same way it does for the job above and for
-    # the video capture in .github/workflows/video.yml, and the probe is dependency free Node
-    # talking to that Chrome over the DevTools protocol.
+    # It used to carry `if: github.event_name == 'workflow_dispatch'`. The reason was honest at the
+    # time: the note phase presses the page's own pin control twice, and nobody had watched those
+    # two clicks against a live browser, so putting them on a daily cron during a judging window
+    # risked a red badge that was reporting our own collection step rather than a defect in the
+    # page. That has now happened. Run 33512549120 on 2026-09-01 ran this job on a runner and
+    # printed `probe: PASS. 53 checks against the deployed page, none failed`, so the restriction
+    # described a risk that had been retired and was keeping the check off the schedule for nothing.
     #
-    # The reason is this. evals/browser_probe.mjs gained a phase that reads the planted evidence
-    # note and then presses the page's own pin control twice, and those two clicks have never been
-    # watched against a live browser by anyone. tests/unit/probe_note_phase.test.js executes that
-    # phase against the real page with a fake host, so the page's half is proven, and the selector's
-    # half is not. Putting an unwatched step on a daily cron during a judging window means the first
-    # red badge on this repository could be reporting our own collection step rather than a defect
-    # in the page, which is the sort of noise that gets a real failure ignored.
-    #
-    # TO PUT IT ON THE SCHEDULE, once somebody has dispatched this job and watched it pass: delete
-    # the `if:` line directly below. Nothing else changes. Record the run id in evals/README.md
-    # under "Still owed on the probe" and delete that paragraph.
+    # WHAT KEEPS A GREEN RUN HERE FROM GOING STALE. This workflow runs daily and on dispatch, not
+    # on push, so `main` can move under it. That is fine as long as a pass names the bytes it is
+    # about, and it now does: the step below fetches every file the page loads and refuses unless
+    # the host is serving this checkout at this commit, and only then is that commit handed to the
+    # probe. A run against a page the host has since replaced fails at that step instead of
+    # reporting a green judgement about bytes nobody serves any more. The transcript carries the
+    # commit, and evals/probe_assertions.mjs refuses one that does not.
     #
     # It is NOT allowed to become a job that passes without doing anything. There is no
     # continue-on-error here and no `|| true` on anything that is a check. If Chrome will not start,
-    # if the page does not answer 200, or if the judgement refuses the transcript, this job is red.
-    if: github.event_name == 'workflow_dispatch'
-    name: Browser probe against the live page (manual dispatch only)
+    # if the page does not answer 200, if the served bytes are not this commit, or if the judgement
+    # refuses the transcript, this job is red.
+    name: Browser probe against the live page
     runs-on: ubuntu-latest
     steps:
+      # Full history, because the verification below reads every on camera file at a named commit
+      # out of this checkout with `git show`. A shallow clone has one commit in it and the read
+      # fails with a message about the commit not being here, which reads like a deployment problem
+      # and is not one.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -370,6 +376,38 @@ jobs:
             echo "The live judge URL did not answer 200. Fixing that is the whole task."
             exit 1
           fi
+
+      # WHICH BYTES, AND IT RUNS BEFORE THE BROWSER IS OPENED.
+      #
+      # A 200 says something is being served. It does not say what. This workflow runs on a daily
+      # schedule and on dispatch rather than on push, so the checkout can be ahead of the host by a
+      # commit or by a week, and a probe that only knew the URL would report a green judgement
+      # about a page that had been replaced underneath it. That is not a hypothetical: this
+      # repository has twice published a row saying evidence stood against the served bytes while
+      # naming a commit the host had never served.
+      #
+      # --verify-deployed fetches every one of the 26 files the page loads, index.html, the modules,
+      # the stylesheet and the three JSON fixtures, and chains two comparisons: the served bytes
+      # against this checkout, and this checkout against the same file at this commit. A single
+      # mismatch fails the job here, before Chrome starts, with a message naming the file.
+      #
+      # ONLY THEN is the commit written where the probe can read it. The probe does not discover a
+      # SHA and never writes a claim about itself: it carries this one into the transcript, and
+      # evals/probe_assertions.mjs refuses a transcript that arrives without one. So a green
+      # judgement is always a statement about bytes that were compared thirty seconds earlier, and
+      # a runtime change that has not reached the host stops this job rather than passing through it.
+      - name: The host must be serving this exact commit, on every file the page loads
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          DEPLOYED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 video/build_video.py \
+            --verify-deployed \
+            --url "${CLAIMREADY_URL}" \
+            --deployed-sha "${DEPLOYED_SHA}"
+          echo "CLAIMREADY_DEPLOYED_SHA=${DEPLOYED_SHA}" >> "$GITHUB_ENV"
 
       # The same build the eval harness drives and the same one the video capture films against.
       # Chrome stable carries WebMCP too, and the Dev channel is what CI has always installed here,
@@ -427,6 +465,10 @@ jobs:
         shell: bash
         env:
           CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+          # Set by the verification step above and by nothing else. Empty here means that step did
+          # not run, and the judgement fails on a transcript that cannot name its commit rather
+          # than quietly reporting a pass about unidentified bytes.
+          CLAIMREADY_DEPLOYED_SHA: ${{ env.CLAIMREADY_DEPLOYED_SHA }}
         run: |
           set -euo pipefail
           # pipefail matters: without it tee hands back its own exit code and a failing probe

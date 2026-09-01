@@ -127,15 +127,30 @@ test('generated_at sits outside the digest, which is the other half of the demon
 });
 
 test('a carriage return line feed checkout still verifies, as the page says it does', () => {
-  // Git on Windows commonly converts line endings on checkout and this repository has no
-  // .gitattributes, so the file a reader opens may not be the file that was committed. Route 1 and
-  // route 2 both parse the JSON and write the canonical form out again, so the endings in the file
-  // never reach the hash. That is the reason the page can promise it, and this is the proof.
-  const crlf = raw.split('\n').join('\r\n');
-  assert.notEqual(crlf.length, raw.length, 'the copy under test has to actually differ');
+  // Git on Windows commonly converts line endings on checkout, so the file a reader opens may not
+  // be the file that was committed. Route 1 and route 2 both parse the JSON and write the canonical
+  // form out again, so the endings in the file never reach the hash. That is the reason the page
+  // can promise it, and this is the proof.
+  //
+  // THE BASE IS NORMALISED FIRST, AND THAT IS THE WHOLE REPAIR. This used to build its copy with
+  // `raw.split('\n').join('\r\n')` straight off the file on disk. On a Windows clone, where git had
+  // already converted the file, `raw` was CRLF, so that line turned every "\r\n" into "\r\r\n" and
+  // the size assertion below compared a doubled file against the number the page quotes. Measured
+  // on 2026-09-01 in a fresh clone of this repository at ab2db69: `node --test tests/unit`, the
+  // command the README quickstart tells a judge to run, printed `5022 !== 4864` and failed. The
+  // same conversion applied to this working tree reproduced it as `5088 !== 4928`.
+  //
+  // The defect was in the FIXTURE, not in the thing under test: a test that builds its input from
+  // whatever the checkout happened to do cannot say what it claims to say. So the base is pinned to
+  // line feeds here, and the file is pinned to line feeds in .gitattributes as well, because one of
+  // those alone leaves the other reader exposed.
+  const lf = raw.split('\r\n').join('\n');
+  const crlf = lf.split('\n').join('\r\n');
+  assert.ok(!lf.includes('\r'), 'the normalised base still carries a carriage return');
+  assert.notEqual(crlf.length, lf.length, 'the copy under test has to actually differ');
 
   assert.equal(sha256(canonical(JSON.parse(crlf).content)), example.content_digest);
-  assert.equal(Buffer.byteLength(crlf, 'utf8'), 4864, 'the page quotes the size of that copy');
+  assert.equal(Buffer.byteLength(crlf, 'utf8'), 4928, 'the page quotes the size of that copy');
 });
 
 test('the byte counts the page quotes are the byte counts the file has', () => {
@@ -143,12 +158,12 @@ test('the byte counts the page quotes are the byte counts the file has', () => {
   // the test above demonstrates. A checkout that converted the line endings has a bigger file and
   // an identical canonical form, and the number a reader is told to compare against is the second
   // one.
-  assert.equal(Buffer.byteLength(canonical(example.content), 'utf8'), 4242);
-  assert.equal(Buffer.byteLength(canonical(example), 'utf8'), 4706);
+  assert.equal(Buffer.byteLength(canonical(example.content), 'utf8'), 4300);
+  assert.equal(Buffer.byteLength(canonical(example), 'utf8'), 4768);
 
-  assert.ok(page.includes('4,242 bytes'), 'the page quotes a stale canonical size');
-  assert.ok(page.includes('4,706 bytes'), 'the page quotes a stale file size');
-  assert.ok(page.includes('4,864 bytes'), 'the page quotes a stale size for the converted copy');
+  assert.ok(page.includes('4,300 bytes'), 'the page quotes a stale canonical size');
+  assert.ok(page.includes('4,768 bytes'), 'the page quotes a stale file size');
+  assert.ok(page.includes('4,928 bytes'), 'the page quotes a stale size for the converted copy');
 });
 
 /* ------------------------------------------------------- the two implementations still agree */

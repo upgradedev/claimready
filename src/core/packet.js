@@ -22,8 +22,8 @@
  * purpose. `node scripts/verify_packet.mjs <file>` recomputes it.
  */
 
-import { packIdentity } from './filing.js';
-import { checkCoverage } from './coverage.js';
+import { FILE_CODES, filingIdentity } from './filing.js';
+import { checkCoverage, openCoverQuestions } from './coverage.js';
 import { deriveRequirements, outstandingRequirements } from './requirements.js';
 import { FIELD_LABELS, PATCHABLE_FIELDS, validateClaim } from './claim.js';
 
@@ -31,6 +31,8 @@ import { FIELD_LABELS, PATCHABLE_FIELDS, validateClaim } from './claim.js';
 export const PACKET_CODES = {
   notFiled: 'PACKET_REFUSED_NOT_FILED',
   noPack: 'PACKET_REFUSED_NO_PACK',
+  noPolicyId: 'PACKET_REFUSED_NO_POLICY_ID',
+  noHomeInsurer: 'PACKET_REFUSED_NO_HOME_INSURER',
   borrowedRules: 'PACKET_REFUSED_BORROWED_RULES',
   unfileable: 'PACKET_REFUSED_UNFILEABLE',
 };
@@ -40,13 +42,75 @@ export const SYNTHETIC_NOTICE =
   'Synthetic, export ready FNOL packet. No insurer backend is connected and nothing was sent '
   + 'anywhere. Every name, policy number and vehicle in it is invented for this demonstration.';
 
-/** The packet format, so a reader can tell two versions apart without guessing. */
+/**
+ * The packet format, so a reader can tell two versions apart without guessing.
+ *
+ * VERSION 2, AND HERE IS THE DECISION AND ITS REASON, BECAUSE THE NEXT PERSON TO CHANGE THIS BLOCK
+ * WILL FACE THE SAME QUESTION.
+ *
+ * Version 1 wrote `coverage.covered: true` on a claim whose yes still depended on something the
+ * claim had not said, while the panel two inches above read "Covered, provisionally" and the tool
+ * answered "COVERED, PROVISIONALLY". The packet was the one surface telling a handler a flat yes,
+ * and it was the surface with a digest on it, which made the wrong answer look checked.
+ *
+ * The fix adds `provisional` and `provisional_reason` beside `covered`. That is an addition, and a
+ * reader who ignores keys it does not know would not break on it, so compatibility is not the
+ * argument. The argument is the other way round: a version 1 reader that renders a decision from
+ * `coverage.covered` alone now renders a false one, and it has no way to find that out. The version
+ * is the only signal in the format that carries "this field needs its companion read too", so it
+ * moves. A reader pinned to 1 stops rather than quietly going on being wrong.
+ *
+ * `kind` does not move. It is the same document about the same thing, written by the same page, and
+ * a new kind would say a reader has to relearn the whole shape when only one block changed.
+ *
+ * The rule for next time: `kind` changes when the document becomes a different document, and the
+ * version changes when a field a reader already reads starts meaning something it did not. Adding a
+ * block nothing else depends on does not need either.
+ */
 export const PACKET_KIND = 'claimready.fnol.packet';
-export const PACKET_VERSION = 1;
+export const PACKET_VERSION = 2;
 
 function refuse(code, reason) {
   return { ok: false, code, reason, packet: null, canonical: null };
 }
+
+/**
+ * One filing refusal, said again in the packet's voice.
+ *
+ * The ORDER of the identity questions lives in `filingIdentity` and is not repeated here. All this
+ * table does is turn the code that came back into this module's own code and its own sentence,
+ * because the reader is different: the file gate is talking to somebody who wants to file, and a
+ * packet refusal is explaining why no document exists. Every entry is keyed by the filing code, so
+ * a new refusal added over there fails loudly here rather than quietly falling through.
+ */
+const PACKET_REFUSALS = {
+  [FILE_CODES.noPack]: {
+    code: PACKET_CODES.noPack,
+    reason: () =>
+      'The insurer rule pack is not loaded, so the packet cannot say which rules this claim was '
+      + 'filed under, and a packet that cannot say that is worse than no packet.',
+  },
+  [FILE_CODES.noPolicyId]: {
+    code: PACKET_CODES.noPolicyId,
+    reason: () =>
+      'This claim does not say which policy it is on. A packet is a statement about one policy, so '
+      + 'there is nothing here to make one from, and a reference reading UNKNOWN over a null policy '
+      + 'number is a hole dressed up as a filing.',
+  },
+  [FILE_CODES.noHomeInsurer]: {
+    code: PACKET_CODES.noHomeInsurer,
+    reason: () =>
+      'Nothing has said which insurer this policy is with, so the packet cannot say the rules it '
+      + 'was filed under were that insurer\'s. Sealing that claim under a digest would put our name '
+      + 'on a guess.',
+  },
+  [FILE_CODES.borrowedRules]: {
+    code: PACKET_CODES.borrowedRules,
+    reason: (identity) =>
+      `These are ${identity.insurer}'s rules, read against a policy that is not with them. `
+      + 'No filing could have happened under them, so there is nothing to describe.',
+  },
+};
 
 /**
  * Canonical JSON: sorted keys at every level, two space indent, LF, no undefined.
@@ -105,7 +169,8 @@ function routeOf(claim, field) {
  * @param {object} input
  * @param {object} input.claim the filed claim
  * @param {object|null} input.pack the insurer rule pack the filing was decided under
- * @param {(string|null)} [input.homePackId] whose policy this is, as the page states it
+ * @param {(string|null)} [input.homePackId] whose policy this is, as the page states it. Leave it
+ * out and no packet is built: it is one of the four identity facts a packet asserts, not a hint.
  * @param {(string[]|Set<string>)} [input.completedHumanActions]
  * Coverage is NOT an input. It is recomputed here from the filed claim and the validated pack.
  * @param {Array<object>} [input.ledger] the page's tool call ledger, newest first
@@ -129,20 +194,20 @@ export function buildFilingPacket(input) {
     );
   }
 
-  const identity = packIdentity(settings.pack, { homePackId: settings.homePackId });
-  if (!identity.usable) {
-    return refuse(
-      PACKET_CODES.noPack,
-      'The insurer rule pack is not loaded, so the packet cannot say which rules this claim was '
-      + 'filed under, and a packet that cannot say that is worse than no packet.',
-    );
-  }
-  if (identity.borrowed) {
-    return refuse(
-      PACKET_CODES.borrowedRules,
-      `These are ${identity.insurer}'s rules, read against a policy that is not with them. `
-      + 'No filing could have happened under them, so there is nothing to describe.',
-    );
+  // THE SAME IDENTITY QUESTIONS THE FILE GATE ASKS, FROM THE SAME FUNCTION, IN THE SAME ORDER.
+  //
+  // This block used to ask two of the four in its own words and never ask the other two, so a
+  // packet described filings the gate would have refused: a draft carrying no policy number was
+  // sealed as `CR-UNKNOWN-R2` with a null policy number under it, and a claim filed with nobody
+  // having said which insurer the policy is with was sealed under whichever pack was loaded.
+  //
+  // It cannot call `canFile`, because a filed claim short circuits that on ALREADY_FILED by design.
+  // So it calls the identity half directly, and translates the filing code into this module's own
+  // vocabulary rather than keeping a second opinion about the order the questions come in.
+  const identity = filingIdentity(settings.pack, claim, { homePackId: settings.homePackId });
+  if (identity.refusal) {
+    const translated = PACKET_REFUSALS[identity.refusal.code];
+    return refuse(translated.code, translated.reason(identity));
   }
 
   const pack = settings.pack;
@@ -211,10 +276,27 @@ export function buildFilingPacket(input) {
   // The fix is not to read the wrapper correctly. It is to stop accepting the answer from anyone:
   // the packet describes a filed claim, so it works the cover out from that claim and the validated
   // pack, the same way every other surface does, and there is no shape left to get wrong.
+  //
+  // AND A YES THAT IS NOT SETTLED YET SAYS SO. Recomputing was only half of it. The decision has
+  // carried `provisional` since the panel learned to draw "Covered, provisionally", and this block
+  // dropped it, so the one surface with a digest on it was the one telling a handler a flat
+  // `covered` on a claim whose yes still depended on a name or a date nobody had given. The page
+  // said one thing, the tool said the same thing, and the sealed document said the friendlier half.
+  // Both fields are here now: the boolean for a reader that branches, and the sentence for a reader
+  // that has to act on it. `provisional_reason` repeats words that are also inside `reason`, and
+  // that is deliberate. `reason` is prose written for a claimant, and a handler system reading the
+  // open question out of it would be scraping.
+  //
+  // A true `provisional` with an empty reason beside it cannot happen, and it is worth saying so
+  // rather than guarding against it. checkCoverage sets `provisional` from whether that same list
+  // of open questions is empty, so the two come from one call in one module. A defensive branch
+  // here would only ever hide a real defect over there.
   const decided = checkCoverage(pack, claim);
   const coverage = decided
     ? {
       covered: Boolean(decided.covered),
+      provisional: Boolean(decided.provisional),
+      provisional_reason: decided.provisional ? openCoverQuestions(pack, claim).join(' ') : null,
       clause: decided.clause ?? null,
       deductible: decided.deductible ?? null,
       currency: decided.currency ?? pack.currency ?? null,
@@ -295,7 +377,15 @@ export function packetAsMarkdown(content, digest) {
 
   if (content.coverage) {
     lines.push('## Cover, under this insurer\'s own rules');
-    row('Decision', content.coverage.covered ? 'covered' : 'not covered');
+    // The same three words the panel and the tool use. A handler reading the markdown rather than
+    // the JSON was the last reader still being told a flat yes on an unsettled claim.
+    const provisional = content.coverage.covered && content.coverage.provisional === true;
+    row('Decision', content.coverage.covered
+      ? (provisional ? 'covered, provisionally' : 'covered')
+      : 'not covered');
+    if (provisional && content.coverage.provisional_reason) {
+      row('Still open', content.coverage.provisional_reason);
+    }
     row('Clause', content.coverage.clause || 'not stated');
     row('Excess', content.coverage.deductible === null
       ? 'none stated'

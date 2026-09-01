@@ -20,17 +20,39 @@ const fixture = JSON.parse(readFileSync(FIXTURE_URL, 'utf8'));
 const PACK_URL = new URL('../../fixtures/insurers/northwind.json', import.meta.url);
 const pack = loadPolicyPack(JSON.parse(readFileSync(PACK_URL, 'utf8')));
 
-/** File the way the page does, with the rules and the human actions on the action. */
-function file(store, at) {
-  return store.dispatch({ type: 'file', at, pack, completedHumanActions: [] });
+/**
+ * File the way the page does, with the rules, the human actions and the home insurer on the action.
+ *
+ * `homePackId` is on here for the same reason `pack` is. A filing asserts that this claim went to
+ * this insurer, so the gate refuses one that cannot name which insurer that is, and an action
+ * without it is not the action the page dispatches.
+ */
+/**
+ * A filing time the store will accept, for the tests that are about something else.
+ *
+ * Every filing carries one now, so a helper that left it out would be testing the timestamp
+ * refusal in fifteen places by accident.
+ */
+const FILED_AT = '2026-08-26T09:30:00.000Z';
+
+function file(store, at = FILED_AT) {
+  return store.dispatch({ type: 'file', at, pack, completedHumanActions: [], homePackId: 'northwind' });
 }
 
 function snapshot(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+/**
+ * A store on a draft that is ready to file, on the policy the sample file names.
+ *
+ * The scenario carries claim fields and no policy number, which is right for a scenario. A filing
+ * is a statement about one policy, so it is refused without one, and the store the page builds is
+ * seeded from the whole sample file rather than from a scenario alone.
+ */
 function readyStore() {
-  return createStore(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+  const scenario = fixture.scenarios.find((s) => s.id === 'covered-collision');
+  return createStore({ policy: fixture.policy, claim: scenario.claim });
 }
 
 test('a store can be built from the fixture, from a scenario, or from a claim', () => {
@@ -307,7 +329,7 @@ test('a file action carrying no rule pack is refused rather than decided without
   const store = readyStore();
   assert.equal(validateClaim(store.getState().claim).ready, true, 'every required field is filled');
 
-  const result = store.dispatch({ type: 'file', at: '2026-08-26T09:30:00.000Z' });
+  const result = store.dispatch({ type: 'file', at: '2026-08-26T09:30:00.000Z', homePackId: 'northwind' });
 
   assert.equal(result.ok, false);
   assert.equal(result.code, FILE_CODES.noPack);
@@ -318,13 +340,17 @@ test('a file action carrying no rule pack is refused rather than decided without
 
 // The other half of the same rule: rules that load but ask for something still open.
 test('an open intake requirement refuses the filing, with the requirement code', () => {
-  const store = createStore(fixture.scenarios.find((s) => s.id === 'covered-collision'));
+  const store = readyStore();
   const kestrel = loadPolicyPack(JSON.parse(readFileSync(
     new URL('../../fixtures/insurers/kestrel.json', import.meta.url), 'utf8',
   )));
 
   // Kestrel asks a collision claimant for a witness. Northwind does not, and this claim names none.
-  const result = store.dispatch({ type: 'file', at: '2026-08-26T09:30:00.000Z', pack: kestrel });
+  // The claim is read as a Kestrel policy here, because a borrowed pack is refused on identity
+  // before any intake question is reached and that refusal is another file's subject.
+  const result = store.dispatch({
+    type: 'file', at: '2026-08-26T09:30:00.000Z', pack: kestrel, homePackId: 'kestrel',
+  });
 
   assert.equal(result.ok, false);
   assert.equal(result.code, FILE_CODES.requirements);
@@ -343,9 +369,35 @@ test('a complete claim files, and the claim locks once it has', () => {
   assert.equal(store.getState().claim.filed_at, '2026-08-26T09:30:00.000Z');
 });
 
-test('filing works without a timestamp, which stays null rather than invented', () => {
+/**
+ * THIS TEST USED TO SAY THE OPPOSITE, AND WHAT IT PINNED WAS THE HOLE.
+ *
+ * It read "filing works without a timestamp, which stays null rather than invented", and it was
+ * right that nothing may be invented. It was wrong about what the other option is. A filed claim
+ * with `filed_at: null` is a state nothing downstream can answer for: the packet writes "Filed at
+ * not recorded" under a digest, the page prints "Filed at null", and `hydrateClaim` reads the whole
+ * thing back as a draft because a filing with no time on it is not one anybody can stand behind.
+ * So the store produced a state that only one of its three readers could handle.
+ *
+ * Refusing is the third option, and it is the one that keeps both halves: nothing is invented and
+ * no unanswerable state is written. The clock lives in src/ui/app.js, which is the only layer
+ * allowed one.
+ */
+test('a filing with no time on it is refused, and the draft is left exactly as it was', () => {
   const store = readyStore();
-  assert.equal(file(store).ok, true);
+  const before = snapshot(store.getState().claim);
+
+  // Dispatched directly, with no `at` on the action at all. The helper above defaults one, and a
+  // default is exactly what this test must not be reading.
+  const result = store.dispatch({
+    type: 'file', pack, completedHumanActions: [], homePackId: 'northwind',
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, FILE_CODES.noFilingTime);
+  assert.match(result.error, /full UTC instant/);
+  assert.deepEqual(snapshot(store.getState().claim), before, 'a refused filing changes nothing');
+  assert.equal(store.getState().claim.status, 'draft');
   assert.equal(store.getState().claim.filed_at, null);
 });
 

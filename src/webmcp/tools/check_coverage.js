@@ -11,6 +11,7 @@
 
 import { toResult, budgetedBlock, clip, packOf } from '../register.js';
 import { checkCoverage, exclusionLabels } from '../../core/coverage.js';
+import { packIdentity } from '../../core/filing.js';
 
 /**
  * How much of each piece of insurer text to show.
@@ -99,7 +100,12 @@ export default (ctx) => ({
       );
     }
 
-    if (insurer && ctx.packId && ctx.homePackId && ctx.packId !== ctx.homePackId) {
+    // WHOSE RULES THESE ARE IS ONE ANSWER, AND IT COMES FROM src/core. This used to compare
+    // ctx.packId against ctx.homePackId by hand, and ctx.packId was the id the manifest gave the
+    // pack while the filing gate read the id inside the pack file. Two names for one thing, in two
+    // places, either of which could go on saying yes while the other said no. packIdentity answers
+    // it for the page, for the file gate and now for this line, so there is nothing left to drift.
+    if (insurer && packIdentity(pack, { homePackId: ctx.homePackId }).borrowed) {
       body.push(
         `These are ${insurer}'s published rules, loaded on this page so the same claim can be `
         + `read against them. Policy ${policyId} is not with ${insurer}.`

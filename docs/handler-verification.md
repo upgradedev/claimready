@@ -39,12 +39,26 @@ A packet is one JSON object with exactly three keys at the top.
 {
   "content":        { ...everything about the filed claim... },
   "content_digest": "sha256:<64 hex characters>",
-  "generated_at":   "<an ISO timestamp>"
+  "generated_at":   "2026-09-01T09:15:31.000Z"
 }
 ```
 
 `content` is the packet. `content_digest` is the claim being made about it. `generated_at` is when
 that particular copy was written out.
+
+Both times in a packet are written one way and one way only: a full ISO-8601 instant in UTC to the
+millisecond, which is exactly what `new Date().toISOString()` produces. That is `generated_at` here
+and `content.filed.at` inside. The page refuses to file a claim without one, and refuses to read one
+back in any other shape, so two packets can be compared by string rather than by parsing. An offset
+such as `+02:00` is refused as well as a missing zone, even though it can name the same moment: the
+digest is over the bytes, not over the moment.
+
+Inside `content`, `version` is 2. Read it before you read anything else. Version 1 wrote
+`coverage.covered` as a plain true or false, and a cover decision on this page can be a yes that
+still depends on something the claim has not said yet, such as who was driving. Version 2 carries
+`coverage.provisional` and `coverage.provisional_reason` beside it, and a reader that renders a
+decision from `covered` alone will state a settled answer where the packet is telling you the
+question is still open. If you have code pinned to version 1, that is what changed under it.
 
 ## What the digest covers, and what it does not
 
@@ -60,7 +74,8 @@ Inside the digest, so a change to any of it moves the digest:
 - `claim`, every answered field with the label the claimant saw
 - `provenance`, which answers arrived through a tool and which through the page
 - `pinned_by_the_claimant`, the fields no tool was allowed to move
-- `coverage`, the decision, the clause, the excess and the currency
+- `coverage`, the decision, whether that decision is still provisional and what it is waiting on,
+  the clause, the excess and the currency
 - `requirements`, what the intake asked for and what answered each one
 - `human_actions_completed` and `tool_calls`
 
@@ -240,25 +255,32 @@ filing control on the page was pressed, and in no other sense.
 The digest it claims is:
 
 ```
-sha256:ccc10dfbcb21853e30bca4042208e85e5c4984fed3d8e4a2d0d099169df3de46
+sha256:4c934f45d3c980df0cdd471117cca2dc4d3b0b10ae1b9d48f7c7a57a51764243
 ```
 
 All three routes were run against that file on 2026-09-01 and returned the same 64 characters:
 
 | Route | Command | Result |
 |---|---|---|
-| 1, Node `node:crypto` | `node check.mjs docs/handler-packet.example.json` | `sha256:ccc10dfbcb21853e30bca4042208e85e5c4984fed3d8e4a2d0d099169df3de46` |
-| 2, Python `hashlib` | `python check.py docs/handler-packet.example.json` | `sha256:ccc10dfbcb21853e30bca4042208e85e5c4984fed3d8e4a2d0d099169df3de46` |
-| 3a, `sha256sum` | `sha256sum content.canonical.json` | `ccc10dfbcb21853e30bca4042208e85e5c4984fed3d8e4a2d0d099169df3de46` |
-| 3b, `certutil` | `certutil -hashfile content.canonical.json SHA256` | `ccc10dfbcb21853e30bca4042208e85e5c4984fed3d8e4a2d0d099169df3de46` |
+| 1, Node `node:crypto` | `node check.mjs docs/handler-packet.example.json` | `sha256:4c934f45d3c980df0cdd471117cca2dc4d3b0b10ae1b9d48f7c7a57a51764243` |
+| 2, Python `hashlib` | `python check.py docs/handler-packet.example.json` | `sha256:4c934f45d3c980df0cdd471117cca2dc4d3b0b10ae1b9d48f7c7a57a51764243` |
+| 3a, `sha256sum` | `sha256sum content.canonical.json` | `4c934f45d3c980df0cdd471117cca2dc4d3b0b10ae1b9d48f7c7a57a51764243` |
+| 3b, `certutil` | `certutil -hashfile content.canonical.json SHA256` | `4c934f45d3c980df0cdd471117cca2dc4d3b0b10ae1b9d48f7c7a57a51764243` |
 
-The canonical form of that packet's `content` is 4,242 bytes. The whole file, envelope included, is
-4,706 bytes.
+The canonical form of that packet's `content` is 4,300 bytes. The whole file, envelope included, is
+4,768 bytes.
 
 The example is pinned by a test. `tests/unit/handler_verification.test.js` recomputes the digest
 from the file using `node:crypto`, checks it against the `content_digest` in the file, and checks it
 against the digest written on this page. If any of the three drift apart, that test fails and this
 page cannot go out saying something the file does not.
+
+The file is not edited by hand. `node scripts/gen_packet_example.mjs` writes it, from the sample
+claim and the shipped Northwind rules, through the same module the page builds a packet with. Both
+timestamps in it are constants in that script rather than readings off a clock, so running it twice
+writes the same bytes and the digest only moves when the packet actually changes. Run it with
+`--check` and it says whether the file on disk is still the file it writes, without touching it, and
+prints the three byte counts this page quotes.
 
 ## What a refusal looks like
 
@@ -272,32 +294,43 @@ All three routes then report the same different digest, and none of them matches
 claims:
 
 ```
-recomputed sha256:a69e27e676b92c0cc89007f1530998ac230b489b72385cfdb2a54365b3af4ba8
-claimed    sha256:ccc10dfbcb21853e30bca4042208e85e5c4984fed3d8e4a2d0d099169df3de46
+recomputed sha256:e8d1c86f6d9295dde632d431d40ceb1203e50b1110ff081be7f136a6c69b10da
+claimed    sha256:4c934f45d3c980df0cdd471117cca2dc4d3b0b10ae1b9d48f7c7a57a51764243
 ```
 
 Route 1 and route 2 printed that pair. Route 3, through both `sha256sum` and `certutil`, printed
-`a69e27e676b92c0cc89007f1530998ac230b489b72385cfdb2a54365b3af4ba8`. Three implementations, one
+`e8d1c86f6d9295dde632d431d40ceb1203e50b1110ff081be7f136a6c69b10da`. Three implementations, one
 answer, and the answer is no.
 
 Now the other half, which is the more useful one for you. Take the untouched example and change
 `generated_at` from `2026-09-01T09:15:31.000Z` to `2031-12-25T23:59:59.000Z`, a date six years out.
-Every route still returns the digest ending `de46` and still matches. That is `generated_at` sitting
+Every route still returns the digest ending `4243` and still matches. That is `generated_at` sitting
 outside the digest, working as intended. A packet exported twice from one filed revision is the same
 packet, and you can tell, which is the property that makes the digest usable for comparing two
 copies.
 
 ## Line endings, and the trap that produces a false mismatch
 
-The digest is over line feed bytes. This repository has no `.gitattributes`, and Git on Windows is
-commonly configured with `core.autocrlf=true`, so a Windows clone of this repository gets
-`docs/handler-packet.example.json` with carriage return line feed endings.
+The digest is over line feed bytes. Git on Windows is commonly configured with
+`core.autocrlf=true`, which rewrites text files on checkout, and until 2026-09-01 this repository
+had no `.gitattributes`, so a Windows clone got `docs/handler-packet.example.json` with carriage
+return line feed endings.
 
-That does not break routes 1 and 2, and it is worth knowing why. Both of them parse the JSON and
-write the canonical form out again from the parsed object, so the line endings in the file they read
-never reach the hash. This was checked rather than assumed. A copy of the example with every line
-feed replaced by a carriage return line feed, 4,864 bytes instead of 4,706, verifies under both
-routes and returns the digest ending `de46`.
+It now carries one, and that file is pinned to line feeds in it. The pin was added after watching
+the damage rather than in anticipation of it: in a fresh clone of this repository at `ab2db69`,
+`node --test tests/unit`, the second command the README quickstart gives a judge, printed
+`5022 !== 4864` and failed. The test that failed was building its own carriage return copy on top of
+a checkout that had already been converted, so it measured a file with doubled endings. Both halves
+were repaired, because either alone leaves somebody exposed: the pin stops the conversion for anyone
+cloning from here on, and the test normalises its base first, which is what protects a reader whose
+checkout was converted before the pin existed or who set `core.autocrlf` themselves.
+
+None of that changes what routes 1 and 2 do, and the pin is a convenience rather than the thing the
+promise rests on. A converted checkout never broke either route, and it is worth knowing why. Both
+of them parse the JSON and write the canonical form out again from the parsed object, so the line
+endings in the file they read never reach the hash. This was checked rather than assumed. A copy of the example with every line
+feed replaced by a carriage return line feed, 4,928 bytes instead of 4,768, verifies under both
+routes and returns the digest ending `4243`.
 
 Route 3 is the one to be careful with, because it hashes a file directly. Two ways to get a false
 mismatch out of it:
@@ -309,7 +342,7 @@ mismatch out of it:
   digest will be wrong twice over.
 
 If route 3 disagrees with routes 1 and 2, suspect the file you wrote before you suspect the packet.
-Check its size first. The canonical content of the example is 4,242 bytes, and a file that is
+Check its size first. The canonical content of the example is 4,300 bytes, and a file that is
 noticeably larger has picked up carriage returns or a byte order mark.
 
 ## Our own route, for completeness
@@ -350,6 +383,19 @@ the live URL as not deployed. Manual step: open the live page in a clean browser
 and no account, work the demonstration claim through to filed, press Copy the JSON, save it, and run
 route 1 against it. If the digest verifies, the shipped page and the module agree. Until then, what
 is proven is that the module emits a packet that verifies.
+
+If that browser refuses the clipboard write, which a locked down profile and a page inside a frame
+both do, the page puts the same JSON on screen in a box under the readable packet. Select it, save
+it, and run the same route against it. It is the same string the button would have handed over.
+
+**OWNER GATED. No claims handler has read a packet and said whether they could open a file from
+it.** Verifying the digest says the packet is intact. It says nothing about whether the packet is
+any use to the person who receives one. The questions that would answer that are written down and
+blank, before anyone was approached, in `evidence/handler-review/protocol.md` and its response form.
+Nobody has been approached, so that folder is an empty instrument. Manual step: find someone who has
+handled motor first notice of loss for an insurer or a broker and has no interest in this entry
+placing, send them a packet and this page and nothing else, and commit the form they hand back
+without editing it.
 
 **Not applicable, stated so it is not mistaken for missing.** There is no insurer to send a packet
 to and no third party service in this system. Every route on this page runs offline, against a file

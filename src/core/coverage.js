@@ -50,7 +50,7 @@ function driverStillOpen(policy, claim) {
   const clauses = [...new Set(list.map((entry) => entry?.clause).filter(Boolean))];
   const under = clauses.length ? ` under ${clauses.length === 1 ? 'clause' : 'clauses'} ${clauses.join(', ')}` : '';
   return (
-    ` Nobody is named as the driver yet, and this policy excludes ${list.length} named ` +
+    `Nobody is named as the driver yet, and this policy excludes ${list.length} named ` +
     `driver${list.length === 1 ? '' : 's'}${under}, so this answer is provisional until the claim says who was driving.`
   );
 }
@@ -79,9 +79,42 @@ function dateStillOpen(policy, claim) {
   if (!period || typeof period.start !== 'string' || typeof period.end !== 'string') return null;
   const under = typeof period.clause === 'string' && period.clause ? ` under clause ${period.clause}` : '';
   return (
-    ' No date has been recorded for the incident yet, and this policy covers losses between ' +
+    'No date has been recorded for the incident yet, and this policy covers losses between ' +
     `${period.start} and ${period.end}${under}, so this answer is provisional until the claim says when it happened.`
   );
+}
+
+/**
+ * What a yes on this policy still depends on, one sentence per open question.
+ *
+ * ONE SOURCE, TWO READERS, WHICH IS WHY IT IS EXPORTED. `checkCoverage` below builds its `reason`
+ * from this list and sets `provisional` from whether it is empty, and `src/core/packet.js` puts the
+ * same sentences in the sealed packet's coverage block so a handler reads the open question as a
+ * field rather than by scraping prose. Both callers get the same words because there is only one
+ * place they are written.
+ *
+ * The two functions above still return their own sentence each. This composes them, and the order
+ * is driver then date, because that is the order the reason has always named them in and moving it
+ * would rewrite the reason string on every provisional claim.
+ *
+ * A NON EMPTY LIST IS NOT THE SAME AS A PROVISIONAL ANSWER. An empty driver field raises a question
+ * whatever the rest of the schedule says, including on a claim that is refused outright for a
+ * reason no driver could change. Only a yes can be provisional, so a caller outside this module
+ * reads this list only after `checkCoverage` has said `covered` and `provisional`.
+ *
+ * @param {object} policy the `policy` block of the fixture
+ * @param {object} claim a claim from claim.js
+ * @returns {string[]} empty when nothing is open
+ * @throws {TypeError} when the policy or claim is missing
+ */
+export function openCoverQuestions(policy, claim) {
+  if (!policy || typeof policy !== 'object') {
+    throw new TypeError('openCoverQuestions needs a policy object.');
+  }
+  if (!claim || typeof claim !== 'object') {
+    throw new TypeError('openCoverQuestions needs a claim object.');
+  }
+  return [driverStillOpen(policy, claim), dateStillOpen(policy, claim)].filter(Boolean);
 }
 
 function findExcludedDriver(policy, claim) {
@@ -244,9 +277,9 @@ export function checkCoverage(policy, claim) {
 
   // Two open questions, and they compose. Either one on its own makes the yes provisional, and a
   // claim that has said neither who was driving nor when it happened says both out loud rather
-  // than whichever one the code happened to look at last.
-  const openDriver = driverStillOpen(policy, claim);
-  const openDate = dateStillOpen(policy, claim);
+  // than whichever one the code happened to look at last. The list comes from the exported
+  // function above so the packet quotes the same sentences this reason is built from.
+  const open = openCoverQuestions(policy, claim);
 
   return {
     covered: true,
@@ -255,8 +288,8 @@ export function checkCoverage(policy, claim) {
     currency,
     reason:
       `A ${claim.incident_type} claim is covered under ${coverage.label}, clause ${coverage.clause}. ` +
-      `${excessText}${openDriver ?? ''}${openDate ?? ''}`,
+      `${excessText}${open.map((question) => ` ${question}`).join('')}`,
     exclusions: [],
-    provisional: Boolean(openDriver || openDate),
+    provisional: open.length > 0,
   };
 }

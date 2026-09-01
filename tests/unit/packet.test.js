@@ -23,8 +23,9 @@ import {
   PACKET_KIND,
 } from '../../src/core/packet.js';
 import { applyPatch, createClaim, fileClaim, lockField } from '../../src/core/claim.js';
+import { FILE_CODES } from '../../src/core/filing.js';
 import { loadPolicyPack } from '../../src/core/policy.js';
-import { checkCoverage } from '../../src/core/coverage.js';
+import { checkCoverage, openCoverQuestions } from '../../src/core/coverage.js';
 
 const pack = (name) => loadPolicyPack(JSON.parse(readFileSync(
   new URL(`../../fixtures/insurers/${name}.json`, import.meta.url), 'utf8',
@@ -128,6 +129,84 @@ test('the tool calls are oldest first, and a refusal keeps its code', () => {
   assert.equal(refused.code, 'PATCH_REJECTED_LOCKED');
 });
 
+/* ------------------------------------------------------- the yes that is not settled yet */
+
+/**
+ * A filed claim whose cover decision is a yes that still depends on a name nobody has given.
+ *
+ * The sample claim names Maria K. as the driver and Northwind excludes one named driver, so
+ * emptying that field is what puts the decision back into the state the panel draws as "Covered,
+ * provisionally". Everything else stays as the filmed journey leaves it.
+ */
+function provisionallyFiled() {
+  const claim = { ...filedClaim(), driver: null };
+  const decided = checkCoverage(northwind, claim);
+  assert.equal(decided.covered, true, 'the setup has to produce a yes, or there is nothing to qualify');
+  assert.equal(decided.provisional, true, 'and a yes that is not settled');
+  return claim;
+}
+
+test('a provisional yes reaches the packet as a provisional yes', () => {
+  // WHAT WAS WRONG. The panel drew "Covered, provisionally", check_coverage answered
+  // "COVERED, PROVISIONALLY", and this block wrote a plain covered and hashed it. The sealed
+  // document a handler receives was the only surface stating a settled answer.
+  const content = build(provisionallyFiled()).packet;
+
+  assert.equal(content.coverage.covered, true);
+  assert.equal(content.coverage.provisional, true);
+  assert.match(content.coverage.provisional_reason, /Nobody is named as the driver yet/);
+  assert.match(content.coverage.provisional_reason, /excludes 1 named driver under clause EX-9\.1/);
+});
+
+test('an ordinary named driver claim is still a plain yes, with nothing hanging over it', () => {
+  // The other half. A qualifier that appears on every claim says nothing about any of them.
+  const content = build(filedClaim()).packet;
+
+  assert.equal(content.coverage.covered, true);
+  assert.equal(content.coverage.provisional, false);
+  assert.equal(content.coverage.provisional_reason, null);
+});
+
+test('the open question in the packet is the one src/core/coverage.js states', () => {
+  // Not a second phrasing of the same idea. openCoverQuestions is where the sentence is written,
+  // checkCoverage builds its reason from it, and the packet quotes it, so a change to the wording
+  // cannot move one surface and leave the other behind.
+  const claim = provisionallyFiled();
+  const content = build(claim).packet;
+
+  assert.equal(content.coverage.provisional_reason, openCoverQuestions(northwind, claim).join(' '));
+  assert.ok(checkCoverage(northwind, claim).reason.includes(content.coverage.provisional_reason),
+    'the claimant prose and the handler field say different things');
+});
+
+test('the markdown view draws the qualifier the JSON carries', () => {
+  const provisional = packetAsMarkdown(build(provisionallyFiled()).packet, 'sha256:abc');
+  const plain = packetAsMarkdown(build(filedClaim()).packet, 'sha256:abc');
+
+  assert.match(provisional, /\*\*Decision:\*\* covered, provisionally/);
+  assert.match(provisional, /\*\*Still open:\*\* Nobody is named as the driver yet/);
+
+  assert.match(plain, /\*\*Decision:\*\* covered\n/);
+  assert.doesNotMatch(plain, /provisionally/);
+  assert.doesNotMatch(plain, /Still open/);
+});
+
+test('the qualifier is inside the digest, so it cannot be edited out quietly', async () => {
+  // A field beside the decision is only worth anything if changing it changes the hash. It is in
+  // `content`, which is the hashed half, and this is the assertion that says so.
+  const claim = provisionallyFiled();
+  const sealed = build(claim);
+  const flattened = JSON.parse(sealed.canonical);
+  flattened.coverage.provisional = false;
+  flattened.coverage.provisional_reason = null;
+
+  assert.notEqual(
+    await digestOf(canonicalise(flattened)),
+    await digestOf(sealed.canonical),
+    'the qualifier could be removed without moving the digest',
+  );
+});
+
 /* ---------------------------------------------------------------------------- the digest */
 
 test('two builds from one filed revision produce one digest', async () => {
@@ -199,6 +278,70 @@ test('another insurer\'s rules cannot describe this policy\'s filing', () => {
   assert.equal(result.ok, false);
   assert.equal(result.code, PACKET_CODES.borrowedRules);
   assert.match(result.reason, /Kestrel Assurance/);
+});
+
+/**
+ * The two identity facts the packet used to assert without having them.
+ *
+ * A packet says this claim went to this insurer on this policy. Both halves were unchecked. A
+ * filed claim carrying no policy number produced a document referenced `CR-UNKNOWN-R4` with a null
+ * policy number under it, and a build that named no home pack sealed the claim under whichever
+ * insurer's rules were handed in. Both were digested, which made the gap look deliberate.
+ */
+test('a filed claim that names no policy gets no packet, whatever the value looks like', () => {
+  for (const value of [undefined, null, '', '   ']) {
+    const result = build({ ...filedClaim(), policy_id: value, reference: null });
+
+    assert.equal(result.ok, false, `policy_id ${JSON.stringify(value)} was sealed anyway`);
+    assert.equal(result.code, PACKET_CODES.noPolicyId);
+    assert.equal(result.packet, null);
+    assert.equal(result.canonical, null, 'there is nothing to hash, so nothing is offered to hash');
+    assert.match(result.reason, /A packet is a statement about one policy/);
+  }
+});
+
+test('the reference no longer papers over a missing policy number', () => {
+  // The exact string that used to go out. It cannot be produced any more, because the build that
+  // would have produced it is refused before the reference is composed.
+  const result = build({ ...filedClaim(), policy_id: null, reference: null });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.packet, null);
+  assert.doesNotMatch(result.reason, /^CR-UNKNOWN/);
+});
+
+test('a packet is not built for a filing nobody has placed with an insurer', () => {
+  for (const homePackId of [undefined, null, '', '   ']) {
+    const result = build(filedClaim(), { homePackId });
+
+    assert.equal(result.ok, false, `homePackId ${JSON.stringify(homePackId)} was sealed anyway`);
+    assert.equal(result.code, PACKET_CODES.noHomeInsurer);
+    assert.equal(result.packet, null);
+    assert.match(result.reason, /put our name on a guess/);
+  }
+});
+
+test('the packet asks the identity questions in the order the file gate asks them', () => {
+  // One claim failing every check at once. A reader chasing the first answer must be sent to the
+  // same place the file panel would send them, or the two are describing different problems.
+  const broken = { ...filedClaim(), policy_id: null };
+
+  assert.equal(build(broken, { pack: null, homePackId: null }).code, PACKET_CODES.noPack);
+  assert.equal(build(broken, { homePackId: null }).code, PACKET_CODES.noPolicyId);
+  assert.equal(build(filedClaim(), { homePackId: null }).code, PACKET_CODES.noHomeInsurer);
+  assert.equal(build(filedClaim(), { pack: kestrel }).code, PACKET_CODES.borrowedRules);
+});
+
+test('every identity refusal the file gate can raise has a packet code of its own', () => {
+  // A new FILE_REFUSED identity code added to src/core/filing.js with nothing done here would
+  // throw on the lookup rather than fall through to a packet. This is the check that says the two
+  // vocabularies are still the same size.
+  for (const code of [
+    FILE_CODES.noPack, FILE_CODES.noPolicyId, FILE_CODES.noHomeInsurer, FILE_CODES.borrowedRules,
+  ]) {
+    const matched = Object.values(PACKET_CODES).some((value) => value.endsWith(code.replace('FILE_REFUSED_', '')));
+    assert.ok(matched, `${code} has no packet code beside it`);
+  }
 });
 
 test('a claim marked filed that the gate would refuse gets no packet either', () => {

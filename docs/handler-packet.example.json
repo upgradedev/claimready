@@ -40,6 +40,8 @@
       "currency": "EUR",
       "deductible": 250,
       "exclusions": [],
+      "provisional": false,
+      "provisional_reason": null,
       "reason": "A collision claim is covered under Own damage, clause OD-4.1. You pay the first 250 EUR as the excess.",
       "recomputed_from": "the filed claim and the loaded rule pack, not from the page"
     },
@@ -151,8 +153,8 @@
         "tool": "validate_claim"
       }
     ],
-    "version": 1
+    "version": 2
   },
-  "content_digest": "sha256:ccc10dfbcb21853e30bca4042208e85e5c4984fed3d8e4a2d0d099169df3de46",
+  "content_digest": "sha256:4c934f45d3c980df0cdd471117cca2dc4d3b0b10ae1b9d48f7c7a57a51764243",
   "generated_at": "2026-09-01T09:15:31.000Z"
 }

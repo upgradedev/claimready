@@ -21,6 +21,14 @@
  * further along. That is also why a direct call to `fileClaim` cannot be a way around the gate:
  * the refusal lives here and `fileClaim` has no second opinion.
  *
+ * IT FAILS CLOSED ON IDENTITY TOO, AND THAT IS NEWER. A missing policy number and a missing home
+ * insurer used to be waved through, so a draft with `policy_id: null` filed and produced a sealed
+ * packet referenced `CR-UNKNOWN`, and a caller that named no home pack filed a policy under any
+ * insurer's rules that happened to be loaded. Both are facts the answer depends on, so both are
+ * asked in `filingIdentity` below and neither has a default. Nothing else closes: comparing packs,
+ * reading requirements and checking cover all still answer without either fact, because none of
+ * them asserts where the claim went.
+ *
  * THE SENTENCE IS THE PANEL'S SENTENCE. `reason` is built by `fileGateStatement` for the three
  * cases that function covers, so the words beside the button, the words a refused call hands back
  * and the words `validate_claim` reports to a model are one string from one function rather than
@@ -43,19 +51,30 @@ import {
 } from './requirements.js';
 
 /**
- * The filing refusal vocabulary. Four codes, no more, and a caller branches on the code rather
- * than on the sentence.
+ * The filing refusal vocabulary. A caller branches on the code rather than on the sentence.
  *
  * These are filing codes and are deliberately not the PATCH_REJECTED family in claim.js: a patch
  * and a filing are different acts, refused for different reasons, and one vocabulary covering both
  * would tell a reader less than either does now.
+ *
+ * The two identity codes are newer than the rest and they close a filing that used to go through
+ * on facts nobody had supplied. NO_POLICY_ID is a draft that never says which policy it is on, and
+ * NO_HOME_INSURER is a page that never says which insurer that policy is with. Neither is a
+ * question about the claim's content, so both are answered before the fields and the requirements
+ * are looked at.
  */
 export const FILE_CODES = {
   alreadyFiled: 'FILE_REFUSED_ALREADY_FILED',
   noPack: 'FILE_REFUSED_NO_PACK',
+  noPolicyId: 'FILE_REFUSED_NO_POLICY_ID',
+  noHomeInsurer: 'FILE_REFUSED_NO_HOME_INSURER',
   borrowedRules: 'FILE_REFUSED_BORROWED_RULES',
   incomplete: 'FILE_REFUSED_INCOMPLETE',
   requirements: 'FILE_REFUSED_REQUIREMENTS',
+  // Not a decision `canFile` ever reaches. A filing time is handed in by whoever files, and this
+  // is the code `fileClaim` answers with when what arrived is not one. It lives here so every
+  // filing refusal a caller can meet is named in one list.
+  noFilingTime: 'FILE_REFUSED_NO_FILING_TIME',
 };
 
 /** Said when the insurer's rules never loaded. Named once so every surface says it identically. */
@@ -65,6 +84,37 @@ export const NO_PACK_FILING_REASON =
 
 /** Said when this claim has already been filed. */
 export const ALREADY_FILED_REASON = 'This claim has already been filed.';
+
+/**
+ * Said when the draft does not say which policy it is on.
+ *
+ * A filing is an assertion about one policy. Without the number there is nothing to assert it
+ * against, and the packet used to write the gap out as the word UNKNOWN inside a reference and a
+ * null beside "Policy number", both of them sealed under a digest that made the gap look
+ * deliberate. Refusing costs a claimant nothing, because the number is on the policy they are
+ * claiming under and is not something they have to work out.
+ */
+export const NO_POLICY_ID_FILING_REASON =
+  'This draft does not say which policy it is on, so there is nothing to file it against. A claim '
+  + 'is filed on a policy number, and this page will not invent one.';
+
+/**
+ * Said when nothing has told this page which insurer the policy is with.
+ *
+ * THIS IS THE FACT THE BORROWED RULES CHECK IS BUILT ON, SO ITS ABSENCE CANNOT BE A PASS. The
+ * check compares the pack in hand against the policy's own insurer. Where the second half is
+ * missing the comparison has no opinion, and treating no opinion as a yes is what let a Northwind
+ * policy file under the rules of whichever pack happened to be loaded. The comparison is not
+ * available, so filing is not available, and the page says which of the two is missing.
+ *
+ * Only filing closes. Loading another insurer's pack, reading its requirements, checking the cover
+ * and comparing the two are all still open, because none of them asserts anything about where the
+ * claim went.
+ */
+export const NO_HOME_INSURER_FILING_REASON =
+  'This page has not been told which insurer this policy is with, so it cannot tell whether the '
+  + 'rules in hand are that insurer\'s. Filing stays closed until it can. Comparing packs and '
+  + 'checking the cover still work.';
 
 /**
  * Said when the rules in hand belong to an insurer this policy is not with.
@@ -148,6 +198,71 @@ function insurerOf(pack) {
 }
 
 /**
+ * The policy number this claim states, trimmed, or null when it does not state one.
+ *
+ * `policy_id` is a protected field on a claim, so it is not in the required list `validateClaim`
+ * walks and no patch can put it there. That is right for a field the page seeds from the policy,
+ * and it meant nothing anywhere checked it was present: a claim carrying null filed, and the
+ * sealed packet wrote the hole out as `CR-UNKNOWN-R2` with a null policy number under it.
+ *
+ * A whitespace only value is treated as absent for the same reason a whitespace only pack id is.
+ * A number nobody can read is not a number.
+ *
+ * @param {*} claim
+ * @returns {(string|null)}
+ */
+export function policyIdOf(claim) {
+  if (!claim || typeof claim !== 'object') return null;
+  return typeof claim.policy_id === 'string' && claim.policy_id.trim().length > 0
+    ? claim.policy_id.trim()
+    : null;
+}
+
+/**
+ * May this claim be filed under this pack at all, on identity alone.
+ *
+ * WHY THIS IS ITS OWN FUNCTION. Three entry points have to answer this identically: `canFile`
+ * below, `fileClaim` in claim.js which has no second opinion and reaches it through `canFile`, and
+ * `buildFilingPacket` in packet.js, which cannot use `canFile` because a filed claim short circuits
+ * it on ALREADY_FILED. Before this existed the packet re-asked two of the four questions in its own
+ * words and never asked the other two, so a packet could describe a filing the gate would refuse.
+ * One function, one order, one set of codes.
+ *
+ * IT FAILS CLOSED ON EVERY MISSING FACT, and the order is the order a reader would ask in. Whose
+ * rules are these, which policy is this, whose insurer is that policy with, and do the first and
+ * the third agree. A missing answer refuses. It never guesses, and in particular it never reads the
+ * pack in hand as evidence of whose policy this is, because that is the assumption the whole check
+ * exists to remove.
+ *
+ * `refusal` carries a FILE_REFUSED code. A caller with its own vocabulary, which is packet.js,
+ * translates it rather than inventing a fifth ordering of the same questions.
+ *
+ * @param {*} pack an insurer rule pack, or anything at all
+ * @param {object} claim a claim from claim.js
+ * @param {{homePackId?: (string|null)}} [options] whose policy this is, as the page states it
+ * @returns {{usable: boolean, packId: (string|null), insurer: (string|null),
+ *            homePackId: (string|null), borrowed: boolean, policyId: (string|null),
+ *            refusal: ({code: string, reason: string}|null)}}
+ */
+export function filingIdentity(pack, claim, options) {
+  const identity = packIdentity(pack, options);
+  const policyId = policyIdOf(claim);
+
+  let refusal = null;
+  if (!identity.usable) {
+    refusal = { code: FILE_CODES.noPack, reason: NO_PACK_FILING_REASON };
+  } else if (!policyId) {
+    refusal = { code: FILE_CODES.noPolicyId, reason: NO_POLICY_ID_FILING_REASON };
+  } else if (!identity.homePackId) {
+    refusal = { code: FILE_CODES.noHomeInsurer, reason: NO_HOME_INSURER_FILING_REASON };
+  } else if (identity.borrowed) {
+    refusal = { code: FILE_CODES.borrowedRules, reason: borrowedRulesReason(identity.insurer) };
+  }
+
+  return { ...identity, policyId, refusal };
+}
+
+/**
  * Can this draft be filed, and if not, what is holding it up.
  *
  * The answer is complete whichever way it comes out: `missing` and `outstanding` are filled in on
@@ -158,6 +273,9 @@ function insurerOf(pack) {
  * @param {object} claim a claim from claim.js
  * @param {(string[]|Set<string>)} [completedHumanActions] ids of the requirements whose human
  *        action the caller reports as carried out on the page. Omit it and none counts as done.
+ * @param {{homePackId?: (string|null)}} [options] which pack the policy is actually with, as the
+ *        page states it. Omit it and filing is refused: this is a fact the answer depends on, not
+ *        a decoration on it, and a caller that cannot supply it is a caller that cannot file.
  * @returns {{ok: boolean, code: (string|null), reason: string, missing: string[],
  *            outstanding: Array<{id: string, label: string, field: (string|null),
  *                                humanAction: (string|null)}>,
@@ -169,8 +287,8 @@ export function canFile(pack, claim, completedHumanActions, options) {
     throw new TypeError('canFile needs a claim object.');
   }
 
-  // One answer about whose rules these are, shared with src/core/packet.js.
-  const identity = packIdentity(pack, options);
+  // One answer about whose rules these are and whose policy this is, shared with src/core/packet.js.
+  const identity = filingIdentity(pack, claim, options);
   const known = identity.usable;
   const insurer = identity.insurer;
   const borrowed = identity.borrowed;
@@ -202,25 +320,19 @@ export function canFile(pack, claim, completedHumanActions, options) {
     requirementsKnown: true,
   });
 
-  // Before the field check, on purpose. Without the pack this page cannot answer the question that
-  // was asked, and saying so is a different statement from listing what is missing. The empty
-  // fields are named after it rather than instead of it, because both facts are true and a
-  // claimant looking at a degraded page is still owed the one they can act on.
-  if (!known) {
-    const alsoEmpty = missing.length > 0 ? ` ${said}` : '';
-    return { ok: false, code: FILE_CODES.noPack, reason: `${NO_PACK_FILING_REASON}${alsoEmpty}`, ...facts };
-  }
-
-  // Before the field and requirement checks, because a draft that is complete under the wrong
-  // insurer's intake is not a draft that can be filed, and naming the missing fields first would
-  // send a claimant to fill in answers for a pack that is not going to file anything.
-  if (borrowed) {
-    return {
-      ok: false,
-      code: FILE_CODES.borrowedRules,
-      reason: borrowedRulesReason(insurer),
-      ...facts,
-    };
+  // EVERY IDENTITY QUESTION IS ANSWERED BEFORE ANY QUESTION ABOUT THE CONTENT, on purpose. A draft
+  // that is complete under the wrong insurer's intake, or on a policy nobody has named, is not a
+  // draft that can be filed, and listing the empty fields first would send a claimant off to fill
+  // in answers for a filing that was never going to happen.
+  //
+  // The no pack case is the one that also names the empty fields, because that page is degraded
+  // rather than wrong: the claimant cannot fix the missing rules and can fix the missing fields, so
+  // both facts are true and they are owed the one they can act on. The other three are refusals
+  // about the claim's identity, and a list of empty fields beside them would read as the thing to
+  // go and do next, which it is not.
+  if (identity.refusal) {
+    const alsoEmpty = identity.refusal.code === FILE_CODES.noPack && missing.length > 0 ? ` ${said}` : '';
+    return { ok: false, code: identity.refusal.code, reason: `${identity.refusal.reason}${alsoEmpty}`, ...facts };
   }
 
   if (missing.length > 0) {

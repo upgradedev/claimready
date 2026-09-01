@@ -24,8 +24,10 @@ node scripts/measure_intake.mjs.
 
 A policy is not general knowledge. What is covered, the excess and what the intake needs live on
 one origin and change per customer, so the insurer publishes typed tools and the visitor brings
-their own agent. No model runs here and no key exists. REST with an OpenAPI file must be built for
-this insurer in advance, and says what a service offers, never what it offers right now.
+their own agent. No model runs here and no key exists. A REST endpoint with an OpenAPI file beside
+it can carry the same answers, once somebody has built that client integration for this insurer.
+What this page does instead is browser native and same origin: an agent meeting this insurer for
+the first time discovers the tools at runtime, with nothing built for it in advance.
 
 ## A better experience
 
@@ -79,19 +81,14 @@ Insurer, policy, vehicle and claimant are invented. No integration, no adjudicat
 this on real intakes, so there is no measurement of claims arriving more complete and I have not
 invented one.
 
-## Display title, three options. Not chosen
-
-The submission form needs one display title and none of these is picked. The owner chooses, and
-until then no file in this repository names one as the title.
-
-1. ClaimReady
-   Leads with the name alone. Aimed at a judge who checks that the entry, the repository and the
-   live page are one thing, and who will search the name and find the unrelated products.
-
-2. ClaimReady, the insurer hands your agent its policy rules
-   Leads with the mechanism. Aimed at a judge skimming a gallery who has a few seconds and needs
-   to see what WebMCP is doing here before they open anything.
-
-3. ClaimReady, first notice of loss for the driver at the roadside
-   Leads with the buyer and the moment. Aimed at a judge scoring impact, who wants to know whose
-   problem this is before they judge whether the mechanism is worth it.
+What I did measure went against the page, and it is published rather than dropped. In 36 runs with
+language models standing in for drivers, the arm that got the published rules came out policy
+complete in 5 of 18 against 6 of 18 for a static form. Read those two counts with the thing that
+sits under them: the scorer fills in the date, the incident type and the driver from the file the
+claim already had, so neither number is what a model produced on its own. Take that seeding away and
+both arms score zero of eighteen, which is the sensitivity result published beside the headline. It
+also wrote two answers that contradicted
+the driver's own account, the damage position in one run and the location in another, where the
+static form wrote none. So the specific thing this gets wrong is that a richer tool surface gives an
+agent more room to fill a field confidently and incorrectly. The runs, the protocol written before
+them, the errata and what none of it licenses anyone to conclude are in evidence/impact.

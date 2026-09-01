@@ -120,10 +120,22 @@ protocol as the registered ones and returns the refusal in the page's own words.
 it saw and exit 0 whatever that was: pointed at a browser with no WebMCP it reported `api: null` and
 called it a success, so a run that proved nothing looked exactly like a run that proved the
 lifecycle. The judgement moved into `evals/probe_assertions.mjs`, which asserts the API, which page
-the run was against, the exact tool set at every phase by name, the absence of every human only
-name, the conditional tool appearing and being withdrawn, a stale patch refused with the revision
-unmoved, the planted evidence note quoted back with nothing moving because of it, the declared
-tool's schema and its one revision step, an empty console, and no tool that threw.
+the run was against, which deployed commit the run was bound to, the exact tool set at every phase
+by name, the absence of every human only name, the conditional tool appearing and being withdrawn,
+both refusals leaving the whole draft where they found it rather than only the revision number, the
+planted evidence note quoted back with nothing moving because of it, the declared tool's origin and
+its whole input schema against a contract typed out by hand, what the declared tool's answer
+actually says, the witness name really being on the claim afterwards, an empty console, and no tool
+that threw.
+
+**Three of those are new on 2026-09-01 and each one closes a way of passing while behaving badly.**
+A refusal was judged by the revision alone, so a call that was refused and wrote its field anyway,
+without touching the counter, passed. The declared tool's schema was judged by searching a string
+for two property names, so a schema that had lost `police_report_ref`, changed a type, dropped a
+constraint, gained a property nobody declared or carried somebody else's descriptions all passed,
+and the `origin` the browser puts on that tool was collected and read by nothing. And a transcript
+named the URL it came from but never the commit, so a pass stayed green while the page it described
+was replaced underneath it.
 
 Two runs on 2026-09-01, against `21fc9f2`, and both are against the judgement **as it stood that
 day**, which was smaller than the one in the file now:
@@ -133,19 +145,45 @@ day**, which was smaller than the one in the file now:
 | Chrome 151 stable, `--enable-features=WebMCP` | `probe: PASS. 24 checks against the deployed page, none failed.` |
 | the same Chrome, same page, **flag left off** | `probe: FAIL`, exit 1, naming eight of them, starting with the API that is not there |
 
-`tests/unit/probe_assertions.test.js` breaks the transcript with 38 mutations, at least one per
+`tests/unit/probe_assertions.test.js` breaks the transcript with 58 mutations, at least one per
 assertion, and requires a failure each time. A gate nobody has watched fail is not a gate.
 
-**Still owed on the probe, and it is owed today.** The judgement gained three things after those two
-runs: it refuses a transcript that does not come from the deployed origin, it requires each phase's
-tool set to EQUAL the expected set rather than contain it, and it requires an evidence note phase.
-The first two are judged over data the old journey already collected or that the journey now records
-with one line. The third needs the journey to press the page's own pin control twice, and **those two
-clicks have never been watched against a live browser**. Until somebody runs the command at the top
-of this section and sees it pass, the note phase is a check that has been unit tested and not yet
-executed, and the `Browser probe` job in `.github/workflows/evals.yml` is on manual dispatch for that
-reason and not on the daily schedule. Promoting it to the schedule is a one line change, and the line
-to change is named in the workflow.
+**The note phase has now been watched against a live browser, so the probe is off manual dispatch.**
+It was dispatch only because its note phase presses the page's own pin control twice and nobody had
+seen those two clicks land outside a unit test. Two runs since have:
+[run 33512549120](https://github.com/upgradedev/claimready/actions/runs/33512549120) on a runner,
+2026-09-01, which printed `probe: PASS. 53 checks against the deployed page, none failed`, and a
+desktop run the same evening against `9b64fb2` on Chrome 152.0.7977.65, which printed
+`probe: PASS. 71 checks against the deployed page, none failed` under the judgement as it now
+stands. The `if:` line is gone and the job runs on the same triggers as the smoke evals.
+
+**What stops a green run here from going stale, now that it runs unattended.** This workflow runs
+daily and on dispatch rather than on push, so `main` moves under it. Before the browser is opened,
+the job runs `python3 video/build_video.py --verify-deployed --url "$CLAIMREADY_URL" --deployed-sha
+"$GITHUB_SHA"`, which fetches every one of the 26 files the page loads and refuses unless the host,
+this checkout and that commit are the same bytes on all of them. Only if that passes is the commit
+handed to the probe, which carries it into the transcript, and `evals/probe_assertions.mjs` refuses
+a transcript that cannot name one. So a pass is always a statement about bytes compared moments
+earlier, and a runtime change that has not reached the host stops the job rather than passing
+through it. Run the verifier yourself before believing any row on this page: on 2026-09-01, from a
+working tree one commit ahead of the host, it printed `the deployed page is not what is on disk`
+over `assets/styles.css` and exited 1, which is the check doing its job rather than a broken
+deployment.
+
+**Still owed on the probe, and one dispatch settles both of them.**
+
+Its *passing* branch has never run anywhere. The verifier above has only ever been watched refusing,
+from a working tree ahead of the host. The second of its two comparisons, this checkout against the
+same 26 files at the named commit, has therefore never executed, and this workflow does not fire on
+push, so the first execution will be the 06:17 cron or a manual dispatch.
+
+And the schema contract in `evals/probe_assertions.mjs` was measured on Chrome **stable** 152, while
+the probe job installs `google-chrome-unstable`, the Dev channel. The runner run that passed did so
+under the older judgement, which searched the serialised schema for two property names and would
+have passed whatever Dev put in it. If the two channels build a different schema from the same
+markup, the first unattended run goes red for a reason that is not a defect in the page. Dispatch
+the workflow once after this commit is deployed and read the probe job's transcript. A difference is
+recorded with both channels named. It is not a reason to loosen the comparison.
 
 **The honest limit, and it is the same one as everywhere else on this page: the caller was a script,
 not a model.** This shows that a real browser publishes, executes and withdraws the tools this page
@@ -585,12 +623,21 @@ node "$EVALS_BIN" browser \
   --backend gemini
 ```
 
-In CI: `.github/workflows/evals.yml`, on manual dispatch and daily at 06:17 UTC. In order, it
-replays the journeys, replays the negative control, runs `--selftest` over the whole mutation
-registry and fails if any mutation survives, fails when the repository variable
-`CLAIMREADY_URL` is empty, fails when that URL does not answer 200, builds the harness from the
-pinned commit, runs the three journeys, runs the negative control and requires it to fail in the one
-shape described above, and uploads both logs and any `.evals` report as an artifact.
+In CI: `.github/workflows/evals.yml`, on manual dispatch and daily at 06:17 UTC. Two jobs, and they
+do not depend on each other, so a failure to build somebody else's harness cannot hide whether our
+own page still behaves.
+
+The `smoke` job, in order, replays the journeys, replays the negative control, runs `--selftest`
+over the whole mutation registry and fails if any mutation survives, fails when the repository
+variable `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, builds the harness from
+the pinned commit, runs the three journeys, runs the negative control and requires it to fail in the
+one shape described above, and uploads both logs and any `.evals` report as an artifact.
+
+The `probe` job, in order, runs the 58 mutations and the note phase tests before any browser is
+opened, fails when `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, fails unless
+the host is serving this checkout at this commit on all 26 files the page loads, hands that commit
+to the probe, starts Chrome with the WebMCP flag, runs `evals/browser_probe.mjs` and fails when the
+judgement refuses the transcript, and uploads the transcript and the browser's own log.
 
 Dispatch it by hand with:
 

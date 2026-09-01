@@ -28,7 +28,7 @@
 
 import { createStore } from '../core/store.js';
 import { patchIsNoChange, PATCHABLE_FIELDS } from '../core/claim.js';
-import { canFile } from '../core/filing.js';
+import { canFile, packIdentity } from '../core/filing.js';
 import {
   buildFilingPacket,
   canonicalise,
@@ -64,6 +64,19 @@ const DESCRIPTION_DEBOUNCE_MS = 500;
 
 const NO_PACK_REASON = 'The insurer rule pack did not load, so this page cannot say what the intake '
   + 'asks for. That is a loading problem on our side, not a statement that nothing is required.';
+
+/**
+ * Said when the cover button is pressed before the insurer's rules are in.
+ *
+ * The sample file carries a schedule of its own, and the page used to answer from it during the
+ * load: a clause and an excess, drawn from a block src/core/policy.js has never validated, left
+ * sitting on the panel after the real pack arrived. A clause a claimant can read is a statement
+ * about their cover, so the honest answer while the page has nothing validated to read is that it
+ * has nothing validated to read.
+ */
+const COVER_NOT_YET_REASON = 'The insurer rules are still loading, so there is no validated '
+  + 'schedule to check this claim against yet. Nothing was decided. Press Check cover once the '
+  + 'rules are in.';
 
 /**
  * Used only when the sample file cannot be fetched or is refused, so the page never renders empty.
@@ -363,10 +376,22 @@ async function boot() {
    */
   function applyPack(id) {
     const entry = id ? packs.get(id) : null;
+
+    // Read before anything moves, because the message below depends on whether there was an answer
+    // to withdraw and the assignments underneath would have thrown it away.
+    const hadAnAnswer = ui.coverage !== null;
+
     if (entry && entry.pack) {
+      // WHOSE RULES THESE ARE IS ONE ANSWER AND IT IS NOT WORKED OUT HERE. This used to compare the
+      // manifest's id against the home id by hand, while src/core/filing.js compared the id written
+      // inside the pack file. Two names for one pack, in two places, either of which could go on
+      // saying yes while the other said no. packIdentity is the one reader now, for the id the
+      // tools carry and for the banner a person reads.
+      const identity = packIdentity(entry.pack, { homePackId });
+
       activePackId = entry.id;
       context.pack = entry.pack;
-      context.packId = entry.id;
+      context.packId = identity.packId;
       context.policy = entry.pack;
       context.currency = entry.pack.currency;
       context.hasPolicySchedule = hasSchedule(entry.pack);
@@ -375,27 +400,57 @@ async function boot() {
       // picker changes the schedule, not the customer: policy MTR-2026-0417 does not become a
       // policy with the other insurer because their rule pack was loaded against it, and the page
       // used to leave a reader to work that out from a policy number in a decision line.
-      const borrowed = homePackId && entry.id !== homePackId;
-      view.renderPackNote(borrowed
+      view.renderPackNote(identity.borrowed
         ? `${describePack(entry.pack)} These are ${entry.pack.insurer}'s published rules, read `
           + `against the same claim. Policy ${persona.policyId} itself is not with ${entry.pack.insurer}.`
         : describePack(entry.pack));
-      view.renderPersona({ ...persona, insurer: entry.pack.insurer, borrowed: Boolean(borrowed) });
-      return;
+      view.renderPersona({ ...persona, insurer: entry.pack.insurer, borrowed: identity.borrowed });
+    } else {
+      // Nothing loaded, so nothing is active. Leaving the previous id here was the other half of
+      // the stranding above: the page reported a pack it was no longer answering under.
+      activePackId = null;
+      context.pack = null;
+      context.packId = null;
+      context.policy = embeddedPolicy;
+      context.currency = persona.currency;
+      context.hasPolicySchedule = hasSchedule(embeddedPolicy);
+      view.renderPersona({ ...persona, insurer: null, borrowed: false });
+      view.renderPackNote(entry && entry.error
+        ? `The ${entry.id} rule pack did not load: ${entry.error}. The cover check falls back to the schedule stored with this policy.`
+        : NO_PACK_REASON);
     }
 
-    // Nothing loaded, so nothing is active. Leaving the previous id here was the other half of
-    // the stranding above: the page reported a pack it was no longer answering under.
-    activePackId = null;
-    context.pack = null;
-    context.packId = null;
-    context.policy = embeddedPolicy;
-    context.currency = persona.currency;
-    context.hasPolicySchedule = hasSchedule(embeddedPolicy);
-    view.renderPersona({ ...persona, insurer: null, borrowed: false });
-    view.renderPackNote(entry && entry.error
-      ? `The ${entry.id} rule pack did not load: ${entry.error}. The cover check falls back to the schedule stored with this policy.`
-      : NO_PACK_REASON);
+    retireCover(hadAnAnswer);
+  }
+
+  /**
+   * A cover decision belongs to the schedule that produced it, and goes when that schedule does.
+   *
+   * IT LIVES HERE RATHER THAN IN THE PICKER, BECAUSE THE PICKER IS NOT THE ONLY CALLER. The other
+   * one is the boot that follows the rule pack fetch, and that is the case that used to slip
+   * through: a clause and an excess worked out against the schedule embedded in the sample file,
+   * still on the panel after the validated pack arrived, describing rules the page was no longer
+   * answering under.
+   *
+   * NOTHING IS RECOMPUTED, for the reason expirePanels gives. A person pressed a button and got an
+   * answer; quietly swapping in a different one would change what the page says without anyone
+   * asking. So the panel says what to press and waits.
+   *
+   * @param {boolean} hadAnAnswer whether a worked out decision was on the panel before the change
+   */
+  function retireCover(hadAnAnswer) {
+    ui.coverage = null;
+    if (!hadAnAnswer) {
+      // Nothing was decided under the old schedule, so there is nothing to withdraw. This is also
+      // what takes the loading refusal off the panel once the rules are in.
+      view.renderCoverage(null);
+      return;
+    }
+    view.renderCoverage({
+      blocked: context.pack
+        ? `The rules changed to ${context.pack.insurer}. Run the cover check again to see what this schedule says.`
+        : context.noScheduleReason
+    });
   }
 
   /**
@@ -814,8 +869,21 @@ async function boot() {
         await navigator.clipboard.writeText(json);
         view.sayAboutPacket('Copied. Save it as a .json file and run the command below.');
       } catch (ignored) {
-        view.sayAboutPacket('This browser would not let the page write to the clipboard. Select '
-          + 'the packet above and copy it by hand.');
+        // THE WAY OUT HAS TO END IN A CHECK THAT PASSES, AND THIS ONE DID NOT.
+        //
+        // A browser refusing the clipboard is ordinary rather than exotic: a write it did not think
+        // was close enough to a click, a locked down profile, a page inside a frame. The reader who
+        // met that was told to select the packet above and copy it by hand. The packet above is
+        // Markdown and scripts/verify_packet.mjs parses JSON, so the one route offered to the one
+        // reader who needed a route was a dead end.
+        //
+        // The same bytes the clipboard would have carried go into a box on the page instead. No
+        // network and no download: this page ships a policy that allows neither, and a route the
+        // policy forbids is not a route.
+        view.showPacketJson(json);
+        view.sayAboutPacket('This browser would not let the page write to the clipboard. The same '
+          + 'JSON is in the box below. Select all of it, save it as a file ending .json, and run '
+          + 'the command under it.');
       }
     });
     view.els.assistanceBtn.addEventListener('click', requestAssistance);
@@ -887,6 +955,28 @@ async function boot() {
     if (event && typeof event.preventDefault === 'function') event.preventDefault();
 
     const agentInvoked = Boolean(event && event.agentInvoked === true);
+
+    // THE DRAFT IS NOT OPEN YET, SO NOTHING IS WRITTEN AND BOTH SENDERS ARE TOLD.
+    //
+    // This guard is here rather than on the listener because wireControls runs before the rule
+    // packs are fetched, which is right: the row handlers have to be attached before anything is
+    // drawn. On its way past it swapped the boot time refusal off this form for the real handler,
+    // and the form went back to being open for the length of the fetch. A person's press wrote to
+    // the draft, and an agent's submission quoting revision 0 was accepted and answered as a
+    // success, while the page said the draft was closed and the chip beside it had not moved.
+    //
+    // The controls are drawn closed too, by renderDeclaredForm, and that is what a person meets.
+    // This is what a submit dispatched by script meets, which is the same distinction every other
+    // writer on this page makes.
+    if (loadingReason) {
+      view.renderDeclaredResult(loadingReason);
+      if (agentInvoked && event && typeof event.respondWith === 'function') {
+        try {
+          event.respondWith(Promise.resolve(clip(loadingReason, MAX_TOOL_OUTPUT_CHARS)));
+        } catch (ignored) { /* a browser that refuses the response must not break the page */ }
+      }
+      return;
+    }
 
     // Same hazard as filing and resetting: a commit still waiting on the typing timer would land
     // after this one and write an older account over the draft this submission just moved.
@@ -1041,19 +1131,23 @@ async function boot() {
     // loaded is always allowed, which is also what makes a failed fetch recoverable by picking the
     // same entry again.
     if (!id) return;
+
+    // The same window commitControl and togglePin refuse in. The picker has no options to choose
+    // from until the sample file arrives, so a person cannot reach this during the load, but an
+    // event dispatched by script can, and it would point the page at a pack the fetch is about to
+    // replace. Nothing is switched and the page says why.
+    if (loadingReason) {
+      view.showFieldError(loadingReason);
+      return;
+    }
+
     if (id === requestedPackId && context.pack) return;
     requestedPackId = id;
-    applyPack(id);
 
-    // A cover check run under another insurer's schedule is not this insurer's answer, so it goes
-    // rather than sitting there looking current. The repair band comes from a parts table and does
-    // not move with the pack, so it stays.
-    ui.coverage = null;
-    view.renderCoverage({
-      blocked: context.pack
-        ? `The rules changed to ${context.pack.insurer}. Run the cover check again to see what this schedule says.`
-        : context.noScheduleReason
-    });
+    // The cover answer is withdrawn inside applyPack, because the boot that follows the fetch has
+    // to withdraw it too and this is not the only way in. The repair band comes from a parts table
+    // and does not move with the pack, so it stays.
+    applyPack(id);
 
     requirementSignature = null;
     requirementsPrimed = false;
@@ -1070,6 +1164,16 @@ async function boot() {
 
   function runCoverageByHand() {
     const claim = claimNow();
+
+    // THE SCHEDULE IN THE SAMPLE FILE IS NOT A SCHEDULE THIS PAGE HAS CHECKED. Until the packs are
+    // in, context.policy is the block the sample file carries, and src/core/policy.js has never
+    // seen it. The button is drawn closed while this is true, and the handler refuses as well,
+    // because a disabled control is something a browser paints and not a boundary.
+    if (loadingReason) {
+      view.renderCoverage({ blocked: COVER_NOT_YET_REASON });
+      return;
+    }
+
     if (!context.hasPolicySchedule) {
       view.renderCoverage({ blocked: context.noScheduleReason });
       return;
@@ -1108,7 +1212,11 @@ async function boot() {
     // press, and the refusal is what says so rather than the click being trusted.
     const result = store.dispatch({
       type: 'file',
-      at: clockNow(),
+      // A FULL INSTANT, NOT THE READING BESIDE THE BUTTON. src/core owns no clock, so the page
+      // supplies this one, and src/core/claim.js refuses anything that is not a UTC instant. The
+      // wall clock string this used to send travelled into the sealed packet, where a handler in
+      // another country was given a time with no date and no zone under a digest.
+      at: instantNow(),
       pack: context.pack,
       completedHumanActions: ui.humanActions,
       homePackId: context.homePackId
@@ -1202,7 +1310,9 @@ async function boot() {
     return canonicalise({
       content: packet.content,
       content_digest: packet.digest,
-      generated_at: clockNow(),
+      // Outside the digest, and a full instant for the same reason the filing time is one. It says
+      // when this copy was written out, to somebody who is not looking at this page.
+      generated_at: instantNow(),
     });
   }
 
@@ -1293,6 +1403,18 @@ async function boot() {
     // back over the reloaded draft, so it goes first of all.
     cancelPendingCommit();
 
+    // THE FIFTH WRITER IN THE LOADING WINDOW, and the one nobody had guarded. Every other path that
+    // can move the draft while the rule packs are still arriving refuses with the reason on the
+    // page: the field rows, the pin, the declarative form, the cover check and the picker. A reset
+    // dispatches too, so it moved the revision on a draft the page was telling everyone was closed.
+    // Nothing on screen could reach it, because the control is drawn closed as well, but the whole
+    // point of these guards is that a disabled control is not the boundary.
+    if (loadingReason) {
+      view.showFieldError(loadingReason);
+      redraw([]);
+      return;
+    }
+
     // Page state first, then the draft. The subscriber redraws the moment the reset lands, and it
     // should not redraw against a roadside request that this reset has already cancelled.
     ui.coverage = null;
@@ -1370,6 +1492,19 @@ function safeArgs(input) {
 
 function clockNow() {
   return new Date().toTimeString().slice(0, 8);
+}
+
+/**
+ * The moment, in the one shape src/core/claim.js accepts for a filing.
+ *
+ * SEPARATE FROM clockNow, AND THE SPLIT IS THE POINT. A ledger row and a note beside a button are
+ * read by somebody looking at this page now, and a wall clock reading is the right thing there.
+ * A filing time and the moment a packet was exported are read by a handler somewhere else, later,
+ * out of a document with a digest over it. "19:15:31" carries no date and no zone, so it cannot be
+ * compared, ordered or converted, which is all anyone ever does with a filing time.
+ */
+function instantNow() {
+  return new Date().toISOString();
 }
 
 /**
