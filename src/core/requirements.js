@@ -101,6 +101,15 @@ function evaluate(when, claim) {
 
   // A condition that names a field and nothing else reads as "this field has an
   // answer", which is the only sensible meaning left.
+  //
+  // NO PACK CAN REACH THIS ANY MORE, AND IT STAYS ANYWAY. loadPolicyPack refuses
+  // a `when` that names a field and states no test, because guessing which of
+  // five tests an insurer meant is not the loader's business. This function
+  // takes any object carrying `requirements`, loaded or not, as its own JSDoc
+  // says, so a caller that builds a rule by hand still lands here. Reading a
+  // bare field as a presence check is the least surprising thing to do for
+  // them. Nothing in tests/unit exercises this line through a pack, because
+  // there is no longer a pack that can.
   return { matched: !isEmptyValue(value), by: field };
 }
 

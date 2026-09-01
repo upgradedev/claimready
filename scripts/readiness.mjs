@@ -47,7 +47,7 @@
  * exists, the live check always runs and always blocks.
  */
 
-import { existsSync, readFileSync, readdirSync, mkdtempSync, writeFileSync, cpSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdirSync, mkdtempSync, writeFileSync, cpSync, rmSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -58,11 +58,11 @@ const ROOT = join(SCRIPT_DIR, '..');
 
 /** The one sentence. It leads the README, it ships in the page, and the live check looks for it. */
 const FLAGSHIP =
-  "The insurer's page hands your own agent its policy rules as typed tools, so you learn " +
-  'what you are covered for while you are still describing the crash.';
+  "The insurer's page hands your own agent its rules as typed tools, so you learn " +
+  'what you are covered for while still describing the crash.';
 
 /** Short enough to survive punctuation edits, long enough that nothing else matches it. */
-const FLAGSHIP_FRAGMENT = 'hands your own agent its policy rules as typed tools';
+const FLAGSHIP_FRAGMENT = 'hands your own agent its rules as typed tools';
 
 /**
  * Used when CLAIMREADY_URL is not set. The environment variable always wins.
@@ -275,10 +275,14 @@ function checkLicense(root) {
   );
 }
 
-function checkReadme(root) {
-  const text = read(join(root, 'README.md'));
-  if (!text) return row('RDM', 'README opens with the one sentence', FAIL, 'no README.md', ENGINEERING);
-  // The first paragraph under the title, joined, must be the sentence word for word.
+/**
+ * The first paragraph under the first heading, joined into one line.
+ *
+ * Joined, because the sentence is wrapped in both files and a reader who rewraps it has not
+ * changed it. Blank lines before the paragraph are skipped and the first blank line after it
+ * ends it, so a title followed by badges followed by prose is not read as the opening.
+ */
+function openingParagraph(text) {
   const lines = text.split(/\r?\n/);
   const titleAt = lines.findIndex((l) => l.trim().startsWith('#'));
   const paragraph = [];
@@ -289,15 +293,48 @@ function checkReadme(root) {
     }
     paragraph.push(line.trim());
   }
-  const opening = normalizedText(paragraph.join(' '));
-  const ok = opening === FLAGSHIP;
+  return normalizedText(paragraph.join(' '));
+}
+
+/**
+ * WHY THIS ROW READS TWO FILES RATHER THAN ONE.
+ *
+ * The one sentence is only worth having if it is the same sentence in both places a judge meets
+ * it: the repository they open, and the description they read on the submission form. This row
+ * used to check the README alone, which left the description free to drift, and a drift between
+ * two long files is invisible until somebody reads them side by side. So both files are checked
+ * here, under the same id, and the row fails if either one has moved.
+ *
+ * The sentence itself is also in `index.html`, and that is checked in the IDX row and again in
+ * LIVE against the served bytes, so all three copies are held to the same string.
+ */
+function checkReadme(root) {
+  const targets = [
+    ['README.md', join(root, 'README.md')],
+    ['docs/submission/description.md', join(root, 'docs', 'submission', 'description.md')],
+  ];
+
+  const problems = [];
+  for (const [label, path] of targets) {
+    const text = read(path);
+    if (!text) {
+      problems.push(`${label} is not there at all`);
+      continue;
+    }
+    const opening = openingParagraph(text);
+    if (opening !== FLAGSHIP) {
+      problems.push(`${label} opens with: ${opening.slice(0, 70)}`);
+    }
+  }
+
+  const ok = problems.length === 0;
   return row(
     'RDM',
-    'README opens with the one sentence, word for word',
+    'README and description both open with the one sentence, word for word',
     ok ? PASS : FAIL,
     ok
-      ? 'the first paragraph under the title is the flagship sentence verbatim'
-      : `the first paragraph under the title is not the flagship sentence. Found: ${opening.slice(0, 90)}`,
+      ? 'the first paragraph under the title is the flagship sentence verbatim in both files'
+      : `the flagship sentence is not the opening of every file that has to carry it. ${problems.join('. ')}`,
     ENGINEERING,
   );
 }
@@ -809,10 +846,412 @@ function checkVideo(root) {
   );
 }
 
+/* ------------------------------------------- facts an external audit said were unproven */
+
+/**
+ * The impact study is either evidence or it is not, and the file itself says which.
+ *
+ * `scripts/analyze_impact.mjs` refuses to write a headline from a partial set. It prints an
+ * `AWAITING_RUNS` section instead and exits 1. So there is a state where the study exists, the
+ * results file exists, and the analyzer has publicly declined to draw a conclusion from it. A
+ * README or a description that cites the study in that state is citing a refusal.
+ *
+ * This row reads the artifact and never runs the analyzer, because the analyzer OVERWRITES
+ * `results.md`. A gate that rebuilds the thing it is auditing cannot tell you what was on disk.
+ *
+ * Three facts have to agree, and all three are read from a different place on purpose:
+ *   1. the number of run files actually on disk
+ *   2. the Runs column of the counts table in results.md
+ *   3. the two denominators in the headline sentence
+ * A headline that survives a run file being deleted is a headline nobody is checking.
+ */
+function checkImpactStudy(root) {
+  const label = 'the impact study carries a headline its own run count supports';
+  const runsDir = join(root, 'evidence', 'impact', 'runs');
+  const onDisk = listFiles(runsDir, '.json').length;
+  const text = read(join(root, 'evidence', 'impact', 'results.md'));
+
+  if (!text) {
+    return row('IMP', label, FAIL, `evidence/impact/results.md does not exist. ${onDisk} run file(s) are on disk`, ENGINEERING);
+  }
+  if (text.includes('AWAITING_RUNS')) {
+    return row(
+      'IMP',
+      label,
+      FAIL,
+      `results.md says AWAITING_RUNS over ${onDisk} run file(s) on disk, so the analyzer has refused its own `
+      + 'headline. A study in that state is not evidence and must not be cited as any.',
+      ENGINEERING,
+    );
+  }
+
+  // The counts table, read by position. Arm, runs, policy complete, then three columns this row
+  // does not need. Anything that is not a data line with two numbers in those places is not a row.
+  const countsBlock = text.split('## Counts')[1] || '';
+  const counts = [];
+  for (const line of countsBlock.split(/\r?\n/)) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    if (cells.length < 3) continue;
+    if (!/^\d+$/.test(cells[1]) || !/^\d+$/.test(cells[2])) continue;
+    counts.push({ arm: cells[0], runs: Number(cells[1]), ready: Number(cells[2]) });
+  }
+
+  const problems = [];
+  if (counts.length === 0) {
+    problems.push('results.md has no readable counts table, so there is nothing to reconcile a headline against');
+  }
+
+  const tableTotal = counts.reduce((sum, c) => sum + c.runs, 0);
+  if (counts.length > 0 && tableTotal !== onDisk) {
+    problems.push(
+      `the counts table totals ${tableTotal} run(s) and ${onDisk} run file(s) are on disk. `
+      + 'results.md was written from a different set of runs than the one in the repository.',
+    );
+  }
+
+  const headlineBlock = text.split('## The one sentence this supports')[1] || '';
+  const headline = (headlineBlock.split(/\r?\n/).find((l) => l.trim().startsWith('>')) || '').trim();
+  if (!headline) {
+    problems.push('results.md carries no headline sentence, so the study concluded nothing a judge could read');
+  } else {
+    const pairs = [...headline.matchAll(/\b(\d+)\s+of\s+(\d+)\b/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    if (pairs.length !== counts.length) {
+      problems.push(`the headline states ${pairs.length} result(s) and the counts table has ${counts.length} arm(s)`);
+    } else {
+      for (let i = 0; i < pairs.length; i += 1) {
+        const [ready, runs] = pairs[i];
+        if (ready !== counts[i].ready || runs !== counts[i].runs) {
+          problems.push(
+            `the headline says ${ready} of ${runs} for ${counts[i].arm} and the counts table says `
+            + `${counts[i].ready} of ${counts[i].runs}`,
+          );
+        }
+      }
+    }
+  }
+
+  return row(
+    'IMP',
+    label,
+    problems.length === 0 ? PASS : FAIL,
+    problems.length === 0
+      ? `${onDisk} run file(s) on disk, counts table totals ${tableTotal}, headline reads `
+        + `${counts.map((c) => `${c.ready} of ${c.runs} ${c.arm}`).join(' and ')}`
+      : problems.join(' | '),
+    ENGINEERING,
+  );
+}
+
+/**
+ * Every command the README quickstart prints resolves to something that is actually here.
+ *
+ * WHAT THIS ROW DOES NOT DO IS IN ITS OWN NAME. It does not execute the block, and two of the
+ * commands are why. `python -m http.server` never exits, and `node scripts/readiness.mjs` is this
+ * file, so running the block would hang and then recurse. The row resolves rather than runs, and
+ * it is named for resolving. A row called "the quickstart works" that only opened a directory
+ * would be the same overstatement the rest of this audit is about.
+ *
+ * What it catches is the thing that actually goes wrong in a repository that is still moving: a
+ * script is renamed or a flag stops being read, and the first instruction a judge copies out of
+ * the README dies on a path that is no longer there. Both halves are checked, the file and the
+ * flag, because a flag that quietly stopped being read is the harder of the two to notice.
+ *
+ * THE LIMIT OF THE FLAG HALF, NAMED HERE RATHER THAN LEFT TO BE DISCOVERED. It is a substring
+ * search over the whole script, comments included. A flag still documented in a docblock and no
+ * longer read by the code would pass this row. Catching that needs each script's own argument
+ * parser, and the row is named for what it does rather than for what would be nice to have.
+ *
+ * WHY IT NOW READS EVERY SHELL BLOCK AND NOT ONLY THE ONE UNDER THE QUICKSTART HEADING. The
+ * Quickstart is not the only place this README tells a judge to run something, and it is not even
+ * the first. On 2026-09-01 the block under "Open it yourself", the command a judge meets earliest
+ * in the file, carried a literal backslash n where a line continuation was meant. Pasted into a
+ * shell it printed `unrecognized arguments: n` and exited 2. This row stayed green through all of
+ * it for one reason: it selected the text it covered by searching for a heading, so everything
+ * outside that heading was invisible to it and it never said so. The selection is now every
+ * fenced sh block in the file, and the number of blocks scanned is printed so a reader can see
+ * the coverage rather than assume it.
+ *
+ * IT RESOLVES PYTHON SCRIPTS NOW TOO. The old code treated any command starting with `python` as
+ * the local server and checked nothing about it, which is the other half of why that broken
+ * command survived a green row. Only `python -m` is a server here. A python script named by path
+ * resolves the same way a node one does.
+ *
+ * AND IT REFUSES A BACKSLASH THAT IS NOT A CONTINUATION. Real continuations are joined first, so
+ * a command wrapped over two lines is read as the one command it is. A backslash still standing
+ * after that join is an argument the shell would hand to the program, which is exactly what went
+ * wrong, so it is a refusal with the offending line quoted.
+ */
+function checkQuickstart(root) {
+  const label = 'every command in every README shell block resolves to a file and a flag that exist';
+  const text = read(join(root, 'README.md'));
+  if (!text) return row('QCK', label, FAIL, 'no README.md', ENGINEERING);
+
+  // The Quickstart heading is still required. A README that stops telling a judge what to run has
+  // not got better by having fewer commands left to check.
+  if (text.indexOf('## Quickstart') === -1) {
+    return row('QCK', label, FAIL, 'README.md has no Quickstart heading, so a judge is told nothing to run', ENGINEERING);
+  }
+
+  const blocks = [...text.matchAll(/```sh\r?\n([\s\S]*?)```/g)].map((match) => match[1]);
+  if (blocks.length === 0) {
+    return row('QCK', label, FAIL, 'the README carries no shell block at all', ENGINEERING);
+  }
+
+  const commands = [];
+  const danglingBackslash = [];
+  for (const block of blocks) {
+    const joined = block.replace(/\\\r?\n\s*/g, ' ');
+    for (const raw of joined.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (line.length === 0 || line.startsWith('#')) continue;
+      if (line.includes('\\')) danglingBackslash.push(line);
+      commands.push(line);
+    }
+  }
+
+  // A block that emptied out would otherwise report PASS by looking at nothing, which is the
+  // failure this gate exists to refuse.
+  if (commands.length === 0) {
+    return row('QCK', label, FAIL, 'the README shell blocks carry no commands at all', ENGINEERING);
+  }
+
+  const problems = [];
+  let resolved = 0;
+  let servers = 0;
+
+  for (const line of danglingBackslash) {
+    problems.push(
+      `${line}: this carries a backslash that is not a line continuation, so a shell passes it to `
+      + 'the command as an argument',
+    );
+  }
+
+  for (const command of commands) {
+    const parts = command.split(/\s+/);
+    let script = null;
+    let flags = [];
+
+    if (parts[0] === 'python' && parts[1] === '-m') {
+      // The local server. There is nothing to resolve about it beyond the page it would serve.
+      if (!existsSync(join(root, 'index.html'))) problems.push(`${command}: there is no index.html for it to serve`);
+      servers += 1;
+      continue;
+    }
+
+    if (parts[0] === 'node' && parts[1] === '--test') {
+      const target = parts[2];
+      if (!target || !existsSync(join(root, target))) {
+        problems.push(`${command}: the test target ${target || '(none named)'} does not exist`);
+      } else {
+        resolved += 1;
+      }
+      continue;
+    }
+
+    if (parts[0] === 'node' || parts[0] === 'python') {
+      script = parts[1];
+      flags = parts.slice(2);
+    } else {
+      problems.push(`${command}: this row cannot resolve a command that does not start with node or python`);
+      continue;
+    }
+
+    if (!script || !existsSync(join(root, script))) {
+      problems.push(`${command}: ${script || '(no script named)'} does not exist`);
+      continue;
+    }
+
+    const source = read(join(root, script)) || '';
+    for (const token of flags) {
+      // Both halves of a flag are checked. A flag the script no longer reads, and a value the
+      // script no longer knows, each fail here for their own reason rather than at a judge's shell.
+      if (token.startsWith('--')) {
+        if (!source.includes(token)) problems.push(`${command}: ${script} never reads ${token}`);
+        continue;
+      }
+      // A commit name is a fact about this repository's history, not a string any script holds, so
+      // the rule below does not apply to it. Whether it is the RIGHT commit is not a question a
+      // file check can answer, and nothing here pretends it can: the command itself fetches the
+      // host and refuses when the bytes differ.
+      if (/^[0-9a-f]{7,40}$/.test(token)) continue;
+      if (/^[a-z0-9-]+$/.test(token) && !source.includes(token)) {
+        problems.push(`${command}: ${script} never mentions the value ${token}`);
+      }
+    }
+    resolved += 1;
+  }
+
+  return row(
+    'QCK',
+    label,
+    problems.length === 0 ? PASS : FAIL,
+    problems.length === 0
+      ? `${blocks.length} shell block(s), ${commands.length} command(s), ${resolved} resolved against the tree, `
+        + `${servers} local server(s) named and not executed`
+      : problems.join(' | '),
+    ENGINEERING,
+  );
+}
+
+/**
+ * The commit the video is recorded against is NAMED before the takes are shot.
+ *
+ * The reason is the one that has cost most elsewhere: waiting for a final product is why a video
+ * never gets made, because there is always one more pull request. Naming the commit ends that
+ * argument. It also makes a re-record attributable, because the report can say which commit the
+ * old cut showed and which the new one does.
+ *
+ * WHAT IT CHECKS IS THAT A DECLARATION EXISTS, NOT THAT THE COMMIT RESOLVES. The self test copies
+ * this repository without `.git`, so a `git cat-file` here would fail on a healthy tree and the
+ * self test would go red for the wrong reason. Declaration is the bar anyway: the point is that a
+ * person wrote a SHA down before recording. Nothing here invents one.
+ *
+ * IT IS A DELIVERABLE ROW, NOT AN ENGINEERING ONE, on the axis this file already uses for the live
+ * URL. It prints FAIL, it is counted red in both tallies, and it is listed under deliverable rows
+ * outstanding. What it does not do is turn a CI run red for a fact that only a person with a screen
+ * recorder can settle. Nothing is hidden and no threshold moved: the row simply blocks the same
+ * way the other things a person still owes block.
+ */
+const FREEZE_DECLARATION_PATH = ['docs', 'submission', 'video.md'];
+
+function checkFreezeCommit(root) {
+  const label = 'a freeze commit is declared for the recording, before the takes are shot';
+  const rel = FREEZE_DECLARATION_PATH.join('/');
+  const text = read(join(root, ...FREEZE_DECLARATION_PATH));
+  if (!text) {
+    return row('FRZ', label, FAIL, `${rel} does not exist, so nothing declares a commit to record against`, DELIVERABLE);
+  }
+
+  const lines = text.split(/\r?\n/).filter((line) => /freeze commit/i.test(line));
+  if (lines.length === 0) {
+    return row(
+      'FRZ',
+      label,
+      FAIL,
+      `${rel} declares no freeze commit. Add a line naming it, for example a deliverable record row `
+      + 'reading Freeze commit with the SHA in backticks. No SHA is invented here.',
+      DELIVERABLE,
+    );
+  }
+
+  const withSha = lines.map((line) => line.match(/`([0-9a-f]{7,40})`/)).find(Boolean);
+  if (!withSha) {
+    return row(
+      'FRZ',
+      label,
+      FAIL,
+      `${rel} names a freeze commit and declares no SHA for it: ${lines[0].trim().slice(0, 90)}`,
+      DELIVERABLE,
+    );
+  }
+
+  return row('FRZ', label, PASS, `${rel} declares the recording frozen at ${withSha[1]}`, DELIVERABLE);
+}
+
+/**
+ * A persona or judge review has been run, and the record says which commit it read.
+ *
+ * A review of a build that has since moved is a review of something else. That is why the commit
+ * is the part this row insists on rather than the findings: findings with no commit beside them
+ * cannot be told apart from findings that were fixed a week ago, or findings against a page that
+ * no longer exists.
+ *
+ * IT READS ONLY THIS REPOSITORY. A review recorded in a working note outside the checkout is
+ * invisible to a judge and invisible to CI, which sees the repository alone. A row that reached
+ * outside would pass on one machine and mean nothing anywhere else.
+ */
+const REVIEW_DIR_PARTS = ['docs', 'review'];
+
+function checkPersonaReview(root) {
+  // THE LABEL SAYS WHAT THE CHECK LOOKS AT, WHICH IS ONE DIRECTORY. It used to say "in the repo",
+  // and the check reads docs/review and nothing else. An adversarial reviewer caught it while the
+  // repository held a review at docs/submission/judge-review.md naming its commit: the row printed
+  // FAIL and told the reader the review was kept outside the repository, which was false and which
+  // nothing in the row had tested. A row is allowed to be narrow. It is not allowed to describe
+  // itself as wider than it is, or to diagnose a cause it never looked for.
+  const label = 'a persona or judge review is recorded in docs/review, against a named commit';
+  const rel = REVIEW_DIR_PARTS.join('/');
+  const dir = join(root, ...REVIEW_DIR_PARTS);
+  const files = listFiles(dir, '.md');
+
+  if (files.length === 0) {
+    return row(
+      'PER',
+      label,
+      FAIL,
+      `no review is recorded in ${rel}, which is the one directory this row reads. It does not look `
+      + 'anywhere else, so it is not saying a review does not exist. Record it there, as a file '
+      + 'naming the commit it was run against.',
+      DELIVERABLE,
+    );
+  }
+
+  const withCommit = [];
+  const without = [];
+  for (const file of files) {
+    const text = read(join(dir, file)) || '';
+    if (/`[0-9a-f]{7,40}`/.test(text)) withCommit.push(file);
+    else without.push(file);
+  }
+
+  if (withCommit.length === 0) {
+    return row(
+      'PER',
+      label,
+      FAIL,
+      `${rel} holds ${files.length} review file(s) and none names the commit it was run against: ${without.join(', ')}`,
+      DELIVERABLE,
+    );
+  }
+
+  return row(
+    'PER',
+    label,
+    PASS,
+    `${rel}: ${withCommit.length} review(s) naming a commit (${withCommit.join(', ')})`
+    + (without.length > 0 ? `. Naming no commit: ${without.join(', ')}` : ''),
+    DELIVERABLE,
+  );
+}
+
 /* ------------------------------------------------------------ owner gated */
 
+/**
+ * The rows a person still owes, PRINTED IN THE ORDER A PERSON DOES THEM.
+ *
+ * They used to print O1, O2, O3, O5, which is the order the identifiers were minted in, and it put
+ * "the form reads Submitted" third of four. Submitting is the last thing that happens. A checklist
+ * that prints the last step in the middle is one a reader has to reorder in their head before they
+ * can use it, and the step most likely to be skipped is the one that is out of place.
+ *
+ * So the print order is the performance order: prove the tools answer, record and publish the
+ * video, fill the form, press Submit. THE IDENTIFIERS DO NOT MOVE. O4 is already taken by the
+ * optional Chrome origin trial row below, and renumbering these to close the gap would silently
+ * rename every row a previous report referred to.
+ *
+ * Each row prints what closes it, prefixed "to close:", because the manual step is the only part of
+ * an owner gated row that a reader can act on.
+ */
 function ownerGatedRows() {
   return [
+    {
+      id: 'O5',
+      // WHAT THIS ROW IS GATED ON, SAID PLAINLY. It used to read "tools proven callable in a real
+      // judge path", and neither strong word in that sentence survives reading the code: there is
+      // no check here at all, this is a static list, and what closes it is one person opening one
+      // client once and watching. Nothing is recorded, no artifact is left, and no second person
+      // can confirm it. "Proven" claimed a standard of evidence the row cannot reach, and "a real
+      // judge path" claimed generality that one browser on one machine does not have. The
+      // preflight in docs/submission/video.md describes that walk being made on 2026-08-31, which
+      // is where the step text below comes from. That dated line is also why the label does not
+      // say nothing records it: something does, it is a note in a runbook, and it is about a
+      // build this tree has since moved past. Hence 'at the commit now live'. An attestation in a
+      // runbook, against an earlier commit, is not a pass.
+      label: 'owner has watched the tools answer by hand, in one WebMCP client, at the commit now live',
+      backs: 'the mandatory live URL row LIVE, which proves the page is served and proves nothing about whether a tool answers',
+      step: 'owner opens the live URL in the ChatGPT in-app browser, or Chrome with chrome://flags/#enable-webmcp-testing, and runs the three example prompts from the README',
+    },
     {
       id: 'O1',
       label: 'video uploaded to YouTube as public, not unlisted',
@@ -822,20 +1261,14 @@ function ownerGatedRows() {
     {
       id: 'O2',
       label: 'Devpost project created with every field filled',
-      backs: 'every mandatory row, which the form is where a judge sees',
+      backs: 'every mandatory row, because the form is where a judge sees them',
       step: 'owner opens the hackathon submission form and pastes the repo URL, the live URL, the description and the video',
     },
     {
       id: 'O3',
-      label: 'the form reads Submitted',
+      label: 'the form reads Submitted. This is the last thing that happens',
       backs: 'the entry existing at all',
       step: 'owner presses Submit. A draft scores zero. Submit early, then edit in place',
-    },
-    {
-      id: 'O5',
-      label: 'tools proven callable in a real judge path',
-      backs: 'the mandatory live URL row LIVE, which is only worth anything if the tools answer there',
-      step: 'owner opens the live URL in the ChatGPT in-app browser, or Chrome with chrome://flags/#enable-webmcp-testing, and runs the three example prompts from the README',
     },
   ];
 }
@@ -1116,6 +1549,23 @@ const SELFTEST_CASES = [
     run: (s) => checkReadme(s),
   },
   {
+    // The second half of the same row, broken on its own. Breaking only the README would leave
+    // the description half untested, and an untested half is the half that drifts. The break
+    // rewrites the opening paragraph and leaves the rest of the file, so what fails here is the
+    // drift and not a missing file.
+    id: 'RDM',
+    name: 'the description stops opening with the flagship sentence, while the README still does',
+    break: (s) => editFile(
+      s,
+      join('docs', 'submission', 'description.md'),
+      (t) => t.replace(
+        /The insurer's page hands your own agent[\s\S]*?describing the crash\./,
+        'A page for motor claims that publishes tools.',
+      ),
+    ),
+    run: (s) => checkReadme(s),
+  },
+  {
     id: 'LIC',
     name: 'the LICENCE file is deleted',
     break: (s) => rmSync(join(s, 'LICENSE')),
@@ -1275,7 +1725,130 @@ const SELFTEST_CASES = [
     break: (s) => editFile(s, join('docs', 'submission', 'video.md'), (t) => t.replace(/https:\/\/\S+/, 'not recorded yet')),
     run: (s) => checkVideo(s),
   },
+  {
+    id: 'IMP',
+    name: 'the analyzer refuses its own headline and results.md says AWAITING_RUNS',
+    break: (s) => editFile(s, join('evidence', 'impact', 'results.md'), (t) => t.replace(
+      '## Counts',
+      '## AWAITING_RUNS\n\nNo headline is written from a partial set.\n\n## Counts',
+    )),
+    run: (s) => checkImpactStudy(s),
+  },
+  {
+    id: 'IMP',
+    name: 'the headline states a number the counts table underneath it does not',
+    break: (s) => editFile(s, join('evidence', 'impact', 'results.md'), (t) => t.replace('in 5 of 18 runs', 'in 9 of 18 runs')),
+    run: (s) => checkImpactStudy(s),
+  },
+  {
+    id: 'IMP',
+    // The half that would otherwise never be watched. A results file is a snapshot, and a run
+    // disappearing from the folder afterwards leaves a headline that no longer counts anything.
+    // Only the sandbox copy is touched here. The recorded runs are frozen evidence.
+    name: 'a recorded run leaves the folder and the headline goes on quoting it',
+    break: (s) => rmSync(join(s, 'evidence', 'impact', 'runs', 'S1-carpark-dent__published-rules__1.json')),
+    run: (s) => checkImpactStudy(s),
+  },
+  {
+    id: 'QCK',
+    name: 'the quickstart tells a judge to run a script that has been renamed',
+    break: (s) => editFile(s, 'README.md', (t) => t.replace(
+      /(# count the intake[^\n]*\r?\n)node scripts\/measure_intake\.mjs/,
+      '$1node scripts/measure_intake_renamed.mjs',
+    )),
+    run: (s) => checkQuickstart(s),
+  },
+  {
+    id: 'QCK',
+    // The quieter of the two failures. The file is still there, so a check that stopped at
+    // existence would report PASS while the copied command died on an argument nothing reads.
+    name: 'the quickstart passes a flag the script it names never reads',
+    break: (s) => editFile(s, 'README.md', (t) => t.replace(
+      /(# the style gate[^\n]*\r?\n)node scripts\/check_style\.mjs/,
+      '$1node scripts/check_style.mjs --not-a-real-flag',
+    )),
+    run: (s) => checkQuickstart(s),
+  },
+  {
+    id: 'QCK',
+    // THE ONE THAT WAS ACTUALLY SHIPPED, on 2026-09-01, and survived because this row only read
+    // the block under the Quickstart heading. The command lives under "Open it yourself", which
+    // is earlier in the file, so the old selection could not see it at all. The break puts the
+    // literal backslash n back exactly as it was written.
+    name: 'a command outside the quickstart block breaks its line continuation',
+    break: (s) => editFile(s, 'README.md', (t) => t.replace(
+      /--verify-deployed \\\r?\n\s*--url/,
+      '--verify-deployed \\n  --url',
+    )),
+    run: (s) => checkQuickstart(s),
+  },
+  {
+    id: 'QCK',
+    // The selection itself, tested rather than trusted. If this row ever goes back to reading one
+    // block, this case is the one that turns red, because the script it renames is named nowhere
+    // near the Quickstart heading.
+    name: 'a script named in a block outside the quickstart is renamed away',
+    break: (s) => editFile(s, 'README.md', (t) => t.replace(
+      'python video/build_video.py --verify-deployed',
+      'python video/build_video_renamed.py --verify-deployed',
+    )),
+    run: (s) => checkQuickstart(s),
+  },
+  {
+    id: 'FRZ',
+    // FRZ is red in the real repository today, because nothing declares a freeze commit, so the
+    // intact half is written here rather than copied. That is stated rather than hidden by
+    // skipping the case. The break leaves the field NAMED and takes the SHA away, which is the
+    // shape a half filled template arrives in and the one a reader is most likely to skim past.
+    name: 'the freeze commit is named as a field and no SHA is declared for it',
+    // THE PREPARE STEP CLEARS BEFORE IT WRITES, and that is not tidiness. An APPENDING prepare
+    // would stop being a gate on the day the owner declares a real freeze commit. There would
+    // then be two freeze commit lines, checkFreezeCommit takes the first one carrying a SHA, and
+    // a break that only blanks the placeholder would leave the real declaration standing. The
+    // broken half would report PASS and this case would turn from a gate into a green light,
+    // exactly when reality improved. So every earlier declaration is stripped and one known line
+    // is written in its place.
+    prepare: (s) => editFile(
+      s,
+      join('docs', 'submission', 'video.md'),
+      (t) => `${t.split(/\r?\n/).filter((line) => !/freeze commit/i.test(line)).join('\n')}\n`
+        + '| Freeze commit | \`0123456789abcdef0123456789abcdef01234567\` |\n',
+    ),
+    break: (s) => editFile(
+      s,
+      join('docs', 'submission', 'video.md'),
+      (t) => t.replace('`0123456789abcdef0123456789abcdef01234567`', 'not declared yet'),
+    ),
+    run: (s) => checkFreezeCommit(s),
+  },
+  {
+    id: 'PER',
+    // PER is red in the real repository today for the same reason, so its intact half is written
+    // here too. The break keeps the review and removes the commit, because a review with no commit
+    // beside it is the state this row exists to refuse: it reads as evidence and proves nothing
+    // about the build a judge will open.
+    name: 'a review is recorded and does not say which commit it read',
+    prepare: (s) => {
+      // Cleared first, for the reason written above the FRZ case. A real review landing in
+      // docs/review would otherwise satisfy this row on its own, and the break below would have
+      // nothing left to prove.
+      rmSync(join(s, 'docs', 'review'), { recursive: true, force: true });
+      mkdirSync(join(s, 'docs', 'review'), { recursive: true });
+      writeFileSync(
+        join(s, 'docs', 'review', 'zz-selftest-review.md'),
+        '# Review written by the readiness selftest\n\nRun against `0123456789abcdef0123456789abcdef01234567`.\n',
+        'utf8',
+      );
+    },
+    break: (s) => writeFileSync(
+      join(s, 'docs', 'review', 'zz-selftest-review.md'),
+      '# Review written by the readiness selftest\n\nRun against the build.\n',
+      'utf8',
+    ),
+    run: (s) => checkPersonaReview(s),
+  },
 ];
+
 
 async function selftest() {
   const home = mkdtempSync(join(tmpdir(), 'claimready-selftest-'));
@@ -1379,6 +1952,12 @@ async function main() {
     checkPublicRepo(ROOT),
     checkDescription(ROOT),
     checkVideo(ROOT),
+    // Four facts an external audit said were unproven. Each one reads a real artifact, and two of
+    // them are red today because the artifact is not there. That is the point of adding them.
+    checkImpactStudy(ROOT),
+    checkQuickstart(ROOT),
+    checkFreezeCommit(ROOT),
+    checkPersonaReview(ROOT),
   ];
 
   console.log('ClaimReady readiness gate');
@@ -1395,7 +1974,7 @@ async function main() {
   for (const o of owner) {
     console.log(`${pad(o.id, 6)}${pad('OWNER GATED', 14)}${pad(OWNER_GATED, 14)}${pad('manual', 13)}${o.label}`);
     console.log(`${' '.repeat(47)}backs ${o.backs}`);
-    console.log(`${' '.repeat(47)}${o.step}`);
+    console.log(`${' '.repeat(47)}to close: ${o.step}`);
   }
 
   const optional = optionalRows();
@@ -1413,8 +1992,10 @@ async function main() {
   const mandatoryFailures = rows.filter((r) => r.mandatory && r.status !== PASS);
 
   // Two tallies, because one would be read as the answer to the wrong question. The first is
-  // what a script proved. The second adds the five owner gated rows, one of which is whether
-  // the form reads Submitted, so it is the one that answers "is this ready to submit". Printing
+  // what a script proved. The second adds the owner gated rows, one of which is whether the form
+  // reads Submitted, so it is the one that answers "is this ready to submit". The number of those
+  // rows is not spelled out in this comment any more: it said five while `owner.length` was four,
+  // and a stale count in a comment about honest counting is the defect it warns about. Printing
   // only the first is how a build reports 93 percent while nothing has been submitted at all.
   const overallTotal = rows.length + owner.length;
   const overallPercent = Math.round((passed.length / overallTotal) * 1000) / 10;

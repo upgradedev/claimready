@@ -26,8 +26,16 @@ const argOf = (name, fallback) => (process.argv.includes(name)
   ? process.argv[process.argv.indexOf(name) + 1]
   : fallback);
 
-const runsDir = path.join(ROOT, argOf('--runs', 'evidence/impact/runs'));
-const outFile = path.join(ROOT, argOf('--out', 'evidence/impact/results.md'));
+// BOTH PATHS RESOLVE, THEY DO NOT JOIN. `path.join` glues its arguments together whatever they
+// are, so an absolute `--runs C:\...\fixture-runs` used to come out as the repository root with a
+// second drive letter stapled on the end. The directory never existed, so the analyzer reported
+// no runs and wrote AWAITING_RUNS, which reads exactly like a real refusal and is not one. That
+// mattered here because the only safe way to test the refusal is to point it at a throwaway
+// directory somewhere else on the disk. `path.resolve` leaves an absolute argument alone and
+// still treats a relative one as relative to the repository root, so the documented usage above
+// is unchanged.
+const runsDir = path.resolve(ROOT, argOf('--runs', 'evidence/impact/runs'));
+const outFile = path.resolve(ROOT, argOf('--out', 'evidence/impact/results.md'));
 
 const scenarios = JSON.parse(readFileSync(path.join(ROOT, 'evidence/impact/scenarios.json'), 'utf8'));
 const pack = loadPolicyPack(JSON.parse(readFileSync(path.join(ROOT, 'fixtures/insurers/northwind.json'), 'utf8')));

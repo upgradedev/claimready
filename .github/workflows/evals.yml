@@ -14,6 +14,12 @@ name: WebMCP evals
 # that turns "the harness could not run" into a pass. If the harness cannot run on a runner, this
 # workflow fails and says why. See evals/README.md for what has actually been observed to work.
 #
+# THERE ARE TWO JOBS. `smoke` drives the third party eval harness. `probe` drives our own
+# dependency free probe, evals/browser_probe.mjs, against a Chrome carrying the WebMCP flag, and it
+# judges the run with evals/probe_assertions.mjs rather than printing what it saw. They do not
+# depend on each other on purpose: a failure to BUILD somebody else's harness must not be able to
+# hide whether our own page still behaves.
+#
 # ONE STEP DELIBERATELY EXPECTS THE HARNESS TO FAIL, and it is not an exception to the rule above.
 # The negative control step runs the harness with `set +e` so it can read the exit CODE rather than
 # be killed by it, and it then requires that code to be non zero and requires two exact strings in
@@ -293,5 +299,159 @@ jobs:
             evals-negative-control.raw.log
             harness-help.log
             .evals/
+          if-no-files-found: warn
+          retention-days: 30
+
+  probe:
+    # MANUAL DISPATCH ONLY, AND THE REASON IS NOT THAT A RUNNER CANNOT DO THIS.
+    #
+    # A runner can. The Chrome Dev channel installs the same way it does for the job above and for
+    # the video capture in .github/workflows/video.yml, and the probe is dependency free Node
+    # talking to that Chrome over the DevTools protocol.
+    #
+    # The reason is this. evals/browser_probe.mjs gained a phase that reads the planted evidence
+    # note and then presses the page's own pin control twice, and those two clicks have never been
+    # watched against a live browser by anyone. tests/unit/probe_note_phase.test.js executes that
+    # phase against the real page with a fake host, so the page's half is proven, and the selector's
+    # half is not. Putting an unwatched step on a daily cron during a judging window means the first
+    # red badge on this repository could be reporting our own collection step rather than a defect
+    # in the page, which is the sort of noise that gets a real failure ignored.
+    #
+    # TO PUT IT ON THE SCHEDULE, once somebody has dispatched this job and watched it pass: delete
+    # the `if:` line directly below. Nothing else changes. Record the run id in evals/README.md
+    # under "Still owed on the probe" and delete that paragraph.
+    #
+    # It is NOT allowed to become a job that passes without doing anything. There is no
+    # continue-on-error here and no `|| true` on anything that is a check. If Chrome will not start,
+    # if the page does not answer 200, or if the judgement refuses the transcript, this job is red.
+    if: github.event_name == 'workflow_dispatch'
+    name: Browser probe against the live page (manual dispatch only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The judgement is a pure module and the mutations that prove it fails cost nothing, so they
+      # run before a browser is opened. A judgement that has stopped refusing what it should refuse
+      # is found here rather than being read as a green browser run a minute later.
+      - name: The judgement must still refuse what it is supposed to refuse
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/unit/probe_assertions.test.js
+          node --test tests/unit/probe_note_phase.test.js
+
+      # The URL is the whole point. An empty variable is a failure, never a skip.
+      - name: The judge URL must be configured
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAIMREADY_URL:-}" ]; then
+            echo "CLAIMREADY_URL is not set as a repository variable."
+            echo "There is nothing to probe. This is a failure, not a skip."
+            exit 1
+          fi
+          echo "Target: ${CLAIMREADY_URL}"
+
+      - name: The live page must answer 200
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -L -o /tmp/probe-page.html -w '%{http_code}' "${CLAIMREADY_URL}")"
+          echo "HTTP ${code}"
+          if [ "${code}" != "200" ]; then
+            echo "The live judge URL did not answer 200. Fixing that is the whole task."
+            exit 1
+          fi
+
+      # The same build the eval harness drives and the same one the video capture films against.
+      # Chrome stable carries WebMCP too, and the Dev channel is what CI has always installed here,
+      # so this stays the same fact in one more place rather than a second thing to keep right.
+      - name: Install the Chrome Dev channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/chrome-dev.deb \
+            https://dl.google.com/linux/direct/google-chrome-unstable_current_amd64.deb
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq /tmp/chrome-dev.deb
+          google-chrome-unstable --version
+
+      # The probe attaches to a browser somebody else started, which is how it is documented and how
+      # it is run on a desktop. So the browser is started here with the same command line the header
+      # of evals/browser_probe.mjs gives, and this step waits for the DevTools endpoint to answer
+      # rather than sleeping and hoping.
+      # --no-sandbox is here and NOT in the command line at the top of evals/browser_probe.mjs,
+      # and the difference is deliberate. A runner runs this as root, where Chrome's sandbox
+      # refuses to start. A desktop does not, so the documented desktop command line keeps the
+      # sandbox on. Two command lines that disagree are worth one sentence rather than an hour.
+      - name: Start Chrome with WebMCP on, pointed at the live page
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: |
+          set -euo pipefail
+          profile="$(mktemp -d)"
+          google-chrome-unstable \
+            --headless=new \
+            --disable-gpu \
+            --no-sandbox \
+            --enable-features=WebMCP \
+            --remote-debugging-port=9222 \
+            --user-data-dir="${profile}" \
+            "${CLAIMREADY_URL}" > /tmp/chrome.log 2>&1 &
+          echo "CHROME_PID=$!" >> "$GITHUB_ENV"
+
+          for attempt in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9222/json/version > /tmp/cdp-version.json; then
+              cat /tmp/cdp-version.json
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Chrome never opened a DevTools endpoint on 9222 in 30 seconds."
+          echo "This is a failure. A probe with nothing to attach to proves nothing."
+          cat /tmp/chrome.log || true
+          exit 1
+
+      # THE GATE. It exits non zero when the judgement says the page did not do what it promises,
+      # and the transcript it printed is uploaded either way so a reader can see what was judged.
+      - name: Probe the live page and judge what it did
+        shell: bash
+        env:
+          CLAIMREADY_URL: ${{ vars.CLAIMREADY_URL }}
+        run: |
+          set -euo pipefail
+          # pipefail matters: without it tee hands back its own exit code and a failing probe
+          # reports success.
+          node evals/browser_probe.mjs 2>&1 | tee probe.log
+
+      # Housekeeping, and it asserts nothing, which is why `|| true` is allowed here and nowhere
+      # else in this job. The browser's own log is copied into the workspace because
+      # upload-artifact wants paths under it.
+      - name: Stop Chrome and keep its log
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${CHROME_PID:-}" ]; then kill "${CHROME_PID}" || true; fi
+          cp /tmp/chrome.log chrome.log || true
+          cp /tmp/cdp-version.json cdp-version.json || true
+
+      - name: Upload the transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webmcp-browser-probe
+          path: |
+            probe.log
+            chrome.log
+            cdp-version.json
           if-no-files-found: warn
           retention-days: 30
