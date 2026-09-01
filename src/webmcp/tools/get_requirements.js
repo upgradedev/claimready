@@ -14,6 +14,7 @@
  * the result is a lookup any reader can repeat by hand.
  */
 
+import { ZONE_LABELS } from '../../core/claim.js';
 import { toResult, budgetedBlock, clip, packOf, satisfiedByOf, NO_PACK_REASON } from '../register.js';
 import { deriveRequirements, outstandingRequirements } from '../../core/requirements.js';
 
@@ -144,5 +145,24 @@ function detail(pack, entry, room) {
     ? `Answered by sending ${target.field} with apply_claim_patch.`
     : 'No field answers this one and no tool on this page reaches it. Ask the person on the page.';
   const trigger = entry.triggeredBy ? ` Brought in by ${entry.triggeredBy}.` : '';
-  return `${how}${trigger} ${clip(entry.why, room)}`;
+  return `${how}${vocabulary(target.field)}${trigger} ${clip(entry.why, room)}`;
+}
+
+/**
+ * The one field whose values are a convention rather than a word, spelled out where an agent asks
+ * what it needs.
+ *
+ * FOUND BY WATCHING A MODEL FAIL AT IT. In a run of the impact harness, a model was told "it caught
+ * the left front wing" and left damage_zone empty, while the same model filled it in against a form
+ * that spelled the convention out. The page's own select has always said "10 o'clock, left front
+ * wing"; the tool surface said only that the field was required. That is this entry's whole claim
+ * failing in miniature: the page is supposed to hand the agent the insurer's vocabulary, and here it
+ * kept it on screen and out of the tools. Built from ZONE_LABELS so the two cannot drift.
+ */
+function vocabulary(field) {
+  if (field !== 'damage_zone') return '';
+  const examples = [12, 3, 6, 9, 10]
+    .map((zone) => `${zone} is the ${ZONE_LABELS[zone]}`)
+    .join(', ');
+  return ` Positions are clock hours seen from above with 12 at the front: ${examples}.`;
 }
