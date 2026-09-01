@@ -147,6 +147,14 @@ export function createView(doc) {
     claimNote: pick('claim-note'),
     fieldError: pick('field-error'),
     requirements: pick('requirements'),
+    packetPanel: pick('packet-panel'),
+    packetNotice: pick('packet-notice'),
+    packetReference: pick('packet-reference'),
+    packetDigest: pick('packet-digest'),
+    packetToggle: pick('packet-toggle'),
+    packetCopy: pick('packet-copy'),
+    packetSaid: pick('packet-said'),
+    packetView: pick('packet-view'),
     reqSummary: pick('req-summary'),
     reqProgress: pick('req-progress'),
     reqProgressFill: pick('req-progress-fill'),
@@ -518,6 +526,40 @@ export function createView(doc) {
       text(els.reqSummary, (state && state.summary) || '');
       els.requirements.replaceChildren(...entries.map((entry) => requirementItem(doc, entry, fresh.has(entry.id))));
       drawProgress(entries.filter((entry) => entry.satisfied).length, entries.length);
+    },
+
+    /**
+     * The handler packet, after a person has filed.
+     *
+     * @param {{available: boolean, reference?: string, digest?: string, notice?: string,
+     *          view?: string}} state
+     */
+    renderPacket(state) {
+      const available = Boolean(state && state.available);
+      els.packetPanel.hidden = !available;
+      if (!available) {
+        els.packetView.hidden = true;
+        text(els.packetView, '');
+        text(els.packetSaid, '');
+        return;
+      }
+      text(els.packetNotice, state.notice || '');
+      text(els.packetReference, state.reference || '');
+      // The digest arrives a moment after the packet, because hashing is asynchronous. Saying so
+      // is better than an empty line that looks like a missing value.
+      text(els.packetDigest, state.digest || 'computing');
+      text(els.packetView, state.view || '');
+    },
+
+    /** Fold the packet open or closed, and say which state it is in. */
+    togglePacketView(open) {
+      els.packetView.hidden = !open;
+      text(els.packetToggle, open ? 'Hide the packet' : 'Show the packet');
+    },
+
+    /** A short line beside the packet buttons, for what just happened. */
+    sayAboutPacket(message) {
+      text(els.packetSaid, message || '');
     },
 
     renderCoverage(entry) {

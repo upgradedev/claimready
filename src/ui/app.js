@@ -29,6 +29,12 @@
 import { createStore } from '../core/store.js';
 import { patchIsNoChange, PATCHABLE_FIELDS } from '../core/claim.js';
 import { canFile } from '../core/filing.js';
+import {
+  buildFilingPacket,
+  canonicalise,
+  digestOf,
+  packetAsMarkdown,
+} from '../core/packet.js';
 import { checkCoverage } from '../core/coverage.js';
 import { estimateRepair } from '../core/estimate.js';
 import { loadPolicyPack, describePack } from '../core/policy.js';
@@ -155,6 +161,9 @@ async function boot() {
    */
   const ui = { coverage: null, estimate: null, assistanceAt: null, humanActions: [] };
   const ledger = [];
+
+  /* The handler packet, once a person has filed. Null until then, and null again after a reset. */
+  let packet = null;
 
   /**
    * Rule packs, keyed by the id the sample file gave them. Every pack listed is fetched at boot so
@@ -740,6 +749,28 @@ async function boot() {
     view.els.checkCoverageBtn.addEventListener('click', runCoverageByHand);
     view.els.checkEstimateBtn.addEventListener('click', runEstimateByHand);
     view.els.fileBtn.addEventListener('click', fileThisClaim);
+
+    view.els.packetToggle.addEventListener('click', () => {
+      if (!packet) return;
+      packet.open = !packet.open;
+      view.togglePacketView(packet.open);
+      view.sayAboutPacket('');
+    });
+
+    view.els.packetCopy.addEventListener('click', async () => {
+      const json = packetAsJson();
+      if (!json) return;
+      // navigator.clipboard is the only way out of this page that does not need a network request
+      // or a blob URL, and the policy this page ships allows neither. A browser that refuses it
+      // says so beside the button rather than failing quietly.
+      try {
+        await navigator.clipboard.writeText(json);
+        view.sayAboutPacket('Copied. Save it as a .json file and run the command below.');
+      } catch (ignored) {
+        view.sayAboutPacket('This browser would not let the page write to the clipboard. Select '
+          + 'the packet above and copy it by hand.');
+      }
+    });
     view.els.assistanceBtn.addEventListener('click', requestAssistance);
     view.els.resetBtn.addEventListener('click', startOver);
   }
@@ -1029,6 +1060,79 @@ async function boot() {
     view.showFieldError('');
     view.announce('The claim was filed through the page. The draft is closed to every writer, this '
       + 'page and any agent alike.');
+    showTheHandlerPacket();
+  }
+
+  /**
+   * THE PACKET IS BUILT HERE AND NOWHERE ELSE, WHICH IS WHAT KEEPS IT OFF THE TOOL SURFACE.
+   *
+   * It describes a filing, so it can only exist after one, and the only thing that files is the
+   * control pressed a line above this. src/webmcp never imports src/core/packet.js, so no
+   * registered tool builds it or returns it, the same way none of them files. Grep is the check,
+   * and tests/unit/packet_is_not_a_tool.test.js is the gate.
+   *
+   * The digest is computed after the panel is drawn, because hashing is asynchronous and a panel
+   * that waits for it would appear late for no reason a reader could see.
+   */
+  function showTheHandlerPacket() {
+    const built = buildFilingPacket({
+      claim: claimNow(),
+      pack: context.pack,
+      homePackId: context.homePackId,
+      completedHumanActions: ui.humanActions,
+      coverage: ui.coverage,
+      ledger,
+    });
+
+    if (!built.ok) {
+      // A filed claim that cannot be described is a defect somewhere else, and the honest thing is
+      // to say so rather than to draw an empty panel or a packet that is not true.
+      view.renderPacket({ available: false });
+      view.showFieldError(built.reason);
+      return;
+    }
+
+    packet = { content: built.packet, canonical: built.canonical, digest: null, open: false };
+    view.renderPacket({
+      available: true,
+      notice: built.packet.notice,
+      reference: built.packet.reference,
+      digest: null,
+      view: packetAsMarkdown(built.packet, null),
+    });
+    view.togglePacketView(false);
+
+    digestOf(built.canonical).then((digest) => {
+      if (!packet || packet.canonical !== built.canonical) return;
+      packet.digest = digest;
+      view.renderPacket({
+        available: true,
+        notice: built.packet.notice,
+        reference: built.packet.reference,
+        digest,
+        view: packetAsMarkdown(built.packet, digest),
+      });
+      view.togglePacketView(packet.open);
+    }).catch(() => {
+      view.renderPacket({
+        available: true,
+        notice: built.packet.notice,
+        reference: built.packet.reference,
+        digest: 'this browser has no Web Crypto, so the digest could not be computed here',
+        view: packetAsMarkdown(built.packet, null),
+      });
+      view.togglePacketView(packet.open);
+    });
+  }
+
+  /** The JSON a person copies, digest included, in the shape verify_packet.mjs reads. */
+  function packetAsJson() {
+    if (!packet) return null;
+    return canonicalise({
+      content: packet.content,
+      content_digest: packet.digest,
+      generated_at: clockNow(),
+    });
   }
 
   /**
@@ -1111,6 +1215,9 @@ async function boot() {
     ui.estimate = null;
     ui.assistanceAt = null;
     ui.humanActions = [];
+    // The packet describes a filing. A reset withdraws the draft it described, so it goes with it.
+    packet = null;
+    view.renderPacket({ available: false });
     context.humanActions = ui.humanActions;
     ledger.length = 0;
     requirementSignature = null;

@@ -151,3 +151,50 @@ test('nothing on the registered surface files, unpins or calls out a recovery tr
     assert.ok(!host.toolNames().includes(forbidden), `${forbidden} reached the tool surface`);
   }
 });
+
+/* --------------------------------------------------------------- the packet a handler receives */
+
+// THE PAGE HALF OF src/core/packet.js. The claim above is filed by the time these run, which is the
+// only state the packet exists in. What matters here is that the panel appears with the filed
+// revision on it, that the readable view is what the page actually drew rather than a promise about
+// it, and that the copy the page hands out is the shape verify_packet.mjs reads.
+test('filing draws the handler packet, from the revision that was filed', () => {
+  const panel = doc.el('packet-panel');
+  assert.equal(panel.hidden, false, 'the packet appears once a person has filed');
+
+  const reference = doc.el('packet-reference').textContent;
+  assert.match(reference, /-R\d+$/, `the reference names the filed revision: ${reference}`);
+  assert.ok(
+    reference.endsWith(`-R${revisionNow()}`),
+    `the packet is built from the filed revision, and it said ${reference} at revision ${revisionNow()}`,
+  );
+
+  assert.match(doc.el('packet-notice').textContent, /No insurer backend is connected/);
+
+  const view = doc.el('packet-view').textContent;
+  assert.match(view, /# First notice of loss, /);
+  assert.match(view, /verify_packet\.mjs/);
+  assert.match(view, /via page/, 'the routes travel with the packet');
+});
+
+test('the packet folds open and closed, and says which it is', () => {
+  const view = doc.el('packet-view');
+  const toggle = doc.el('packet-toggle');
+
+  assert.equal(view.hidden, true, 'it starts folded, because it is long');
+  assert.equal(toggle.textContent, 'Show the packet');
+
+  fireEvent(toggle, 'click');
+  assert.equal(view.hidden, false);
+  assert.equal(toggle.textContent, 'Hide the packet');
+
+  fireEvent(toggle, 'click');
+  assert.equal(view.hidden, true);
+  assert.equal(toggle.textContent, 'Show the packet');
+});
+
+test('a reset withdraws the packet with the draft it described', () => {
+  fireEvent(doc.el('reset-btn'), 'click');
+  assert.equal(doc.el('packet-panel').hidden, true, 'nothing filed, nothing to describe');
+  assert.equal(doc.el('packet-view').textContent, '');
+});
