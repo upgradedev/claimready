@@ -1,0 +1,47 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S6-structural-drivable",
+  "arm": "published-rules",
+  "repeat": 1,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T08:01:50.114Z",
+  "finished": "2026-09-01T08:02:55.155Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "damage_zone": 7,
+    "severity": "structural",
+    "vehicle_drivable": true,
+    "description": "A lorry clipped my nearside rear as it pulled out. The panel is pushed in badly and the door frame is bent, but I drove it home and it is on my drive."
+  },
+  "turns": 4,
+  "tool_calls": [
+    {
+      "tool": "read_claim_state",
+      "args": "{}",
+      "refused": false,
+      "answered": "Claim draft on policy MTR-2026-0417, revision 0, status draft.\nStill missing: damage_zone, severity, vehicle_drivable, description.\nincident_date = \"2026-08-20\" (already on file when the page opened)\nincident_type = \"collision\" (already on file when the page opened)\ndamage_zone = empty, required\nseverity = empty, required\nvehicle_drivable = empty, required\ndescription = empty, required\ndriver = \"M"
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\":0,\"changes\":[{\"field\":\"damage_zone\",\"value\":7},{\"field\":\"severity\",\"value\":\"structural\"},{\"field\":\"vehicle_drivable\",\"value\":true},{\"field\":\"description\",\"value\":\"A lorry clipped my nearside rear as it pulled out. The panel is pushed in badly and the door frame is bent, but I drove it home and it is on my drive.\"}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 1.\nSet damage_zone to 7, severity to \"structural\", vehicle_drivable to true, description (150 characters stored).\nNothing required is missing.\nThe draft cannot be filed yet: FILE_REFUSED_REQUIREMENTS. Call validate_claim for the reason in full.\nWarnings: Structural damage is normally filed with a police report reference.\n1 of 6 intake requirements are still op"
+    },
+    {
+      "tool": "get_requirements",
+      "args": "{}",
+      "refused": false,
+      "answered": "Northwind Mutual intake rules, claim revision 1. 1 of 6 requirement(s) still open.\n- police_report: The police report reference\n  Answered by sending police_report_ref with apply_claim_patch. Brought in by severity. Clause PR-6.2 asks for a police report reference when the shell is out of true or the vehicle was taken. Asked for here because the answer to \"how bad the damage is\" is structural.\nAlr"
+    },
+    {
+      "tool": "validate_claim",
+      "args": "{}",
+      "refused": false,
+      "answered": "NOT READY TO FILE at revision 1. FILE_REFUSED_REQUIREMENTS.\nWhy: Every required field is filled. Northwind Mutual still asks for: The police report reference.\nSeparately, 1 of this insurer's intake requirements are still open: police_report. Call get_requirements for why.\nWarnings: Structural damage is normally filed with a police report reference.\nFiling is a control on this page and is not expos"
+    }
+  ],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

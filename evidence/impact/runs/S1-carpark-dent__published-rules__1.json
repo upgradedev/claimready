@@ -1,0 +1,17 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S1-carpark-dent",
+  "arm": "published-rules",
+  "repeat": 1,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:38:28.774Z",
+  "finished": "2026-09-01T07:39:10.621Z",
+  "participants_were": "a language model, not a person",
+  "fields": {},
+  "turns": 1,
+  "tool_calls": [],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

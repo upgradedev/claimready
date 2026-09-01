@@ -1,0 +1,41 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S2-rear-scratch",
+  "arm": "published-rules",
+  "repeat": 1,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:42:02.079Z",
+  "finished": "2026-09-01T07:42:34.492Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "damage_zone": 6,
+    "severity": "scratch",
+    "vehicle_drivable": true,
+    "description": "Someone backed into me at the supermarket and scraped the rear bumper. It is a scratch only and the car is fine to drive. It is parked at home now."
+  },
+  "turns": 4,
+  "tool_calls": [
+    {
+      "tool": "read_claim_state",
+      "args": "{}",
+      "refused": false,
+      "answered": "Claim draft on policy MTR-2026-0417, revision 0, status draft.\nStill missing: damage_zone, severity, vehicle_drivable, description.\nincident_date = \"2026-08-20\" (already on file when the page opened)\nincident_type = \"collision\" (already on file when the page opened)\ndamage_zone = empty, required\nseverity = empty, required\nvehicle_drivable = empty, required\ndescription = empty, required\ndriver = \"M"
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\":0,\"changes\":[{\"field\":\"damage_zone\",\"value\":6},{\"field\":\"severity\",\"value\":\"scratch\"},{\"field\":\"vehicle_drivable\",\"value\":true},{\"field\":\"description\",\"value\":\"Someone backed into me at the supermarket and scraped the rear bumper. It is a scratch only and the car is fine to drive. It is parked at home now.\"}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 1.\nSet damage_zone to 6, severity to \"scratch\", vehicle_drivable to true, description (147 characters stored).\nNothing required is missing.\nThe draft can be filed now. Tell the person on the page that they can press File this claim.\nAll 5 intake requirements are answered.\nCall get_requirements if that list has changed since you last looked.\nSend baseRevision 1"
+    },
+    {
+      "tool": "validate_claim",
+      "args": "{}",
+      "refused": false,
+      "answered": "READY TO FILE at revision 1.\nWhy: The draft is complete. Filing is yours to do.\nThis insurer's intake requirements are all answered as well.\nTell the person on the page that they can press File this claim. Filing is a control on this page and is not exposed as a WebMCP tool."
+    }
+  ],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

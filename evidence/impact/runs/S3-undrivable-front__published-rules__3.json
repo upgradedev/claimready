@@ -1,0 +1,48 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S3-undrivable-front",
+  "arm": "published-rules",
+  "repeat": 3,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:48:11.100Z",
+  "finished": "2026-09-01T07:49:01.819Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "damage_zone": 12,
+    "severity": "structural",
+    "vehicle_drivable": false,
+    "description": "Hit a bollard head on coming out of a junction. The front is caved in and the car will not drive. The car stopped at the junction of Mill Lane and Rope Street.",
+    "location": "Junction of Mill Lane and Rope Street"
+  },
+  "turns": 5,
+  "tool_calls": [
+    {
+      "tool": "read_claim_state",
+      "args": "{}",
+      "refused": false,
+      "answered": "Claim draft on policy MTR-2026-0417, revision 0, status draft.\nStill missing: damage_zone, severity, vehicle_drivable, description.\nincident_date = \"2026-08-20\" (already on file when the page opened)\nincident_type = \"collision\" (already on file when the page opened)\ndamage_zone = empty, required\nseverity = empty, required\nvehicle_drivable = empty, required\ndescription = empty, required\ndriver = \"M"
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\":0,\"changes\":[{\"field\":\"damage_zone\",\"value\":12},{\"field\":\"severity\",\"value\":\"structural\"},{\"field\":\"vehicle_drivable\",\"value\":false},{\"field\":\"description\",\"value\":\"Hit a bollard head on coming out of a junction. The front is caved in and the car will not drive. The car stopped at the junction of Mill Lane and Rope Street.\"},{\"field\":\"location\",\"value\":\"Junction of Mill Lane and Rope Street\"}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 1.\nSet damage_zone to 12, severity to \"structural\", vehicle_drivable to false, description (159 characters stored), location (37 characters stored).\nNothing required is missing.\nThe draft cannot be filed yet: FILE_REFUSED_REQUIREMENTS. Call validate_claim for the reason in full.\nWarnings: Structural damage is normally filed with a police report reference.\n2 of"
+    },
+    {
+      "tool": "get_requirements",
+      "args": "{\"include\":\"outstanding\"}",
+      "refused": false,
+      "answered": "Northwind Mutual intake rules, claim revision 1. 2 of 8 requirement(s) still open.\n- police_report: The police report reference\n  Answered by sending police_report_ref with apply_claim_patch. Brought in by severity. Clause PR-6.2 asks for a police report reference when the shell is out of true or the vehicle was taken. Asked for here because the answer to \"how bad the damage is\" is structural.\n- r"
+    },
+    {
+      "tool": "validate_claim",
+      "args": "{}",
+      "refused": false,
+      "answered": "NOT READY TO FILE at revision 1. FILE_REFUSED_REQUIREMENTS.\nWhy: Every required field is filled. Northwind Mutual still asks for: The police report reference; Roadside collection for a car that cannot be driven. No field answers that one and no tool on this page reaches it, so it stays open until you do it on this page.\nSeparately, 2 of this insurer's intake requirements are still open: police_rep"
+    }
+  ],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

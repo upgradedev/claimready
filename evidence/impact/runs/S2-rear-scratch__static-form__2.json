@@ -1,0 +1,24 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S2-rear-scratch",
+  "arm": "static-form",
+  "repeat": 2,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:42:51.908Z",
+  "finished": "2026-09-01T07:43:10.468Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "incident_type": "collision",
+    "damage_zone": 6,
+    "severity": "scratch",
+    "vehicle_drivable": "yes",
+    "description": "Someone backed into me at the supermarket and scraped the rear bumper. Car is fine to drive.",
+    "location": "At the supermarket; now on my drive at home."
+  },
+  "turns": 1,
+  "tool_calls": [],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

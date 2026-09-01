@@ -1,0 +1,24 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S1-carpark-dent",
+  "arm": "static-form",
+  "repeat": 1,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:39:11.087Z",
+  "finished": "2026-09-01T07:39:25.397Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "incident_type": "collision",
+    "damage_zone": 10,
+    "severity": "dent",
+    "vehicle_drivable": "yes",
+    "description": "A delivery van reversed into my parked car in the Harbour Road car park, hitting the left front wing and leaving a dent. The car is still drivable.",
+    "location": "Harbour Road car park"
+  },
+  "turns": 1,
+  "tool_calls": [],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

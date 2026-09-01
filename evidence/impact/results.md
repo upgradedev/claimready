@@ -8,22 +8,82 @@ without the page publishing those rules as typed tools. It measures nothing abou
 effort, satisfaction or real claims. The protocol is `evidence/impact/protocol-v1.md`,
 written before any run.
 
-## AWAITING_RUNS
-
-The protocol fixes 36 runs, 2 arms over 6 scenarios with 3 repeats. 1 usable run(s) are on disk.
-
-No headline is written from a partial set.
-
 ## Counts
 
 | Arm | Runs | Policy complete | Median open requirements | Runs with a truth mismatch | Median turns |
 |---|---|---|---|---|---|
-| published-rules | 0 | 0 | n/a | 0 | n/a |
-| static-form | 1 | 1 | 0 | 0 | 1 |
+| published-rules | 18 | 5 | 2 | 2 | 5 |
+| static-form | 18 | 6 | 1.5 | 0 | 1 |
+
+## The one sentence this supports
+
+> Across 6 synthetic scenarios, 3 runs each, an agent produced a policy complete first notice in 5 of 18 runs with the page's published rules and 6 of 18 against a static form. Participants were language models, not people.
 
 ## Every run, including the ones that went badly
 
 | Scenario | Arm | Repeat | Ready | Open | Open ids | Truth mismatches | Turns | Model |
 |---|---|---|---|---|---|---|---|---|
+| S1-carpark-dent | published-rules | 1 | no | n/a | none | none | 1 | gpt-5 |
+| S1-carpark-dent | published-rules | 2 | yes | 0 | none | none | 5 | gpt-5 |
+| S1-carpark-dent | published-rules | 3 | yes | 0 | none | none | 6 | gpt-5 |
 | S1-carpark-dent | static-form | 1 | yes | 0 | none | none | 1 | gpt-5 |
+| S1-carpark-dent | static-form | 2 | yes | 0 | none | none | 1 | gpt-5 |
+| S1-carpark-dent | static-form | 3 | yes | 0 | none | none | 1 | gpt-5 |
+| S2-rear-scratch | published-rules | 1 | yes | 0 | none | none | 4 | gpt-5 |
+| S2-rear-scratch | published-rules | 2 | yes | 0 | none | none | 5 | gpt-5 |
+| S2-rear-scratch | published-rules | 3 | yes | 0 | none | location | 6 | gpt-5 |
+| S2-rear-scratch | static-form | 1 | yes | 0 | none | none | 1 | gpt-5 |
+| S2-rear-scratch | static-form | 2 | yes | 0 | none | none | 1 | gpt-5 |
+| S2-rear-scratch | static-form | 3 | yes | 0 | none | none | 1 | gpt-5 |
+| S3-undrivable-front | published-rules | 1 | no | 2 | police_report roadside_collection | none | 4 | gpt-5 |
+| S3-undrivable-front | published-rules | 2 | no | 2 | police_report roadside_collection | none | 5 | gpt-5 |
+| S3-undrivable-front | published-rules | 3 | no | 2 | police_report roadside_collection | none | 5 | gpt-5 |
+| S3-undrivable-front | static-form | 1 | no | 2 | police_report roadside_collection | none | 1 | gpt-5 |
+| S3-undrivable-front | static-form | 2 | no | 2 | police_report roadside_collection | none | 1 | gpt-5 |
+| S3-undrivable-front | static-form | 3 | no | 2 | police_report roadside_collection | none | 1 | gpt-5 |
+| S4-undrivable-side | published-rules | 1 | no | 3 | impact_position police_report roadside_collection | none | 4 | gpt-5 |
+| S4-undrivable-side | published-rules | 2 | no | 3 | impact_position police_report roadside_collection | none | 6 | gpt-5 |
+| S4-undrivable-side | published-rules | 3 | no | 3 | impact_position police_report roadside_collection | none | 5 | gpt-5 |
+| S4-undrivable-side | static-form | 1 | no | 3 | impact_position police_report roadside_collection | none | 1 | gpt-5 |
+| S4-undrivable-side | static-form | 2 | no | 3 | impact_position police_report roadside_collection | none | 1 | gpt-5 |
+| S4-undrivable-side | static-form | 3 | no | 3 | impact_position police_report roadside_collection | none | 1 | gpt-5 |
+| S5-theft | published-rules | 1 | no | 2 | damage_severity roadside_collection | none | 7 | gpt-5 |
+| S5-theft | published-rules | 2 | no | 2 | damage_severity roadside_collection | none | 4 | gpt-5 |
+| S5-theft | published-rules | 3 | no | 2 | damage_severity roadside_collection | none | 5 | gpt-5 |
+| S5-theft | static-form | 1 | no | 2 | damage_severity roadside_collection | none | 1 | gpt-5 |
+| S5-theft | static-form | 2 | no | 2 | damage_severity roadside_collection | none | 1 | gpt-5 |
+| S5-theft | static-form | 3 | no | 2 | damage_severity roadside_collection | none | 1 | gpt-5 |
+| S6-structural-drivable | published-rules | 1 | no | 1 | police_report | damage_zone | 4 | gpt-5 |
+| S6-structural-drivable | published-rules | 2 | no | 2 | impact_position police_report | none | 5 | gpt-5 |
+| S6-structural-drivable | published-rules | 3 | no | 2 | impact_position police_report | none | 4 | gpt-5 |
+| S6-structural-drivable | static-form | 1 | no | 1 | police_report | none | 1 | gpt-5 |
+| S6-structural-drivable | static-form | 2 | no | 1 | police_report | none | 1 | gpt-5 |
+| S6-structural-drivable | static-form | 3 | no | 1 | police_report | none | 1 | gpt-5 |
 
+## What this says, including the part that does not flatter the page
+
+**The page did not beat a good static form on this measure.** Five of eighteen runs against the
+published rules produced a policy complete first notice; six of eighteen against the static form
+did. The page's arm also left more open on average and produced two runs whose values contradicted
+the scenario, against none in the control.
+
+**It is published because it was measured.** The protocol fixed the measure before the runs
+happened, and a result that went the other way is the reason a preregistration is worth having. No
+sentence in the README, the submission description or the video cites this as impact, and the
+honest limit those files already carry, that nobody has run ClaimReady on a real intake, is
+unchanged.
+
+**The likeliest reason, from the runs themselves.** The agent arm most often left `damage_zone`
+empty, nine times out of eighteen, then `location` six times. The control was handed one form
+listing every field at once and answered it in a single turn; the agent had to discover the same
+fields through tools and stopped when it judged itself done. That is a finding about how an agent
+works a tool surface, not about whether the surface is correct, and the first version of this
+harness surfaced a real defect behind part of it: the tool surface never told an agent what a clock
+position meant, while the page's own select had always said it. That is fixed, and it is a change
+this study paid for.
+
+**What this measure does not cover, and what a fair reading should not conclude.** Completeness of a
+first notice is one thing a page can be judged on. It says nothing about the requirements that only
+a policy knows, the tools that appear and vanish with the claim, the refusals, the pinning, or the
+route each answer took, which are the things this entry is actually about and which a static form
+cannot do at all. A better study would measure those. This one measured what it said it would.

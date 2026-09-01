@@ -1,0 +1,48 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S5-theft",
+  "arm": "published-rules",
+  "repeat": 3,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:59:30.077Z",
+  "finished": "2026-09-01T08:01:23.012Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "incident_type": "theft",
+    "vehicle_drivable": false,
+    "description": "My car was taken overnight from the street outside my house. I reported it to the police this morning. There is no damage to describe because the car is gone.",
+    "location": "Street outside my house",
+    "police_report_ref": "CR-4471-B"
+  },
+  "turns": 5,
+  "tool_calls": [
+    {
+      "tool": "read_claim_state",
+      "args": "{}",
+      "refused": false,
+      "answered": "Claim draft on policy MTR-2026-0417, revision 0, status draft.\nStill missing: damage_zone, severity, vehicle_drivable, description.\nincident_date = \"2026-08-20\" (already on file when the page opened)\nincident_type = \"collision\" (already on file when the page opened)\ndamage_zone = empty, required\nseverity = empty, required\nvehicle_drivable = empty, required\ndescription = empty, required\ndriver = \"M"
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\": 0, \"changes\": [{\"field\": \"incident_type\", \"value\": \"theft\"}, {\"field\": \"vehicle_drivable\", \"value\": false}, {\"field\": \"description\", \"value\": \"My car was taken overnight from the street outside my house. I reported it to the police this morning. There is no damage to describe because the car is gone.\"}, {\"field\": \"location\", \"value\": \"Street outside my house\"}, {\"field\": \"police_report_ref\", \"value\": \"CR-4471-B\"}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 1.\nSet incident_type to \"theft\", vehicle_drivable to false, description (158 characters stored), location (23 characters stored), police_report_ref (9 characters stored).\nStill missing: severity.\nThe draft cannot be filed yet: FILE_REFUSED_INCOMPLETE. Call validate_claim for the reason in full.\n2 of 7 intake requirements are still open: How heavy the damage is"
+    },
+    {
+      "tool": "get_requirements",
+      "args": "{}",
+      "refused": false,
+      "answered": "Northwind Mutual intake rules, claim revision 1. 2 of 7 requirement(s) still open.\n- damage_severity: How heavy the damage is\n  Answered by sending severity with apply_claim_patch. Clause OD-4.4 routes a structural job to a body shop on the insurer list and a light job to any repairer.\n- roadside_collection: Roadside collection for a car that cannot be driven\n  No field answers this one and no too"
+    },
+    {
+      "tool": "validate_claim",
+      "args": "{}",
+      "refused": false,
+      "answered": "NOT READY TO FILE at revision 1. FILE_REFUSED_INCOMPLETE.\nWhy: Still needed before you can file: how bad the damage is.\nMissing: severity.\nRead the claim state for the revision, then send them with apply_claim_patch in one call.\nSeparately, 2 of this insurer's intake requirements are still open: damage_severity, roadside_collection. Call get_requirements for why.\nFiling is a control on this page a"
+    }
+  ],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}

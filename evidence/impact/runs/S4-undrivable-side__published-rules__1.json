@@ -1,0 +1,41 @@
+{
+  "contract": "claimready.impact.run.v1",
+  "scenario_id": "S4-undrivable-side",
+  "arm": "published-rules",
+  "repeat": 1,
+  "model": "gpt-5",
+  "deployed_sha": "2d7a609",
+  "started": "2026-09-01T07:49:24.990Z",
+  "finished": "2026-09-01T07:50:38.173Z",
+  "participants_were": "a language model, not a person",
+  "fields": {
+    "severity": "structural",
+    "vehicle_drivable": false,
+    "description": "A car came through a give way sign and hit my passenger side. The wheel is pointing the wrong way and I cannot drive it.",
+    "location": "Outside number 40 on Cross Street"
+  },
+  "turns": 4,
+  "tool_calls": [
+    {
+      "tool": "read_claim_state",
+      "args": "{}",
+      "refused": false,
+      "answered": "Claim draft on policy MTR-2026-0417, revision 0, status draft.\nStill missing: damage_zone, severity, vehicle_drivable, description.\nincident_date = \"2026-08-20\" (already on file when the page opened)\nincident_type = \"collision\" (already on file when the page opened)\ndamage_zone = empty, required\nseverity = empty, required\nvehicle_drivable = empty, required\ndescription = empty, required\ndriver = \"M"
+    },
+    {
+      "tool": "apply_claim_patch",
+      "args": "{\"baseRevision\":0,\"changes\":[{\"field\":\"severity\",\"value\":\"structural\"},{\"field\":\"vehicle_drivable\",\"value\":false},{\"field\":\"description\",\"value\":\"A car came through a give way sign and hit my passenger side. The wheel is pointing the wrong way and I cannot drive it.\"},{\"field\":\"location\",\"value\":\"Outside number 40 on Cross Street\"}]}",
+      "refused": false,
+      "answered": "Applied. The claim is now at revision 1.\nSet severity to \"structural\", vehicle_drivable to false, description (120 characters stored), location (33 characters stored).\nStill missing: damage_zone.\nThe draft cannot be filed yet: FILE_REFUSED_INCOMPLETE. Call validate_claim for the reason in full.\nWarnings: Structural damage is normally filed with a police report reference.\n3 of 8 intake requirements"
+    },
+    {
+      "tool": "get_requirements",
+      "args": "{}",
+      "refused": false,
+      "answered": "Northwind Mutual intake rules, claim revision 1. 3 of 8 requirement(s) still open.\n- impact_position: Where on the car the impact landed\n  Answered by sending damage_zone with apply_claim_patch. Positions are clock hours seen from above with 12 at the front: 12 is the front centre, 3 is the right side, 6 is the rear centre, 9 is the left side, 10 is the left front wing. Brought in by incident_type"
+    }
+  ],
+  "attempted_human_only": false,
+  "technical_failure": false,
+  "note": null
+}
