@@ -18,6 +18,8 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
+
+import { formOnly } from './form.mjs';
 import { fileURLToPath } from 'node:url';
 
 import { evaluateInPage } from './page_client.mjs';
@@ -191,7 +193,7 @@ Here is what happened: ${scenario.brief}`,
 /* ---------------------------------------------------------------------- arm B, the static form */
 
 async function runStaticForm() {
-  const form = readFileSync(path.join(ROOT, 'evidence/impact/static-form.md'), 'utf8');
+  const form = formOnly(readFileSync(path.join(ROOT, 'evidence/impact/static-form.md'), 'utf8'));
   const message = await ask([
     { role: 'system', content: SYSTEM },
     {

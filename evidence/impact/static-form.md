@@ -5,8 +5,16 @@ has to carry, with the same enumerations and the same help text the page's own c
 does not carry is anything about a particular policy, because a static form does not know which
 policy it is looking at until somebody tells it.
 
-The union is nine questions, which is the number `node scripts/measure_intake.mjs` counts from the
-two shipped rule packs. Arm B is handed this text and the claimant's words, and nothing else.
+**Ten questions.** Nine of them are the union `node scripts/measure_intake.mjs` counts from the two
+shipped rule packs plus the page's own required list: incident_date, incident_type, damage_zone,
+severity, vehicle_drivable, description, location, police_report_ref, witness_name. The tenth, who
+was driving, is a box the page offers that no pack names and no rule asks for, which that same
+command prints under "what is outside both counts". The control carries it because the page carries
+it, and a control that dropped a question the page asks would not be the same form.
+
+This paragraph said nine and then listed ten, from the day the file was written. The list is what
+arm B was actually handed in all eighteen runs and it is unchanged; the sentence describing it was
+wrong and is corrected here. Arm B is handed this text and the claimant's words, and nothing else.
 
 ---
 

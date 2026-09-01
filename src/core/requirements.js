@@ -370,6 +370,20 @@ export function fileGateStatement(state) {
 }
 
 /**
+ * The refusal codes this note has to tell apart, written here rather than imported.
+ *
+ * `src/core/filing.js` imports this module, so importing `FILE_CODES` back from it would close a
+ * cycle for three string literals. They are pinned instead: `tests/unit/requirements.test.js`
+ * asserts this object against `FILE_CODES` itself, so a rename over there fails a test here rather
+ * than quietly turning three branches of this note off.
+ */
+export const OPTIONAL_NOTE_CODES = {
+  alreadyFiled: 'FILE_REFUSED_ALREADY_FILED',
+  noPack: 'FILE_REFUSED_NO_PACK',
+  borrowedRules: 'FILE_REFUSED_BORROWED_RULES',
+};
+
+/**
  * What to say above the optional details, so the sentence is true against the pack that is loaded.
  *
  * THE OLD SENTENCE WAS "Not needed to file", AND THE PACK CAN ASK FOR THESE VERY FIELDS. Both
@@ -399,10 +413,35 @@ export function optionalDetailsNote(state) {
   const closer = 'Your agent can set them too, and this group opens by itself when it does, so '
     + 'nothing is written where you cannot see it.';
 
+  // THE CODE DECIDES THE SENTENCE, NOT THE LIST.
+  //
+  // The second half of this note used to promise that answering the named fields opens filing, and
+  // it said that from the outstanding list alone. Filing can be closed for a reason no field on
+  // this draft answers: the claim is already filed, the rules never loaded, or the pack loaded is
+  // another insurer's read against this claim. In the borrowed case the list is real, the labels
+  // are that insurer's own, and every one of them can be answered without the button moving, which
+  // is a promise the page cannot keep. `canFile` already names the reason in a code, so the note
+  // reads the code rather than inferring a reason from a list.
+  const code = state && typeof state.code === 'string' ? state.code : null;
+
+  if (code === OPTIONAL_NOTE_CODES.alreadyFiled) {
+    return 'The claim is filed, so these are closed with the rest of the draft. '
+      + 'Anything else the handler needs is asked for by the handler.';
+  }
+
   const known = state ? state.requirementsKnown !== false : true;
-  if (!known) {
+  if (code === OPTIONAL_NOTE_CODES.noPack || !known) {
     return 'The File button is not waiting for these. This page cannot say whether the insurer '
       + `asks for any of them until its rules load. ${closer}`;
+  }
+
+  if (code === OPTIONAL_NOTE_CODES.borrowedRules) {
+    const whose = typeof (state && state.insurer) === 'string' && state.insurer.trim().length > 0
+      ? state.insurer.trim()
+      : 'another insurer';
+    return `Filing is closed because these are ${whose}'s published rules read against a claim that `
+      + 'is not with them, so answering these details will not open it. They are still yours to '
+      + `fill in, and they stay on the draft. ${closer}`;
   }
 
   const outstanding = Array.isArray(state && state.outstanding) ? state.outstanding : [];

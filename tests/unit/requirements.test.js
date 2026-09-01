@@ -10,8 +10,10 @@ import {
   fileGateStatement,
   fileGateIsSettled,
   optionalDetailsNote,
+  OPTIONAL_NOTE_CODES,
 } from '../../src/core/requirements.js';
 import { loadPolicyPack } from '../../src/core/policy.js';
+import { FILE_CODES } from '../../src/core/filing.js';
 import {
   applyPatch,
   createClaim,
@@ -698,4 +700,52 @@ test('the note and the file panel never disagree about the same draft', () => {
       assert.ok(note.includes(entry.label), `the optional note dropped ${entry.id}`);
     }
   }
+});
+
+/* ------------------------------------------------- the note against the reason filing is closed */
+
+/**
+ * THE PIN. `optionalDetailsNote` branches on three refusal codes it declares itself, because
+ * filing.js imports this module and importing back would close a cycle. This is the fixture that
+ * makes the duplicate safe: rename a code in filing.js and this fails here.
+ */
+test('the codes the optional note branches on are the codes canFile actually returns', () => {
+  assert.equal(OPTIONAL_NOTE_CODES.alreadyFiled, FILE_CODES.alreadyFiled);
+  assert.equal(OPTIONAL_NOTE_CODES.noPack, FILE_CODES.noPack);
+  assert.equal(OPTIONAL_NOTE_CODES.borrowedRules, FILE_CODES.borrowedRules);
+});
+
+/**
+ * The note used to promise that answering the named details opens filing, and it said that from the
+ * outstanding list alone. Under borrowed rules every one of those details can be answered without
+ * the button moving, because filing is refused before the fields are ever looked at.
+ */
+test('the note does not promise that answering these opens a filing that is closed for another reason', () => {
+  const said = optionalDetailsNote({
+    code: FILE_CODES.borrowedRules,
+    insurer: 'Kestrel Assurance',
+    requirementsKnown: true,
+    outstanding: [{ id: 'witness', label: 'The name of a witness', field: 'witness_name' }],
+  });
+  assert.match(said, /Kestrel Assurance's published rules/);
+  assert.match(said, /will not open it/);
+  assert.doesNotMatch(said, /Filing stays closed until they are answered/,
+    'that sentence is a promise this page cannot keep here');
+
+  const filed = optionalDetailsNote({ code: FILE_CODES.alreadyFiled, requirementsKnown: true, outstanding: [] });
+  assert.match(filed, /The claim is filed/);
+
+  const noPack = optionalDetailsNote({ code: FILE_CODES.noPack, requirementsKnown: false, outstanding: [] });
+  assert.match(noPack, /until its rules load/);
+
+  // The ordinary case is untouched: this claimant's own insurer, rules loaded, and the note still
+  // names what is asked for and says filing waits for it.
+  const ordinary = optionalDetailsNote({
+    code: FILE_CODES.requirements,
+    insurer: 'Northwind Mutual',
+    requirementsKnown: true,
+    outstanding: [{ id: 'police_report', label: 'The police report reference', field: 'police_report_ref' }],
+  });
+  assert.match(ordinary, /Northwind Mutual is asking for: The police report reference/);
+  assert.match(ordinary, /Filing stays closed until they are answered/);
 });
