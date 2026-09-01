@@ -551,6 +551,17 @@ export function createView(doc) {
       text(els.packetView, state.view || '');
     },
 
+    /**
+     * Open or close the copy control, with the reason beside it when it is closed.
+     *
+     * @param {boolean} allowed
+     * @param {string} reason
+     */
+    setPacketCopyable(allowed, reason) {
+      els.packetCopy.disabled = !allowed;
+      text(els.packetSaid, allowed ? '' : (reason || ''));
+    },
+
     /** Fold the packet open or closed, and say which state it is in. */
     togglePacketView(open) {
       els.packetView.hidden = !open;

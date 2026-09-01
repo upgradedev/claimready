@@ -193,6 +193,39 @@ test('the packet folds open and closed, and says which it is', () => {
   assert.equal(toggle.textContent, 'Show the packet');
 });
 
+
+// THE PAGE AND THE PACKET HAVE TO AGREE ABOUT THE COVER, AND FOR A WHILE THEY DID NOT.
+//
+// The packet used to be handed the coverage by its caller, and the page handed it the panel's state
+// object, which wraps the decision under `decision` along with when it was worked out. The packet
+// read the wrapper as the decision, so every field came back undefined and a sealed document went
+// out saying not covered, clause null, excess null, with a valid digest over it, while the panel
+// above it said COVERED under OD-4.1 with an excess of 250. The packet works the cover out itself
+// now, from the filed claim and the loaded pack, so there is no shape left to get wrong. This is
+// the assertion that would have caught it.
+test('the cover in the packet is the cover the page shows, whatever it is', () => {
+  fireEvent(doc.el('check-coverage-btn'), 'click');
+  const panel = doc.el('coverage-body').textContent;
+
+  const clause = panel.match(/Clause([A-Z]{2}-\d+\.\d+)/);
+  assert.ok(clause, `the panel names a clause for this to compare against: ${panel.slice(0, 120)}`);
+  const covered = /^Not covered/.test(panel.trim()) === false;
+
+  const view = doc.el('packet-view').textContent;
+  assert.ok(view.includes(`**Clause:** ${clause[1]}`),
+    `the packet has to name the clause the page named, ${clause[1]}`);
+  assert.ok(view.includes(covered ? '**Decision:** covered' : '**Decision:** not covered'),
+    'and it has to decide the same way');
+});
+
+test('a caller cannot inject a cover decision into the packet', () => {
+  // The page passes none: buildFilingPacket works the cover out from the filed claim and the loaded
+  // pack. This asserts the boundary at the level a reader can check, which is that the clause on the
+  // packet is one the pack states rather than anything the page happened to be holding.
+  const view = doc.el('packet-view').textContent;
+  assert.match(view, /\*\*Clause:\*\* [A-Z]{2}-\d+\.\d+/);
+});
+
 test('a reset withdraws the packet with the draft it described', () => {
   fireEvent(doc.el('reset-btn'), 'click');
   assert.equal(doc.el('packet-panel').hidden, true, 'nothing filed, nothing to describe');

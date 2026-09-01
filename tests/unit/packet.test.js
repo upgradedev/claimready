@@ -67,7 +67,6 @@ function build(claim, overrides = {}) {
     pack: northwind,
     homePackId: HOME,
     completedHumanActions: DONE,
-    coverage: checkCoverage(northwind, claim),
     ledger: [
       { at: '09:14:02', tool: 'validate_claim', refused: false, code: null },
       { at: '09:13:41', tool: 'apply_claim_patch', refused: true, code: 'PATCH_REJECTED_LOCKED' },
@@ -148,9 +147,16 @@ test('changing anything the packet describes changes the digest', async () => {
   const later = { ...claim, revision: claim.revision + 1 };
   assert.notEqual(await digestOf(build(later).canonical), before);
 
-  // The same claim under a different cover decision is a different packet.
-  const otherCover = build(claim, { coverage: { covered: false, clause: 'XX-9', deductible: 0 } });
-  assert.notEqual(await digestOf(otherCover.canonical), before);
+  // A different claim decides differently under the same rules, and the packet follows the claim
+  // rather than anything a caller says. A theft is not covered by this pack.
+  const asTheft = { ...claim, incident_type: 'theft' };
+  assert.notEqual(await digestOf(build(asTheft).canonical), before);
+
+  // And a caller cannot inject one: coverage is not an input any more, so passing one changes
+  // nothing at all. This is the assertion that would have caught the defect it replaces.
+  const injected = build(claim, { coverage: { covered: false, clause: 'XX-9', deductible: 0 } });
+  assert.equal(await digestOf(injected.canonical), before);
+  assert.equal(injected.packet.coverage.clause, 'OD-4.1');
 
   // And so is one with a different ledger.
   const otherLedger = build(claim, { ledger: [{ at: '09:00:00', tool: 'describe_claim' }] });
