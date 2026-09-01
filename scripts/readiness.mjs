@@ -919,7 +919,24 @@ function printTable(rows) {
 const UNREACHABLE_HOST = 'https://claimready-selftest-host-that-does-not-exist.invalid/';
 
 /** Directories a sandbox copy does not need. Nothing here is read by any check. */
-const SANDBOX_SKIP = new Set(['.git', 'node_modules', '.vercel', 'tmp', 'video']);
+const SANDBOX_SKIP = new Set(['.git', 'node_modules', '.vercel', 'tmp']);
+
+/**
+ * WHY `video` LEFT THAT LIST.
+ *
+ * It was skipped whole, and then a test started reading `video/beats/*&#47;beat.json`: the beat files
+ * are the copy `--check-takes` prints to an owner, and tests/unit/beat_metadata.test.js holds them
+ * to the runbook. In a sandbox with no video tree that test failed on the INTACT copy, so the TST
+ * row reported `intact FAIL broken FAIL` and the self test went red. A gate that cannot pass on a
+ * healthy tree tells you nothing about a broken one.
+ *
+ * What the sandbox does not need is the heavy generated media, which is what the skip was for. So
+ * the filter is by extension now: the metadata a test reads is copied, and a take, a beat render, a
+ * narration audio file or a finished cut is not.
+ */
+const SANDBOX_SKIP_EXTENSIONS = new Set([
+  '.mp4', '.webm', '.mov', '.mkv', '.m4a', '.mp3', '.wav', '.vtt', '.png', '.jpg', '.jpeg',
+]);
 
 /**
  * THE SKIP LIST WAS DEAD, AND A DEAD SKIP LIST HERE DESTROYS THE REPOSITORY.
@@ -947,9 +964,23 @@ function makeSandbox(dest) {
       const plain = String(source).replace(/^\\\\\?\\/, '');
       const rel = relative(ROOT, plain).split('\\').join('/');
       if (rel === '') return true;
-      return !SANDBOX_SKIP.has(rel.split('/')[0]);
+      if (SANDBOX_SKIP.has(rel.split('/')[0])) return false;
+      const dot = rel.lastIndexOf('.');
+      const extension = dot === -1 ? '' : rel.slice(dot).toLowerCase();
+      return !SANDBOX_SKIP_EXTENSIONS.has(extension);
     },
   });
+  // The beat metadata a test reads has to have survived the filter, or the TST row fails on a
+  // healthy tree and the whole self test says nothing. Asserted rather than assumed, for the same
+  // reason the skip below is asserted: a silent filter is how the last defect here got in.
+  const beatMetadata = join(dest, 'video', 'beats', '03-agent-fills', 'beat.json');
+  if (!existsSync(beatMetadata)) {
+    throw new Error(
+      `selftest sandbox ${dest} has no ${relative(dest, beatMetadata)}, so the tests that read the `
+      + 'beat metadata cannot pass in it and the TST row would fail on an intact copy.',
+    );
+  }
+
   for (const name of SANDBOX_SKIP) {
     if (existsSync(join(dest, name))) {
       throw new Error(

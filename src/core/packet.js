@@ -23,6 +23,7 @@
  */
 
 import { packIdentity } from './filing.js';
+import { checkCoverage } from './coverage.js';
 import { deriveRequirements, outstandingRequirements } from './requirements.js';
 import { FIELD_LABELS, PATCHABLE_FIELDS, validateClaim } from './claim.js';
 
@@ -106,7 +107,7 @@ function routeOf(claim, field) {
  * @param {object|null} input.pack the insurer rule pack the filing was decided under
  * @param {(string|null)} [input.homePackId] whose policy this is, as the page states it
  * @param {(string[]|Set<string>)} [input.completedHumanActions]
- * @param {object|null} [input.coverage] the cover decision from src/core/coverage.js, if run
+ * Coverage is NOT an input. It is recomputed here from the filed claim and the validated pack.
  * @param {Array<object>} [input.ledger] the page's tool call ledger, newest first
  * @returns {{ok: boolean, code: (string|null), reason: string, packet: (object|null),
  *            canonical: (string|null)}}
@@ -198,13 +199,28 @@ export function buildFilingPacket(input) {
     }))
     .reverse();
 
-  const coverage = settings.coverage && typeof settings.coverage === 'object'
+  // COVERAGE IS RECOMPUTED HERE AND IS NEVER TAKEN FROM A CALLER.
+  //
+  // It used to be handed in, and the page handed in the panel's state object, which wraps the
+  // decision under a `decision` key along with when it was worked out. This module read the wrapper
+  // as though it were the decision, so every field came back undefined: a packet went out saying
+  // not covered, clause null, excess null, with a valid digest over it, while the panel two inches
+  // above said COVERED under OD-4.1 with an excess of 250. A sealed document that contradicts the
+  // page is worse than no document, and the digest made it worse still by looking like proof.
+  //
+  // The fix is not to read the wrapper correctly. It is to stop accepting the answer from anyone:
+  // the packet describes a filed claim, so it works the cover out from that claim and the validated
+  // pack, the same way every other surface does, and there is no shape left to get wrong.
+  const decided = checkCoverage(pack, claim);
+  const coverage = decided
     ? {
-      covered: Boolean(settings.coverage.covered),
-      clause: settings.coverage.clause ?? null,
-      deductible: settings.coverage.deductible ?? null,
-      currency: settings.coverage.currency ?? pack.currency ?? null,
-      reason: settings.coverage.reason ?? null,
+      covered: Boolean(decided.covered),
+      clause: decided.clause ?? null,
+      deductible: decided.deductible ?? null,
+      currency: decided.currency ?? pack.currency ?? null,
+      reason: decided.reason ?? null,
+      exclusions: Array.isArray(decided.exclusions) ? [...decided.exclusions].sort() : [],
+      recomputed_from: 'the filed claim and the loaded rule pack, not from the page',
     }
     : null;
 

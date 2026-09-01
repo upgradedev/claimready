@@ -759,7 +759,13 @@ async function boot() {
 
     view.els.packetCopy.addEventListener('click', async () => {
       const json = packetAsJson();
-      if (!json) return;
+      // The control is closed while this is true, so reaching here means the draft moved between
+      // the paint and the press. Refusing is cheaper than trusting the button.
+      if (!json || !packet || !packet.digest) {
+        view.sayAboutPacket('The digest is not ready yet, so there is nothing to copy that anyone '
+          + 'could check.');
+        return;
+      }
       // navigator.clipboard is the only way out of this page that does not need a network request
       // or a blob URL, and the policy this page ships allows neither. A browser that refuses it
       // says so beside the button rather than failing quietly.
@@ -1075,12 +1081,13 @@ async function boot() {
    * that waits for it would appear late for no reason a reader could see.
    */
   function showTheHandlerPacket() {
+    // No coverage is passed. The packet works it out from the filed claim and the pack, because a
+    // caller handing it an answer is how the packet came to contradict the panel above it.
     const built = buildFilingPacket({
       claim: claimNow(),
       pack: context.pack,
       homePackId: context.homePackId,
       completedHumanActions: ui.humanActions,
-      coverage: ui.coverage,
       ledger,
     });
 
@@ -1093,6 +1100,11 @@ async function boot() {
     }
 
     packet = { content: built.packet, canonical: built.canonical, digest: null, open: false };
+    // NOTHING LEAVES THIS PAGE WITHOUT ITS DIGEST. Hashing is asynchronous, and the copy control was
+    // live for the few milliseconds before it resolved, so a fast hand could take away a packet with
+    // content_digest: null in it. A packet nobody can check is the one thing this feature must not
+    // produce, so the control is closed until the digest is on it.
+    view.setPacketCopyable(false, 'working out the digest');
     view.renderPacket({
       available: true,
       notice: built.packet.notice,
@@ -1105,6 +1117,7 @@ async function boot() {
     digestOf(built.canonical).then((digest) => {
       if (!packet || packet.canonical !== built.canonical) return;
       packet.digest = digest;
+      view.setPacketCopyable(true, '');
       view.renderPacket({
         available: true,
         notice: built.packet.notice,
@@ -1114,6 +1127,10 @@ async function boot() {
       });
       view.togglePacketView(packet.open);
     }).catch(() => {
+      // No digest, no export. The packet stays on screen to be read, because that is still true,
+      // and the reason sits beside the control that is closed.
+      view.setPacketCopyable(false, 'this browser would not compute the digest, so the packet '
+        + 'cannot be copied from here. It is still readable above.');
       view.renderPacket({
         available: true,
         notice: built.packet.notice,
