@@ -268,6 +268,39 @@
       </div>
     </section>
 
+    <!--
+      The handler packet. It exists only after a filing, it is built from that exact revision, and
+      it is not on the tool surface: nothing this page registers builds it or returns it, and the
+      page is its only caller. Hidden until then rather than shown disabled, because until a claim
+      is filed there is nothing to describe.
+    -->
+    <section class="panel" aria-labelledby="h-packet" data-el="packet-panel" hidden>
+      <div class="panel-head">
+        <h2 id="h-packet">Handler packet</h2>
+        <p class="panel-note">What a first notice of loss handler receives: the facts, the clause
+          the cover decision came from, what this insurer asked for and got, and the route each
+          answer arrived on.</p>
+      </div>
+
+      <p class="packet-notice" data-el="packet-notice"></p>
+      <dl class="packet-facts">
+        <div><dt>Reference</dt><dd data-el="packet-reference"></dd></div>
+        <div><dt>Content digest</dt><dd class="mono" data-el="packet-digest"></dd></div>
+      </dl>
+
+      <div class="packet-actions">
+        <button type="button" class="btn btn-quiet" data-el="packet-toggle">Show the packet</button>
+        <button type="button" class="btn btn-quiet" data-el="packet-copy">Copy the JSON</button>
+        <span class="packet-said" data-el="packet-said" role="status"></span>
+      </div>
+
+      <pre class="packet-view mono" data-el="packet-view" hidden></pre>
+
+      <p class="reason">Check it yourself: save the JSON and run
+        <code>node scripts/verify_packet.mjs &lt;file&gt;</code>. It recomputes the digest over the
+        content and refuses if one character moved.</p>
+    </section>
+
   </div>
 
   <section class="panel panel-ledger" aria-labelledby="h-ledger">

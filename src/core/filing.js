@@ -114,6 +114,33 @@ function packIdOf(pack) {
   return pack && typeof pack.id === 'string' && pack.id.trim().length > 0 ? pack.id.trim() : null;
 }
 
+/**
+ * Whose rules are these, and are they this policy's.
+ *
+ * Exported because more than one decision needs the same answer and none of them may compute it
+ * separately: the file gate below, and the handler packet in src/core/packet.js, which must refuse
+ * to describe a filing that could not have happened. One function, one answer, both callers.
+ *
+ * @param {*} pack an insurer rule pack, or anything at all
+ * @param {{homePackId?: (string|null)}} [options] whose policy this is, as the page states it
+ * @returns {{usable: boolean, packId: (string|null), insurer: (string|null),
+ *            homePackId: (string|null), borrowed: boolean}}
+ */
+export function packIdentity(pack, options) {
+  const usable = isUsablePack(pack);
+  const packId = usable ? packIdOf(pack) : null;
+  const homePackId = options && typeof options.homePackId === 'string' && options.homePackId.trim().length > 0
+    ? options.homePackId.trim()
+    : null;
+  return {
+    usable,
+    packId,
+    insurer: usable ? insurerOf(pack) : null,
+    homePackId,
+    borrowed: Boolean(usable && homePackId && packId && packId !== homePackId),
+  };
+}
+
 /** The insurer's own name, when the pack states one. */
 function insurerOf(pack) {
   const name = pack && typeof pack.insurer === 'string' ? pack.insurer.trim() : '';
@@ -142,17 +169,11 @@ export function canFile(pack, claim, completedHumanActions, options) {
     throw new TypeError('canFile needs a claim object.');
   }
 
-  const known = isUsablePack(pack);
-  const insurer = known ? insurerOf(pack) : null;
-
-  // Whose policy this is, as the page states it, against whose rules are loaded. Absent, nothing
-  // below changes: a caller that does not know the home insurer gets the same answer this function
-  // gave before the borrowed check existed.
-  const homePackId = options && typeof options.homePackId === 'string' && options.homePackId.trim().length > 0
-    ? options.homePackId.trim()
-    : null;
-  const activeId = packIdOf(pack);
-  const borrowed = Boolean(known && homePackId && activeId && activeId !== homePackId);
+  // One answer about whose rules these are, shared with src/core/packet.js.
+  const identity = packIdentity(pack, options);
+  const known = identity.usable;
+  const insurer = identity.insurer;
+  const borrowed = identity.borrowed;
 
   // The static half comes from validateClaim rather than from a second filter, so "which required
   // fields are empty" has one answer in this repository and not two that agree by coincidence.

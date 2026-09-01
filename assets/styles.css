@@ -1022,3 +1022,47 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
   font-variant-numeric: tabular-nums;
   color: var(--ink-soft, inherit);
 }
+
+/* The handler packet, shown only after a person has filed. */
+.packet-notice {
+  margin: 0 0 .75rem;
+  padding: .55rem .7rem;
+  border-radius: 8px;
+  background: var(--warn-bg, rgba(180, 140, 20, .12));
+  font-size: .86rem;
+  line-height: 1.45;
+}
+
+.packet-facts {
+  display: grid;
+  gap: .4rem;
+  margin: 0 0 .8rem;
+}
+
+.packet-facts div { display: flex; gap: .5rem; flex-wrap: wrap; }
+.packet-facts dt { font-weight: 600; font-size: .82rem; opacity: .8; }
+.packet-facts dd { margin: 0; font-size: .82rem; word-break: break-all; }
+
+.packet-actions {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: .6rem;
+}
+
+.packet-said { font-size: .8rem; opacity: .85; }
+
+.packet-view {
+  max-height: 22rem;
+  overflow: auto;
+  padding: .7rem;
+  border-radius: 8px;
+  background: var(--code-bg, rgba(127, 127, 127, .12));
+  font-size: .74rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.packet-view[hidden] { display: none; }
