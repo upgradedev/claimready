@@ -462,28 +462,94 @@ export function createClaim(fixture) {
 }
 
 /**
- * Take an object that is already claim shaped and fill in anything it lacks.
+ * Take an object that is already claim shaped and read it back as a claim, or refuse it.
  *
  * Used when a store is handed a claim rather than a fixture. A claim written
  * before the revision counter existed, or one that came back through JSON, still
  * has to satisfy every invariant the rest of core relies on.
  *
+ * IT USED TO FILL IN THE GAPS AND TRUST THE REST. `{ ...emptyClaim(), ...value }` put whatever the
+ * stored object held straight onto the claim: a severity of "banana", a damage_zone of 47, an
+ * incident_date of "yesterday", a key that is not a field at all. `createClaim` pushes every seed
+ * value through the same validators a patch uses and throws on a bad one, and there was no reason
+ * for the other door into the same state to be the unchecked one. Everything downstream, the
+ * requirements list, the coverage decision, the sealed handler packet, reads these values and
+ * cannot tell a validated one from a stored one.
+ *
+ * So this is now the same door: every patchable field goes through `coerceField`, an unknown key
+ * throws with the field named, and a provenance badge survives only when its source is one this
+ * model knows and the field it is about actually holds a value.
+ *
  * @param {object} value
  * @returns {object} a complete, normalised claim
+ * @throws {TypeError} when a stored field is unknown or its value is invalid
  */
 export function hydrateClaim(value) {
-  if (!value || typeof value !== 'object') {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('hydrateClaim needs a claim object.');
   }
-  const claim = { ...emptyClaim(), ...value };
+
+  const claim = emptyClaim();
+
+  // Protected fields first, because the patchable ones are checked against the same rules a patch
+  // uses and those rules do not describe a status or a revision.
+  claim.policy_id = optionalString(value.policy_id, 'policy_id');
+  claim.reference = optionalString(value.reference, 'reference');
   claim.revision = Number.isInteger(value.revision) && value.revision >= 0 ? value.revision : 0;
   claim.status = value.status === 'filed' ? 'filed' : 'draft';
-  claim.provenance = value.provenance && typeof value.provenance === 'object' ? { ...value.provenance } : {};
+  claim.filed_at = optionalString(value.filed_at, 'filed_at');
+  claim.evidence_notes = normaliseNotes(value.evidence_notes);
   claim.locked = Array.isArray(value.locked)
     ? value.locked.filter((field) => PATCHABLE_FIELDS.includes(field))
     : [];
-  claim.evidence_notes = normaliseNotes(value.evidence_notes);
+
+  // A filed claim with no filed_at is not a claim anyone can answer for. Rather than invent a
+  // timestamp, which would be a fact this function made up, the state that carries no time is read
+  // back as the draft it is indistinguishable from.
+  if (claim.status === 'filed' && !claim.filed_at) claim.status = 'draft';
+  if (claim.status !== 'filed') claim.filed_at = null;
+
+  for (const [field, held] of Object.entries(value)) {
+    if (PROTECTED_FIELDS.includes(field)) continue;
+    if (!PATCHABLE_FIELDS.includes(field)) {
+      throw new TypeError(
+        `Stored claim field "${field}" is not usable: "${field}" is not a field on this claim.`,
+      );
+    }
+    if (held === null || held === undefined) continue;
+    const checked = coerceField(field, held);
+    if (!checked.ok) {
+      throw new TypeError(`Stored claim field "${field}" is not usable: ${checked.error}`);
+    }
+    claim[field] = checked.value;
+  }
+
+  // Provenance is a claim about who put a value there, so it is held to the same standard as the
+  // value: a source has to be one this model knows, and it has to be about a field that exists and
+  // that actually holds something. A badge over an empty field is a claim with nothing behind it.
+  const held = value.provenance && typeof value.provenance === 'object' && !Array.isArray(value.provenance)
+    ? value.provenance
+    : {};
+  for (const [field, source] of Object.entries(held)) {
+    if (!PATCHABLE_FIELDS.includes(field)) continue;
+    if (!PROVENANCE_SOURCES.includes(source)) continue;
+    if (claim[field] === null || claim[field] === undefined) continue;
+    claim.provenance[field] = source;
+  }
+
   return claim;
+}
+
+/** A stored string field, or null. Anything else is a stored claim we cannot answer for. */
+function optionalString(held, field) {
+  if (held === null || held === undefined) return null;
+  if (typeof held !== 'string') {
+    throw new TypeError(
+      `Stored claim field "${field}" is not usable: it must be a string or null, `
+      + `and it is ${typeof held}.`,
+    );
+  }
+  return held;
 }
 
 /* ------------------------------------------------------------------- patch */

@@ -803,6 +803,84 @@ test('hydrateClaim fills in what an older or a serialised claim lacks', () => {
   assert.equal(provenanceOf(round, 'severity'), 'human');
 });
 
+/**
+ * THE OTHER DOOR INTO THE SAME STATE.
+ *
+ * `createClaim` pushes every seed value through the validators a patch uses and throws on a bad
+ * one. `hydrateClaim` used to spread the stored object straight onto an empty claim, so the door
+ * marked "this came back through JSON" was the unchecked one. Everything downstream reads these
+ * values and cannot tell which door they came through: the requirements list, the coverage
+ * decision, the sealed handler packet.
+ *
+ * Each case below is a value the old version accepted.
+ */
+test('hydrateClaim refuses a stored value it would not have accepted as a patch', () => {
+  const cases = [
+    ['severity', 'banana', /severity/],
+    ['damage_zone', 47, /clock position/],
+    ['damage_zone', 'left front wing', /clock position/],
+    ['incident_date', 'yesterday', /YYYY-MM-DD/],
+    ['incident_type', 'meteorite', /incident type/],
+    ['vehicle_drivable', 'maybe', /vehicle_drivable/],
+  ];
+
+  for (const [field, value, message] of cases) {
+    assert.throws(
+      () => hydrateClaim({ status: 'draft', [field]: value }),
+      (error) => error instanceof TypeError
+        && error.message.includes(`Stored claim field "${field}" is not usable`)
+        && message.test(error.message),
+      `${field}=${JSON.stringify(value)} was accepted`,
+    );
+  }
+});
+
+test('hydrateClaim refuses a stored key that is not a field on this claim', () => {
+  assert.throws(
+    () => hydrateClaim({ status: 'draft', settlement_amount: 40000 }),
+    /Stored claim field "settlement_amount" is not usable/,
+  );
+});
+
+test('hydrateClaim coerces the way a patch does rather than storing the string', () => {
+  const claim = hydrateClaim({ status: 'draft', damage_zone: '10', vehicle_drivable: 'false' });
+  assert.equal(claim.damage_zone, 10, 'a numeric string becomes the number');
+  assert.equal(claim.vehicle_drivable, false, 'and a boolean word becomes the boolean');
+});
+
+test('hydrateClaim does not carry a badge that has nothing behind it', () => {
+  const claim = hydrateClaim({
+    status: 'draft',
+    severity: 'dent',
+    provenance: {
+      severity: 'agent',
+      // a badge over a field that holds nothing, a source this model does not know, and a field
+      // that is not on the claim at all
+      description: 'human',
+      driver: 'the garage',
+      settlement_amount: 'agent',
+    },
+  });
+
+  assert.deepEqual(claim.provenance, { severity: 'agent' });
+});
+
+test('hydrateClaim will not read back a filed claim that carries no time it was filed', () => {
+  const claim = hydrateClaim({ status: 'filed', severity: 'dent' });
+  assert.equal(claim.status, 'draft', 'a filed state with no timestamp is not answerable');
+  assert.equal(claim.filed_at, null);
+
+  const real = hydrateClaim({ status: 'filed', filed_at: '2026-08-21T08:14:00.000Z' });
+  assert.equal(real.status, 'filed');
+  assert.equal(real.filed_at, '2026-08-21T08:14:00.000Z');
+});
+
+test('hydrateClaim refuses a stored string field that is not a string', () => {
+  assert.throws(() => hydrateClaim({ status: 'draft', policy_id: { id: 'MTR-2026-0417' } }),
+    /Stored claim field "policy_id" is not usable/);
+  assert.throws(() => hydrateClaim([]), /hydrateClaim needs a claim object/);
+});
+
 // The pinned line is the one part of the summary that can grow without bound,
 // because a determined claimant can pin all ten fields. Measured at every cap
 // with everything pinned, so the budget holds in the worst case that exists

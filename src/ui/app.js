@@ -404,9 +404,18 @@ async function boot() {
     return deriveRequirements(pack, claimNow(), ui.humanActions).map((entry) => {
       const humanOnly = Boolean(entry.humanAction);
       const shown = { ...entry, humanOnly, humanNote: null };
-      if (humanOnly && entry.satisfied && ui.assistanceAt) {
+
+      // NAMED, NOT INFERRED. This used to print the roadside timestamp beside any satisfied human
+      // action, which reads as "the button did that" for a requirement the button never touched.
+      // The button answers one requirement id and the note says so.
+      if (humanOnly && entry.id === ROADSIDE_REQUIREMENT_ID && entry.satisfied && ui.assistanceAt) {
         shown.humanNote = `Request roadside assistance was pressed on this page at ${ui.assistanceAt}. `
           + 'It is not exposed as a WebMCP tool, so an agent has to ask for it.';
+      } else if (humanOnly && entry.id !== ROADSIDE_REQUIREMENT_ID && !entry.satisfied) {
+        // A pack is allowed to name a human action this page has no control for. Saying so is the
+        // honest outcome. Leaving the row blank invites a reader to assume some button covers it.
+        shown.humanNote = 'This page has no control that answers this one, so it stays open here. '
+          + 'The insurer would take it outside this demo.';
       }
       return shown;
     });
@@ -1221,7 +1230,7 @@ async function boot() {
       return;
     }
 
-    ui.assistanceAt = clockNow();
+    const askedAt = clockNow();
     // What the person just did, named by the requirement it answers, so src/core and every tool
     // read one answer rather than four surfaces guessing from a note on the page.
     //
@@ -1234,17 +1243,30 @@ async function boot() {
     const closed = getRequirements()
       .filter((entry) => entry.humanOnly && entry.id === ROADSIDE_REQUIREMENT_ID)
       .map((entry) => entry.id);
+
+    // NOTHING CLOSED IS NOT A REQUEST THAT WORKED. The loaded pack may not raise a collection at
+    // all, and then this button answers no requirement. It used to spend itself anyway, print the
+    // "requested at" line and announce a revision that had not moved, which is three statements
+    // about a thing that did not happen. The press is refused with the reason instead, and the
+    // button is still there to press once a pack that asks for a collection is loaded.
+    if (!closed.length) {
+      view.showFieldError('The rules loaded here do not ask for a roadside collection, so there is '
+        + 'nothing on this claim for that button to answer. Nothing was requested and the draft did '
+        + 'not move.');
+      redraw([]);
+      return;
+    }
+
+    ui.assistanceAt = askedAt;
     recordHumanActions(closed);
 
     // The claim did not move and the answers did: a requirement that every tool reported as open
     // is now answered. Same reasoning as switchPack, same action, same refusal for an agent still
     // holding the earlier number.
-    if (closed.length) {
-      store.dispatch({
-        type: 'context',
-        reason: `a human action closed ${closed.length === 1 ? 'a requirement' : `${closed.length} requirements`} on this page`
-      });
-    }
+    store.dispatch({
+      type: 'context',
+      reason: `a human action closed ${closed.length === 1 ? 'a requirement' : `${closed.length} requirements`} on this page`,
+    });
 
     view.showFieldError('');
     redraw([]);

@@ -364,6 +364,15 @@ export function installFetchDouble(options = {}) {
       // A refused file is a status, not a thrown error, on the path a real server takes.
       return { ok: false, status, async json() { throw new Error('not read'); } };
     }
+    // A file served as something other than what is on disk, for a case the shipped fixtures do
+    // not contain. Keyed by a substring of the path, so a caller writes `{'northwind.json': {...}}`
+    // rather than reproducing the relative path the page happens to ask for.
+    for (const [needle, body] of Object.entries(options.bodies || {})) {
+      if (!asString.includes(needle)) continue;
+      const json = JSON.stringify(body);
+      return { ok: true, status: 200, async json() { return JSON.parse(json); } };
+    }
+
     const onDisk = new URL(asString.replace(/^\.\//, ''), ROOT);
     const body = readFileSync(onDisk, 'utf8');
     return { ok: true, status: 200, async json() { return JSON.parse(body); } };
