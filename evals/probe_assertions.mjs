@@ -6,7 +6,7 @@
  * against a page with no WebMCP at all looked the same to a reader as a run that proved the whole
  * lifecycle. Splitting the judgement out from the driving makes the judgement testable without a
  * browser, so `tests/unit/probe_assertions.test.js` can break the transcript and require a failure
- * each time. It runs 38 mutations. A gate nobody has watched fail is not a gate.
+ * each time. It runs 58 mutations. A gate nobody has watched fail is not a gate.
  *
  * WHAT WAS WRONG WITH THIS FILE, MEASURED. Every phase after boot was judged by membership rather
  * than by identity. `toolsWhenStuck` and `toolsAfterRecovery` were only ever asked whether the one
@@ -18,6 +18,32 @@
  * simply stopped early passed, because a missing array read as an empty one. And the planted
  * evidence note, which is in this repository precisely so that ignoring it can be demonstrated,
  * was not exercised at all. Each of those is now its own check with its own mutation in the test.
+ *
+ * WHAT WAS STILL WRONG WITH IT ON 2026-09-01, AND IT WAS THE SAME MISTAKE THREE MORE TIMES: the
+ * cheap proxy standing in for the thing itself.
+ *
+ *   A REFUSAL WAS JUDGED BY THE REVISION NUMBER. The page moves that number when it ACCEPTS a
+ *   change, so holding it still is evidence that nothing was accepted and no evidence at all about
+ *   what the call did on its way to being refused. A patch refused for quoting an old revision that
+ *   wrote `severity` anyway, without touching the counter, passed. Both refusals now compare the
+ *   whole draft, read before and read after.
+ *
+ *   THE DECLARED TOOL'S SCHEMA WAS JUDGED BY SEARCHING A STRING FOR TWO PROPERTY NAMES. The browser
+ *   builds that schema from the markup, which is the whole point of the declarative half, and a
+ *   schema missing `police_report_ref`, or with a wrong type, a dropped constraint, somebody else's
+ *   descriptions, a changed `required` list or an extra property nobody declared, passed all six
+ *   ways. It is now deep compared against EXPECTED_DECLARED_SCHEMA below. The `origin` the browser
+ *   puts on that tool was collected by the probe and read by nothing at all.
+ *
+ *   A RESULT WAS JUDGED BY ITS LENGTH, and a revision that moved was taken as proof that a value
+ *   had been written. "Done." satisfied both. The answer is now read for what it says, and the
+ *   claim is read again afterwards and required to be carrying the name that was sent.
+ *
+ * AND THE TRANSCRIPT NAMED A URL BUT NEVER A COMMIT. A URL is a place and serves whatever was
+ * deployed last, so a pass stayed green while the surface it described was replaced underneath it.
+ * That is the stale evidence this repository has published twice. A transcript now has to name the
+ * deployed commit, the workflow only supplies one after comparing every file the page loads against
+ * it, and a missing one or a word in its place fails here.
  *
  * PURE MODULE. Transcript in, findings out. No browser, no network, no I/O.
  */
@@ -40,6 +66,87 @@ export const CONDITIONAL_TOOL = 'get_assistance_options';
 
 /** The one the page builds from four HTML attributes rather than registering. */
 export const DECLARED_TOOL = 'record_supporting_details';
+
+/**
+ * The name the probe sends to the declared tool, and the one the claim has to be carrying after.
+ *
+ * A revision that moved says a change was accepted. It says nothing about WHAT was written, and a
+ * page that bumped the counter and stored nothing would have satisfied every check this file used
+ * to make. So the name is written down in one place, the probe sends it, and the judgement looks
+ * for it in the draft the page reports afterwards.
+ */
+export const DECLARED_WITNESS_NAME = 'M. Okafor';
+
+/**
+ * The route clause src/webmcp/declarative_form.js puts in an accepted answer.
+ *
+ * The page distinguishes a submission that arrived as a tool call from one that arrived through the
+ * form's own button, and says which in the sentence it hands back. Requiring it here is what stops
+ * arbitrary cheerful text from being read as a result.
+ */
+export const DECLARED_ROUTE_PHRASE = 'submitted through the WebMCP tool call';
+
+/**
+ * THE SCHEMA THE BROWSER IS SUPPOSED TO BUILD FROM THE FORM, WRITTEN OUT HERE AND NOWHERE ELSE.
+ *
+ * This is the declarative half of WebMCP: `index.html` carries an ordinary form with `toolname`,
+ * `tooldescription`, `toolautosubmit` and a `toolparamdescription` on each control, and the browser
+ * turns that markup into an input schema. Nothing in this repository writes that schema, which is
+ * the point of the feature and also the reason it is so easy to stop checking.
+ *
+ * WHAT THIS REPLACED, AND WHY THAT WAS NOT A CHECK. The judgement asked whether the serialised
+ * schema contained the substrings `witness_name` and `base_revision`. A schema that had lost
+ * `police_report_ref` entirely passed. So did one that had turned the revision into a string, lost
+ * its minimum, gained a property nobody declared, or carried somebody else's descriptions. Three
+ * of the four attributes the page relies on were unchecked.
+ *
+ * WHY IT IS TYPED OUT RATHER THAN DERIVED. Reading `index.html` at run time, or importing the
+ * expected shape from `src/webmcp/declarative_form.js`, would build the answer out of the thing
+ * being tested, and a check whose fixture comes from its subject cannot fail. Changing the form
+ * therefore has to be done twice on purpose: once in the markup, once here.
+ *
+ * MEASURED, NOT ASSUMED. This is what Chrome 152.0.7977.65 built from this markup on 2026-09-01,
+ * running `node evals/browser_probe.mjs` against https://upgradedev.github.io/claimready/ at commit
+ * 9b64fb2. Two things a reader would guess wrong: the `maxlength` attributes on the two text
+ * inputs do NOT become `maxLength` in the schema, and `step="1"` on the number input becomes
+ * `multipleOf: 1`. Both are written down here because they were seen, not because they follow.
+ * Nothing here is required to hold in a future Chrome, and if one of them changes this fails and a
+ * person decides whether the contract or the expectation moved. The descriptions are the
+ * `toolparamdescription` attributes word for word.
+ *
+ * THE LIMITATION, AND IT IS NOT HYPOTHETICAL. That measurement is from Chrome STABLE. The probe job
+ * in .github/workflows/evals.yml installs `google-chrome-unstable`, the Dev channel, and the Dev
+ * channel's declarative implementation has never been compared against this contract: the run that
+ * passed on a runner did so under the older judgement, which only searched the serialised schema for
+ * two property names and would have passed whatever Dev put in it. So if Dev maps `maxlength` to
+ * `maxLength`, drops `multipleOf`, or adds a field, the first unattended probe run goes red and the
+ * message will read like a defect in the page when it is a difference between two browsers. One
+ * dispatch of that workflow settles it. If they do differ, the finding is written down with both
+ * channels named. It is never a reason to loosen this comparison.
+ */
+export const EXPECTED_DECLARED_SCHEMA = {
+  type: 'object',
+  properties: {
+    witness_name: {
+      type: 'string',
+      description: 'The name of a witness to the incident. Leave it out to keep the name already on the draft.',
+    },
+    police_report_ref: {
+      type: 'string',
+      description: 'The police report reference for this incident. Leave it out to keep the reference on the draft.',
+    },
+    base_revision: {
+      type: 'number',
+      description: 'The draft revision you read, from read_claim_state. A change quoting an older revision is refused.',
+      minimum: 0,
+      multipleOf: 1,
+    },
+  },
+  // Empty on purpose and asserted as empty. Every box on the form may be left alone, because an
+  // empty box keeps what is already on the draft, and a schema that started demanding one of them
+  // would change what an agent is allowed to send.
+  required: [],
+};
 
 /**
  * The surface while the car cannot be driven, and the surface once it can be driven again.
@@ -164,6 +271,74 @@ const sameSet = (expected, found) =>
 const asDirectory = (path) => (path.endsWith('/') ? path : `${path}/`);
 
 /**
+ * A value written out with its object keys in a fixed order, so two schemas compare by content.
+ *
+ * Key order is not part of what a JSON Schema means and a browser is free to emit it in any order.
+ * Comparing the raw serialisations would make this check fail on a Chrome update that changed
+ * nothing, and a check that cries wolf is a check somebody widens. Arrays keep their order, because
+ * in a schema the one array that matters, `required`, is a set and is sorted by the caller before
+ * it gets here.
+ */
+const canonical = (value) => {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value === undefined ? null : value);
+};
+
+/**
+ * The expected schema and the one the browser built, both flattened, with `required` sorted.
+ *
+ * The two sides are prepared identically and by this function alone, so neither side can be given
+ * a treatment the other did not get.
+ */
+const schemaShape = (schema) => {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return null;
+  const copy = JSON.parse(JSON.stringify(schema));
+  if (Array.isArray(copy.required)) copy.required = sorted(copy.required);
+  return canonical(copy);
+};
+
+/**
+ * The first line where two readings of the claim differ, so a failure names the field that moved.
+ *
+ * Printing two twenty line drafts side by side and asking the reader to diff them by eye is how a
+ * real difference gets skimmed past.
+ */
+function firstDifference(before, after) {
+  const left = String(before ?? '').split('\n');
+  const right = String(after ?? '').split('\n');
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    if (left[index] !== right[index]) {
+      return `line ${index + 1} went from ${JSON.stringify(left[index] ?? null)} to ${JSON.stringify(right[index] ?? null)}`;
+    }
+  }
+  return 'the two readings differ in length but not in any line, which should be impossible';
+}
+
+/**
+ * Both readings of the claim around one refused call, compared whole, and the failure names a line.
+ *
+ * WHY THE REVISION WAS NEVER ENOUGH. A refusal was judged by whether the revision number was where
+ * it started. The page moves that number on every accepted change, so holding it still is good
+ * evidence that nothing was accepted, and it is no evidence at all about what a call did on its way
+ * to being refused. A patch that was refused for quoting an old revision and wrote `severity`
+ * anyway, without touching the counter, passed every check in this file. read_claim_state prints
+ * the whole draft, so comparing the two readings compares every field, its provenance, the pin list
+ * and what is still missing, and any of those moving is now a failure.
+ */
+function unmovedClaim(check, where, snapshot) {
+  check(typeof snapshot.stateBefore === 'string' && snapshot.stateBefore.length > 0,
+    `the probe did not record what the claim said before ${where}, so there is nothing to compare the refusal against. It recorded: ${JSON.stringify(snapshot.stateBefore ?? null)}`);
+  check(typeof snapshot.stateAfter === 'string' && snapshot.stateAfter.length > 0,
+    `the probe did not record what the claim said after ${where}, so a refusal that changed something would leave no trace. It recorded: ${JSON.stringify(snapshot.stateAfter ?? null)}`);
+  check(typeof snapshot.stateBefore === 'string' && snapshot.stateBefore === snapshot.stateAfter,
+    `${where} changed the claim. A refused call must leave the draft exactly as it found it, and the revision number alone cannot show that: ${firstDifference(snapshot.stateBefore, snapshot.stateAfter)}`);
+}
+
+/**
  * Judge a transcript.
  *
  * @param {object} transcript what browser_probe.mjs collected
@@ -198,6 +373,7 @@ export function checkTranscript(transcript, options = {}) {
     ['declared', (value) => Boolean(value) && typeof value === 'object', 'the tool the browser builds from the form'],
     ['consoleProblems', Array.isArray, 'what the console said'],
     ['threw', Array.isArray, 'which tool calls threw'],
+    ['build', (value) => Boolean(value) && typeof value === 'object', 'which build of the page it ran against'],
   ];
   for (const [key, isPresent, what] of phases) {
     check(isPresent(transcript[key]),
@@ -233,6 +409,24 @@ export function checkTranscript(transcript, options = {}) {
   check(actualUrl === null || expectedUrl === null
     || asDirectory(actualUrl.pathname).startsWith(asDirectory(expectedUrl.pathname)),
   `the transcript came from ${JSON.stringify(actualUrl && actualUrl.pathname)} on the right host, and this judgement is about ${JSON.stringify(expectedUrl && expectedUrl.pathname)}`);
+
+  // 2b. WHICH BUILD OF THE PAGE, NOT JUST WHICH URL.
+  //
+  //     A URL is a place and it serves whatever was deployed last. A transcript that names only the
+  //     place is a statement about the page at an unrecorded moment, so it stays green while the
+  //     surface it describes is replaced underneath it, and the next reader takes yesterday's pass
+  //     as today's evidence. That is the stale green this repository has produced twice already,
+  //     both times by naming a commit nobody had compared against the served bytes.
+  //
+  //     The commit is not discovered here. .github/workflows/evals.yml proves the host is serving a
+  //     named commit, over every file the page loads, and only then hands that commit to the probe.
+  //     This end refuses a transcript that arrives without one, or with a word in place of one.
+  const build = (transcript.build && typeof transcript.build === 'object') ? transcript.build : {};
+  const shaValue = build.deployedSha;
+  check(typeof shaValue === 'string' && shaValue.length > 0,
+    `the transcript does not name the deployed commit it ran against. Its build.deployedSha is ${JSON.stringify(shaValue ?? null)}, so this pass cannot be tied to any particular bytes and would still read green after the page changed`);
+  check(typeof shaValue !== 'string' || /^[0-9a-f]{7,40}$/.test(shaValue),
+    `the deployed commit in this transcript is not a commit. It says ${JSON.stringify(shaValue)}, and a word such as "unknown" or "latest" in that field is the absence of an answer wearing the shape of one`);
 
   // 3. THE SURFACE AT EVERY PHASE, BY IDENTITY. Membership was the defect. A count alone would
   //    pass a surface with the right size and the wrong contents, and asking only whether the one
@@ -283,6 +477,9 @@ export function checkTranscript(transcript, options = {}) {
     `the stale refusal came back still wrapped rather than in the page's own words: ${JSON.stringify(String(stale.answer ?? '').slice(0, 120))}`);
   check(stale.revisionBefore !== undefined && stale.revisionBefore === stale.revisionAfter,
     `the refused patch moved the revision from ${stale.revisionBefore} to ${stale.revisionAfter}, so it was not refused at all`);
+  // The patch that gets refused here names `severity`, so a page that refused the call and wrote
+  // the field anyway, leaving the counter alone, is exactly the shape the revision check misses.
+  unmovedClaim(check, 'the patch that quoted an old revision', stale);
 
   // 7. THE PLANTED NOTE, AND THAT NOTHING MOVED BECAUSE OF IT.
   //
@@ -309,6 +506,10 @@ export function checkTranscript(transcript, options = {}) {
     `the pinned patch came back carrying ${STALE_CODE}. That is the wrong refusal for this call: it says the revision had moved, not that the field is pinned, and it would be there whether the pin held or not`);
   check(typeof pinnedPatch.revisionBefore === 'number' && pinnedPatch.revisionBefore === pinnedPatch.revisionAfter,
     `the refused patch on the pinned field moved the revision from ${pinnedPatch.revisionBefore} to ${pinnedPatch.revisionAfter}, so it was not refused at all`);
+  // Same reasoning as the stale refusal, and it matters more here: this is the change the planted
+  // note in the fixture asks for, so a page that quietly applied part of it while answering with a
+  // refusal is the precise failure this phase exists to catch.
+  unmovedClaim(check, 'the patch on the pinned field', pinnedPatch);
 
   // 8. THE DECLARED HALF. Built by the browser from markup, with our own descriptions on it, and
   //    executing through the same revision safe path as everything else.
@@ -316,17 +517,69 @@ export function checkTranscript(transcript, options = {}) {
   check(declared.name === DECLARED_TOOL, `the browser did not build ${DECLARED_TOOL} from the form's attributes`);
   check(typeof declared.description === 'string' && declared.description.length > 0,
     'the declared tool reached the surface with no description, so an agent cannot tell what it does');
-  check(typeof declared.schema === 'string' && declared.schema.includes('witness_name')
-    && declared.schema.includes('base_revision'),
-  `the declared tool's schema is not the one the markup describes: ${JSON.stringify(declared.schema || null)}`);
+
+  // 8a. THE ORIGIN, EXACTLY. A tool the browser hands a model carries the origin it came from, and
+  //     that is the whole basis on which a model decides whether it is talking to the insurer's
+  //     page or to something that got itself onto the tool list. A wrong value here is not cosmetic
+  //     and it was not checked at all: the probe collected it and nothing read it. Compared against
+  //     the origin the page reported for itself AND against the origin this judgement is about, so
+  //     a transcript that agreed with itself while being about the wrong site still fails.
+  check(typeof declared.origin === 'string' && declared.origin.length > 0,
+    `the declared tool reached the surface with no origin on it: ${JSON.stringify(declared.origin ?? null)}. An agent has nothing to attribute the tool to`);
+  check(declared.origin === page.origin,
+    `the declared tool says it came from ${JSON.stringify(declared.origin ?? null)} and the page says it is ${JSON.stringify(page.origin ?? null)}`);
+  check(expectedUrl === null || declared.origin === expectedUrl.origin,
+    `the declared tool says it came from ${JSON.stringify(declared.origin ?? null)} and this judgement is about ${JSON.stringify(expectedUrl && expectedUrl.origin)}`);
+
+  // 8b. THE SCHEMA, WHOLE, AGAINST A CONTRACT WRITTEN OUT BY HAND.
+  //
+  //     The browser builds this from the markup, so it is the one part of the tool surface nothing
+  //     in this repository authors. It used to be judged by searching a string for two property
+  //     names, which passed a schema that had lost `police_report_ref`, changed a type, dropped a
+  //     constraint, carried a description from somewhere else, or gained a property nobody
+  //     declared. EXPECTED_DECLARED_SCHEMA is the contract, typed out in this file, derived from
+  //     neither index.html nor src/, and compared whole.
+  const foundShape = schemaShape(declared.schema);
+  check(foundShape !== null,
+    `the declared tool's schema is not an object. The browser reported ${JSON.stringify(declared.schema ?? null)}, so there is nothing to compare against the form's markup`);
+  check(foundShape === null || foundShape === schemaShape(EXPECTED_DECLARED_SCHEMA),
+    `the schema the browser built from the form is not the one the markup describes.\n    expected: ${schemaShape(EXPECTED_DECLARED_SCHEMA)}\n    found:    ${foundShape}`);
+
+  // 8c. THE ANSWER, BY WHAT IT SAYS RATHER THAN BY ITS LENGTH.
+  //
+  //     `answer.length > 0` was satisfied by any string at all, so a page that replied "Done." or
+  //     "Thanks, all set" passed as proof that a typed write had gone through the insurer's rules.
+  //     An accepted answer from src/webmcp/declarative_form.js names the route the submission took
+  //     and the revision the draft reached, and a refusal opens with "Refused."
   check(typeof declared.answer === 'string' && declared.answer.length > 0,
     'the declared tool did not answer when it was executed');
   check(!looksWrapped(declared.answer),
     `the declared tool answered with an envelope rather than with the text the page passed to respondWith: ${JSON.stringify(String(declared.answer ?? '').slice(0, 160))}`);
   check(typeof declared.answer === 'string' && !declared.answer.includes('PATCH_REJECTED_'),
     `the declared tool's answer carries a patch refusal code, so either the call was refused or a refusal from another call was recorded against it: ${JSON.stringify(String(declared.answer ?? '').slice(0, 160))}`);
+  check(typeof declared.answer === 'string' && !declared.answer.startsWith('Refused.'),
+    `the declared tool refused the call, and this call is the one that is supposed to be accepted: ${JSON.stringify(String(declared.answer ?? '').slice(0, 200))}`);
+  check(typeof declared.answer === 'string' && declared.answer.includes(DECLARED_ROUTE_PHRASE),
+    `the declared tool's answer does not say the submission arrived as a tool call. It was expected to contain ${JSON.stringify(DECLARED_ROUTE_PHRASE)} and it said: ${JSON.stringify(String(declared.answer ?? '').slice(0, 200))}`);
+  check(typeof declared.answer === 'string' && typeof declared.revisionAfter === 'number'
+    && declared.answer.includes(`revision ${declared.revisionAfter}`),
+  `the declared tool's answer does not name the revision the draft actually reached, ${declared.revisionAfter}. It said: ${JSON.stringify(String(declared.answer ?? '').slice(0, 200))}`);
+
+  // 8d. AND THE VALUE HAS TO BE ON THE CLAIM AFTERWARDS.
+  //
+  //     Everything above is the page talking about itself. A counter that moved and a sentence that
+  //     says a name was recorded are both producible by a page that stored nothing, and between
+  //     them they satisfied every check this section used to make. So the draft is read again after
+  //     the call and the name is looked for in it.
   check(declared.revisionAfter === declared.revisionBefore + 1,
     `the declared tool moved the draft from ${declared.revisionBefore} to ${declared.revisionAfter}, and an accepted change moves it by exactly one`);
+  check(typeof declared.stateAfter === 'string' && declared.stateAfter.length > 0,
+    `the probe did not read the claim back after the declared call, so nothing here shows the value was stored. It recorded: ${JSON.stringify(declared.stateAfter ?? null)}`);
+  // read_claim_state quotes a free text value, so the line reads witness_name = "M. Okafor".
+  // Looking for the name alone would also be satisfied by it turning up in some other field.
+  check(typeof declared.stateAfter === 'string'
+    && declared.stateAfter.includes(`witness_name = ${JSON.stringify(DECLARED_WITNESS_NAME)}`),
+  `the declared call moved the revision but ${JSON.stringify(DECLARED_WITNESS_NAME)} is not on the claim's witness_name afterwards. The draft reads: ${JSON.stringify(String(declared.stateAfter ?? '').slice(0, 300))}`);
 
   // 9. THE CONSOLE. A page that works and shouts is not a page that works.
   const noise = Array.isArray(transcript.consoleProblems) ? transcript.consoleProblems : [];

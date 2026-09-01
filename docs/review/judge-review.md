@@ -6,26 +6,56 @@ judge to read, no number in it may be quoted into the README, the description, t
 submission form, and if any figure here ever turns up in a judge-facing file, that is the defect,
 not the figure.
 
-Run against `7b50d4a`, which is the working commit. The public repository has the same work merged
-as `9b64fb2`, and `9b64fb2` is what the live page serves on 2026-09-01. Reviewed 2026-09-01,
-two days before the deadline, with the video still unrecorded.
+First written against `7b50d4a`, a working commit that reached the public repository squashed as
+`9b64fb2`. Revised 2026-09-01 against `ab2db69`, which is head. `9b64fb2` is still what the live
+page serves, because `ab2db69` changed only documentation and touched nothing under `index.html`,
+`src`, `assets` or `fixtures`. Reviewed two days before the deadline, with the video still
+unrecorded.
 
 ## What the criteria actually are
 
-Taken from the workspace state file, which recorded them from the organizer's rules page on
-2026-08-26. Four criteria, 25 percent each, plus a pass or fail first stage on theme fit and on
-whether WebMCP is genuinely used.
+**Read from the live rules page, <https://webmcp.devpost.com/rules>, on 2026-09-01 `[PRIMARY]`.**
+An earlier version of this file quoted only one of the four and reviewed the other three against a
+one word label, because that was all the workspace state file had recorded on 2026-08-26. Reviewing
+against a label is weaker than reviewing against the organizer's sentence, and it was a gap in our
+preparation rather than in the entry. It cost one page load to close. All four are now quoted.
 
-Only one of the four is written out in full in our notes, so only one is quoted here:
+Stage one is pass or fail:
 
-> WebMCP Leverage. "How thoroughly and skillfully does the project use WebMCP? Does the code
+> "The first stage will determine via pass/fail whether the ideas meet a baseline level of
+> viability, in that the Project reasonably fits the theme and reasonably applies the required
+> APIs/SDKs featured in the Hackathon."
+
+Stage two is four criteria at 25 percent each:
+
+> **WebMCP Leverage.** "How thoroughly and skillfully does the project use WebMCP? Does the code
 > reflect genuine effort and a working, non-trivial implementation?"
 
-The other three are recorded by label only: Execution, Potential Impact, Creativity. Reviewing
-against a label instead of against the organizer's sentence is weaker, and it is a gap in our own
-preparation rather than in the entry. **Anyone finishing this entry should re-read the live rules
-page before the deadline and replace the three labels below with the real wording.** That is one
-page load and it re-aims everything under it.
+> **Execution.** "Does the project deliver a working or runnable project that has a complete,
+> coherent product experience, not just a technical proof of concept?"
+
+> **Potential Impact.** "Does the project make a credible, specific case for solving a real problem
+> for a real audience, and does the solution actually address that problem based on what's
+> demonstrated?"
+
+> **Creativity & Ambition.** "How creative and novel is the concept and does the project differ from
+> existing concepts?"
+
+**Two of those quotes are altered, and here is the alteration.** The organizer writes an em dash at
+two points, after "product experience" in Execution and after "real audience" in Potential Impact.
+Our own style gate forbids that character anywhere in this repository, so both are rendered here as
+commas. Nothing else is changed and no word is dropped. The originals are at the URL above, and the
+substitution is stated rather than left for a reader to discover, because a quote that has been
+quietly reshaped to pass one of our own gates is exactly the defect this file exists to catch. All
+five passages were checked against the raw page on 2026-09-01 with
+`curl -s https://webmcp.devpost.com/rules`, not against a summary of it. The rules page also says
+the criteria are "equally weighted", which is where the 25 percent comes from.
+
+Two things moved when the real wording arrived, and both change how the sections below should be
+read. The fourth criterion is not called Creativity. It is **Creativity & Ambition**, and ambition
+is a word we had not been scoring ourselves against at all. And Execution asks for "a complete,
+coherent product experience, not just a technical proof of concept", which is a product sentence
+rather than the engineering sentence we had been answering.
 
 ## The way to read this file
 
@@ -78,7 +108,10 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 **Estimate: 8 out of 10 if the video lands. 5 out of 10 if it does not. Ours, not measured.**
 
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
-serves and it can be proved in one command. 658 unit tests on `node --test`. A style gate. A
+serves and it can be proved in one command. 771 unit tests, from `node --test tests/` printing
+`# pass 771` and `# fail 0` on 2026-09-01, which is the command this file is required to carry
+rather than a number somebody typed. A style gate over 175 text files, from
+`node scripts/check_style.mjs`. A
 readiness gate that prints one row per deliverable and breaks every row it prints, in its own copy
 of the repository, to show that each one refuses. Numbers in the README come with the command that
 produces them.
@@ -88,8 +121,11 @@ What a judge marks down.
 - **The video does not exist.** It is a mandatory deliverable, the readiness gate is red on it in
   every mode, and this is the single largest thing between the repository and a finished entry.
   Everything else in this file is worth less than that one row.
-- **The gate says 17 of 24, not 24 of 24.** Reading only the green badges overstates the position.
-  This is by design and it is still what a judge sees.
+- **The gate says 19 of 24, not 24 of 24.** From `node scripts/readiness.mjs --ci` on 2026-09-01:
+  `READY TO SUBMIT: 19 of 24 proven, 79.2 percent`, with `automated rows: 19 of 20 PASS, 95 percent`
+  and mandatory at `4 of 5`. It exits 1. Reading only the green badges overstates the position. This
+  is by design and it is still what a judge sees. The figure in this bullet was 17 of 24 and had
+  been left behind by two rows going green, which is the same defect this file exists to catch.
 - **Our own evidence has been wrong more than once and we found it by reading, not by a gate.** A
   Status row claimed the browser evidence stood against the served bytes when it no longer did. A
   README command carried a broken line continuation and exited 2 for anyone who pasted it. Both were
@@ -97,6 +133,13 @@ What a judge marks down.
 - **The impact study went against us and we published it anyway.** That is the right thing to have
   done and it does not score points. It scores points for honesty and it removes the number that
   would have scored points for impact.
+- **This criterion is a product sentence and we had been answering an engineering one.** The
+  organizer asks for "a complete, coherent product experience, not just a technical proof of
+  concept", their em dash rendered as a comma as noted at the top. Everything above this bullet is tests, gates and commands, which is what we are good at
+  and is not what was asked. Read the entry as a product experience and the gap is the second half:
+  a driver can complete a first notice, and the handler who receives it has no surface in this
+  build at all. The packet is a JSON file and a readable view, not a place anybody works. That is
+  disclosed everywhere and it is still an incomplete half of the experience the description names.
 
 Cannot answer: how much of the tree a stranger can verify without running anything. Most of the
 strongest claims here are commands, and a judge who does not run them is left with prose.
@@ -122,19 +165,27 @@ What a judge marks down, and this is the honest bulk of it.
   the number is an artifact of how we wrote the fixtures, and the README's own caveat, that the 9
   is the union of every field either pack names under any incident type, does not fully answer that.
   It is one question saved, on two invented policies. It is not evidence of impact at scale.
-- **The 36 run study is negative.** Published rules produced 5 of 18 policy-complete notices against
-  6 of 18 for the static form, with two truth mismatches against none. We published it. It does not
-  lift this criterion and a judge who reads it will not lift it either.
+- **The 36 run study is negative, and its counts are smaller than they look.** Combined with three
+  answers the demo fixture already had on file, the published rules arm came out policy-complete in
+  5 of 18 runs against 6 of 18 for the static form, with two truth mismatches against none. Neither
+  count is work an agent did on its own: without those three answers both arms are zero, because no
+  brief states an incident date and the date closes a required item. That seeding was not disclosed
+  in the first version of the results file and now is, in `evidence/impact/results.md` and in
+  `evidence/impact/errata-v1.md`. We published the study. It does not lift this criterion and a
+  judge who reads it will not lift it either.
 - **Professional judgement is stated as judgement.** That is the correct label and it is not
   evidence. A judge scoring impact wants somebody other than the builder to have said the thing is
   worth having, and nobody has.
 
 Cannot answer: whether a claims handler would rather receive this packet than what they get today.
+The questions that would answer it are fixed and blank in `evidence/handler-review/`, written before
+anyone was approached. Nobody has been approached, so the folder is an empty instrument and not a
+result.
 There is no handler in the loop, and there was never going to be one in the time available.
 
 ---
 
-## 4. Creativity, 25 percent
+## 4. Creativity & Ambition, 25 percent
 
 **Estimate: 7 out of 10. Ours, not measured.**
 
@@ -158,6 +209,13 @@ What a judge marks down.
   most original parts of the build, and both are deliberately out of reach of any tool. That is a
   defensible safety decision and it means the creative peak of the product is not on the WebMCP
   surface the first criterion is about.
+- **Ambition is half this criterion's name and we had not been scoring it.** The section was written
+  against a one word label, Creativity, and the organizer's word is "Creativity & Ambition". On
+  ambition the honest reading is not flattering: one origin, one insurer, one line of business, two
+  invented rule packs, ten tools and a page that cannot file into anything. The scope is deliberately
+  small so that everything in it can be proved, which is a real engineering virtue and is not the
+  same thing as ambition. A judge who reads that word literally marks us down for it, and nothing in
+  the remaining time changes the scope.
 
 Cannot answer: whether the withdrawal behaviour reads as clever or as a gimmick to somebody who has
 not thought about tool lifecycles before. It is the entry's sharpest idea and it needs twenty
@@ -176,31 +234,75 @@ seconds of video to land.
 Four of those five are answered somewhere in the repository. The first is not answerable by writing
 anything. It is answerable by recording.
 
-## One decision that has to be made BEFORE the takes are shot
+Number 5 is closed for now and will reopen on its own. Run 33512549120 drove `9b64fb2`, which is
+what the host serves, and `python video/build_video.py --verify-deployed --url
+https://upgradedev.github.io/claimready/ --deployed-sha 9b64fb2` says so over all 26 files the page
+loads. The evals workflow runs daily and on dispatch rather than on push, so the next commit that
+touches a file the page loads reopens the gap. Anyone finishing this entry re-dispatches that
+workflow against `main` after the last such commit, and before the video is uploaded.
 
-The flagship sentence is 28 words. The house rule for it is 25. It reads:
+## The decision this file used to demand, which does not exist
 
-> The insurer's page hands your own agent its rules as typed tools, so you learn what you
-> are covered for while still describing the crash.
+**There is nothing to decide here, and the section that said there was had miscounted.** This file
+told the owner that the flagship sentence was 28 words against a house rule of 25, and offered a
+shorter rewrite to be chosen before the takes were shot. The sentence is 25 words. It meets the rule
+exactly. Counted on 2026-09-01 from the `FLAGSHIP` constant in `scripts/readiness.mjs`, which is the
+authoritative copy rather than a retyped one:
 
-A 23 word version that keeps one mechanism and one consequence:
+```sh
+node -e "const s=\"The insurer's page hands your own agent its rules as typed tools, so you learn \"+'what you are covered for while still describing the crash.'; console.log(s.trim().split(/\s+/).length)"
+```
 
-> The insurer's page hands your own agent its rules as typed tools, so you learn your cover
-> while you describe the crash.
+It prints `25`.
 
-**It is NOT applied, and it must not be applied casually.** The sentence is not just prose. It is
-the `FLAGSHIP` constant at `scripts/readiness.mjs:60`, it is asserted by the `IDX` row against
-`index.html`, by the `LIVE` row against the bytes the host actually serves, and by the `RDM` row
-against the opening of both the README and the description. Changing it turns `LIVE` red, and
-`LIVE` is mandatory, until a deploy catches up. The video narration is built on it too, so a change
-after the takes are shot means re-cutting.
+**So the sentence is not changed, and nobody has to decide anything before recording.** That matters
+more than a corrected number, because the section as written was pushing the owner toward an edit
+that had no reason behind it, on the night before a recording, at real cost: the sentence is the
+`FLAGSHIP` constant read by `scripts/readiness.mjs`, asserted by the `IDX` row against `index.html`,
+by the `LIVE` row against the bytes the host actually serves, and by the `RDM` row against the
+opening of both the README and the description. Changing it turns the mandatory `LIVE` row red until
+a deploy catches up, and the video narration is built on it, so a change after the takes are shot
+means re-cutting. All of that was true. The premise that made it worth paying was not.
 
-So it is a decision for before recording, not after, and it is the owner's. Leaving it at 28 words
-is a defensible choice: the cost of changing it now is a mandatory row going red two days out, and
-the cost of leaving it is three words over a rule we wrote ourselves.
+Cite this one when somebody asks what a self review is for. The number was ours, nothing checked it,
+and it was one command away from being right.
 
-## What this review does not do
+## What this review does and does not do
 
-It does not run a persona kit. The workspace persona kit is not on this machine and nothing here is
-attributed to it. It does not consult anybody outside the build. Every judgement above is ours, made
-by the people with the strongest possible reason to be generous, and it should be read that way.
+**The sentence that used to sit here said this review does not run a persona kit, because the kit is
+not on this machine. Both halves were false.** The kit is at
+`C:\dev\solutions\_submission_kit\personas\judges\` and holds a runbook and ten personas. It had
+also already been run against this entry once, on 2026-08-27, and its findings had already been
+applied: the live URL and the two browsers that show tools were moved into the description's first
+paragraph because of it, the audience was rewritten to lead with the driver, and one claim was
+deleted outright because measurement contradicted it. A review that says an instrument was never
+used, when the entry in front of it was shaped by that instrument, is the same class of defect as
+the three stale numbers above.
+
+It was run again on 2026-09-01 against this head, over the runbook's four gates and personas 01, 05,
+06, 08 and 10. What it found, in short, because the full finding blocks live in the workspace state
+file and a judge cannot open that:
+
+- **Gate 1 green.** The live URL returns 200 and serves the flagship sentence.
+- **Gate 3 was the red one**, and it is why the criteria section at the top of this file changed.
+  Only one of four criteria had ever been recorded verbatim.
+- **Persona 08 reproduced six numbers from the judge-facing text and all six held.** It then
+  reproduced three from this file and none of them did. The description's numbers were sound. The
+  self review's were not, which is worth sitting with.
+- **Persona 08 also found that no judge-facing file mentioned the impact study or the `evidence/`
+  tree at all**, and that the README's repository layout omitted 46 tracked files including the one
+  study this entry has run. Fixed by disclosure, not by deletion.
+- **Persona 06 opened the live page at 375px.** Both disabled controls carry a visible reason
+  naming the constraint and how to clear it, and the console is clean. It found two things that are
+  not being changed two days out and are recorded as owner items instead: the file button is a
+  disabled submit control, which the sponsor design system this persona quotes says not to do, and
+  there is no pressable control above the fold on a phone.
+- **Persona 01's K1 is unrun, not green.** Nobody has pushed a branch with the WebMCP entry points
+  removed and watched a named end-to-end assertion fail. The readiness selftest breaking the `API`
+  row and the negative control are adjacent evidence and they are not that experiment.
+- **Persona 10's first kill criterion is unrun and cannot be run from here.** It needs two people
+  who have not seen the product to give the sentence back. Nobody has been asked, on either pass.
+
+**What it still does not do is consult anybody outside the build.** Both persona runs were carried
+out by workspace agents. Every judgement in this file is ours, made by the people with the strongest
+possible reason to be generous, and it should be read that way.

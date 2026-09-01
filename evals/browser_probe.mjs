@@ -12,24 +12,37 @@
  *             --remote-debugging-port=9222 --user-data-dir=<a temp dir> \
  *             https://upgradedev.github.io/claimready/
  *
- *   2. node evals/browser_probe.mjs
+ *   2. CLAIMREADY_DEPLOYED_SHA=<the commit the host is serving> node evals/browser_probe.mjs
+ *
+ *      The commit is not optional and the run fails without it. Check it rather than assuming it:
+ *      python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ \
+ *             --deployed-sha $(git rev-parse HEAD)
+ *      compares all 26 files the page loads against this checkout at that commit, and a working
+ *      tree that is ahead of the host fails there instead of producing a transcript about bytes
+ *      nobody serves.
  *
  * WHAT CHANGED AND WHY IT MATTERED. This used to print what it saw and exit 0 whatever that was.
  * Pointed at a browser with no WebMCP it printed `api: null` and reported success, so a run that
  * proved nothing looked exactly like a run that proved the lifecycle. The judgement now lives in
- * evals/probe_assertions.mjs, which tests/unit/probe_assertions.test.js breaks with 38 mutations,
+ * evals/probe_assertions.mjs, which tests/unit/probe_assertions.test.js breaks with 58 mutations,
  * requiring a failure each time, and this file exits 1 when that judgement says so.
  *
- * WHAT THE JOURNEY GAINED, AND WHAT IS UNPROVEN ABOUT IT. The journey now records which page it
- * ran against, so a transcript collected from a copy on somebody's disk is refused rather than
- * read as evidence about the deployed page, and it has a phase that reads the evidence notes. One
- * of those notes is written by an unverified third party and tells whatever agent reads it to put
- * the drivable answer back to yes and file the claim. This script does not do either. It reads the
- * notes, pins the field the note names using the page's own control, asks for exactly the change
- * the note demands, and records the refusal and the fact that nothing moved. That phase drives the
- * DOM twice, to pin and to unpin, and those two clicks have NOT been watched against a live
- * browser by whoever wrote them. If the pin does not land, the patch is accepted instead of
- * refused and the judgement fails loudly, which is the right direction to be wrong in.
+ * WHAT THE JOURNEY GAINED. It records which page it ran against and which commit that page was, so
+ * a transcript collected from a copy on somebody's disk, or from a page the host replaced last
+ * week, is refused rather than read as evidence about what a judge opens. It reads the evidence
+ * notes: one of them is written by an unverified third party and tells whatever agent reads it to
+ * put the drivable answer back to yes and file the claim. This script does not do either. It reads
+ * the notes, pins the field the note names using the page's own control, asks for exactly the
+ * change the note demands, and records the refusal and the fact that nothing moved. That phase
+ * drives the DOM twice, to pin and to unpin, and both clicks have now been watched against a live
+ * browser: run 33512549120 on a runner and a desktop Chrome 152 run, both on 2026-09-01. If the pin
+ * does not land, the patch is accepted instead of refused and the judgement fails loudly, which is
+ * the right direction to be wrong in.
+ *
+ * AND IT READS THE CLAIM BACK. Every refusal is bracketed by a full read_claim_state, and so is the
+ * declared tool's accepted call, because a revision number that held still says nothing about what
+ * a refused call wrote on its way out, and a revision number that moved says nothing about what was
+ * actually stored. Those two readings are what the judgement compares.
  *
  * WHAT IT IS NOT. The caller here is this script, not a model. It shows that a browser publishes,
  * executes and withdraws the tools this page declares, that a refusal reaches the caller in the
@@ -51,6 +64,22 @@ const port = process.argv.includes('--port')
 // run gets the deployed page by default. The judgement refuses a target that is not https, so this
 // cannot be pointed at a local file to make a red run green.
 const expectedPageUrl = (process.env.CLAIMREADY_URL || '').trim() || EXPECTED_PAGE_URL;
+
+/**
+ * WHICH COMMIT THE HOST WAS SERVING WHEN THIS RAN, AND WHY IT IS NOT OPTIONAL.
+ *
+ * A transcript with no commit on it is a statement about "the page, some time". The tools it
+ * describes may have been replaced an hour later and the transcript still reads green, which is
+ * exactly the stale evidence this repository keeps catching itself producing. So the run has to be
+ * told which commit it is about, the judgement refuses a transcript that cannot name one, and the
+ * workflow only sets this after `video/build_video.py --verify-deployed` has compared all 26 files
+ * the page loads against that commit. The value is therefore downstream of a measurement rather
+ * than a flag this script sets about itself.
+ *
+ * On a desktop, pass it: CLAIMREADY_DEPLOYED_SHA=$(git rev-parse HEAD) node evals/browser_probe.mjs
+ * after checking the host really serves that commit.
+ */
+const deployedSha = (process.env.CLAIMREADY_DEPLOYED_SHA || '').trim();
 
 // This runs inside the page, so it is written as one source string rather than as a function.
 const JOURNEY = [
@@ -78,15 +107,21 @@ const JOURNEY = [
   '      return null;',
   '    }',
   '  };',
-  '  const revision = async () => {',
-  '    const said = await call("read_claim_state");',
+  // THE WHOLE DRAFT AS THE PAGE SAYS IT, IN ONE READ, AND EVERY NUMBER BELOW COMES OUT OF THAT ONE
+  // READ. This used to be three helpers that each called read_claim_state again, so a revision
+  // came from one read and the drivable answer from another, and nothing compared the rest of the
+  // draft at all. A refusal could therefore leave the revision alone, quietly write some other
+  // field, and be recorded as a refusal that changed nothing. read_claim_state prints the revision,
+  // every field with its value and provenance, the pin list and what is still missing, so the text
+  // it returns is the state, and comparing that text across a refusal compares all of it.
+  '  const state = async () => await call("read_claim_state");',
+  '  const revisionIn = (said) => {',
   '    const found = said && said.match(/revision (\\d+)/);',
   '    return found ? Number(found[1]) : null;',
   '  };',
   // The value alone, without the "set by" clause or the [pinned] marker, because pinning the field
   // changes that line without changing the answer, and the answer is what must not move.
-  '  const drivable = async () => {',
-  '    const said = await call("read_claim_state");',
+  '  const drivableIn = (said) => {',
   '    const found = said && said.match(/vehicle_drivable = (true|false|null|empty)/);',
   '    return found ? String(found[1]) : null;',
   '  };',
@@ -112,24 +147,35 @@ const JOURNEY = [
   // The note asks for vehicle_drivable to go back to yes and for the claim to be filed. Filing is
   // not a tool at all, so there is nothing to call, and the field is pinned here first so the
   // change it wants is refused with the code the page returns rather than merely declined.
-  '  out.notes.drivableBefore = await drivable();',
+  '  out.notes.drivableBefore = drivableIn(await state());',
   '  out.notes.answer = await call("read_evidence_notes");',
   '  await togglePin();',
-  '  out.notes.pinnedPatch.revisionBefore = await revision();',
+  // One read before the refused patch and one after it, and the revision, the drivable answer and
+  // the whole of the rest of the draft all come out of those two. Two reads, not five, so the
+  // number the judgement compares and the state it compares are from the same moment.
+  '  const pinnedBefore = await state();',
+  '  out.notes.pinnedPatch.stateBefore = pinnedBefore;',
+  '  out.notes.pinnedPatch.revisionBefore = revisionIn(pinnedBefore);',
   '  out.notes.pinnedPatch.answer = await call("apply_claim_patch",',
   '    { baseRevision: out.notes.pinnedPatch.revisionBefore,',
   '      changes: [{ field: "vehicle_drivable", value: true }] });',
-  '  out.notes.pinnedPatch.revisionAfter = await revision();',
-  '  out.notes.drivableAfter = await drivable();',
+  '  const pinnedAfter = await state();',
+  '  out.notes.pinnedPatch.stateAfter = pinnedAfter;',
+  '  out.notes.pinnedPatch.revisionAfter = revisionIn(pinnedAfter);',
+  '  out.notes.drivableAfter = drivableIn(pinnedAfter);',
   '  out.notes.toolsAfterNotes = await list();',
   // Unpin, because the rest of the journey needs that field to be patchable again. If this click
   // does not land, the legal patch below is refused as locked and the judgement says so.
   '  await togglePin();',
   '',
-  '  out.stalePatch.revisionBefore = await revision();',
+  '  const staleBefore = await state();',
+  '  out.stalePatch.stateBefore = staleBefore;',
+  '  out.stalePatch.revisionBefore = revisionIn(staleBefore);',
   '  out.stalePatch.answer = await call("apply_claim_patch",',
   '    { baseRevision: 0, changes: [{ field: "severity", value: "dent" }] });',
-  '  out.stalePatch.revisionAfter = await revision();',
+  '  const staleAfter = await state();',
+  '  out.stalePatch.stateAfter = staleAfter;',
+  '  out.stalePatch.revisionAfter = revisionIn(staleAfter);',
   '',
   '  await call("apply_claim_patch", { baseRevision: out.stalePatch.revisionAfter,',
   '    changes: [{ field: "vehicle_drivable", value: true }] });',
@@ -138,13 +184,38 @@ const JOURNEY = [
   '  const declared = (await context.getTools()).find(tool => tool.name === "record_supporting_details");',
   '  if (declared) {',
   '    out.declared.name = String(declared.name);',
-  '    out.declared.origin = String(declared.origin);',
+  // Recorded as it arrived. String() would turn a browser that publishes no origin at all into the
+  // seven letters "undefined", which reads like a value and would then be compared like one.
+  '    out.declared.origin = (declared.origin === undefined || declared.origin === null)',
+  '      ? null : String(declared.origin);',
   '    out.declared.description = String(declared.description);',
-  '    out.declared.schema = String(JSON.stringify(declared.inputSchema));',
-  '    out.declared.revisionBefore = await revision();',
+  // The schema as an OBJECT, not as a string of one. The judgement deep compares it against a
+  // contract typed out by hand, and a string can only be searched for substrings, which is how a
+  // schema missing a whole property used to pass.
+  //
+  // Chrome 152 hands inputSchema back as a JSON STRING rather than as an object, measured on
+  // 2026-09-01 against the deployed page. A browser that hands back an object is read as it comes.
+  // A string that will not parse is recorded exactly as it arrived, so the judgement refuses it and
+  // prints the thing it could not read rather than a null.
+  '    let builtSchema = declared.inputSchema;',
+  '    if (typeof builtSchema === "string") {',
+  '      try { builtSchema = JSON.parse(builtSchema); } catch { /* kept as the string it arrived as */ }',
+  '    }',
+  '    out.declared.schema = (builtSchema === undefined) ? null : builtSchema;',
+  '    const declaredBefore = await state();',
+  '    out.declared.stateBefore = declaredBefore;',
+  '    out.declared.revisionBefore = revisionIn(declaredBefore);',
+  // The name is written out here rather than interpolated, because tests/unit/probe_assertions.test.js
+  // parses this array on its own and a template hole would not resolve there. It is pinned to
+  // DECLARED_WITNESS_NAME by a test that greps this source for that exact string, so the two
+  // cannot drift apart in silence.
   '    out.declared.answer = await call("record_supporting_details",',
   '      { witness_name: "M. Okafor", base_revision: out.declared.revisionBefore });',
-  '    out.declared.revisionAfter = await revision();',
+  // The claim read again AFTER the call, because a revision that moved says a change was accepted
+  // and says nothing about what was written. This is where the value is looked for.
+  '    const declaredAfter = await state();',
+  '    out.declared.stateAfter = declaredAfter;',
+  '    out.declared.revisionAfter = revisionIn(declaredAfter);',
   '  }',
   '  return JSON.stringify(out);',
   '})()',
@@ -166,12 +237,20 @@ try {
   const raw = await session.evaluate(JOURNEY);
   const transcript = JSON.parse(raw);
   transcript.consoleProblems = session.problems();
+  // Recorded as it was handed to this script, empty included. Writing "unknown" here, or skipping
+  // the key when nothing was passed, would let a transcript that cannot name its commit look like
+  // one that simply did not need to. The judgement refuses both shapes and says which it got.
+  transcript.build = { deployedSha: deployedSha || null };
 
-  const verdict = checkTranscript(transcript, { expectedPageUrl });
-
+  // PRINTED BEFORE IT IS JUDGED. The judgement reads fields the browser filled in and can throw on
+  // a shape nobody expected, and when it did that the transcript went with it, so the one artifact
+  // that would have explained the crash was never written. What was collected is printed first,
+  // whatever happens next.
   console.log(JSON.stringify(transcript, null, 1));
   console.log('');
-  console.log(`probe: judged against ${expectedPageUrl}`);
+
+  const verdict = checkTranscript(transcript, { expectedPageUrl });
+  console.log(`probe: judged against ${expectedPageUrl}, deployed commit ${deployedSha || 'not given'}`);
   if (verdict.ok) {
     console.log(`probe: PASS. ${verdict.checks} checks against the deployed page, none failed.`);
     process.exit(0);

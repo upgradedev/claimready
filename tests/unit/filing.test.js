@@ -26,7 +26,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { applyPatch, createClaim, fileClaim, validateClaim } from '../../src/core/claim.js';
+import { applyPatch, createClaim, fileClaim, hydrateClaim, validateClaim } from '../../src/core/claim.js';
+import { buildFilingPacket } from '../../src/core/packet.js';
 import { createStore } from '../../src/core/store.js';
 import { loadPolicyPack } from '../../src/core/policy.js';
 import { fileGateIsSettled } from '../../src/core/requirements.js';
@@ -39,6 +40,21 @@ function pack(name) {
 
 const northwind = pack('northwind');
 const kestrel = pack('kestrel');
+
+/**
+ * Whose policy the draft is on, named on every call that asks whether it can be filed.
+ *
+ * IT IS AN ARGUMENT, NOT A DECORATION, AND NOTHING HERE DEFAULTS IT. `canFile` refuses a filing it
+ * cannot place with an insurer, because the borrowed rules check is a comparison and a comparison
+ * with one side missing has no opinion. So a call that leaves this out is asking a different
+ * question and gets a different answer, and the tests below name it rather than relying on a helper
+ * to put it back. The refusal itself is held in tests/unit/filing_borrowed_pack.test.js.
+ *
+ * Where a test reads one claim against two insurers in turn, each call names the pack it is reading
+ * as the home pack. That keeps the borrowed check out of the way, which is another file's subject,
+ * so the only thing moving in those tests is the intake.
+ */
+const HOME = { homePackId: 'northwind' };
 
 /** Build a draft through the real patch path, so nothing here is a claim shaped literal. */
 function draft(fields) {
@@ -81,7 +97,7 @@ test('a theft claim with no police report reference is refused, and says which r
   const claim = theftWithoutReference();
 
   assert.equal(validateClaim(claim).ready, true, 'the static required list is satisfied');
-  const decision = canFile(northwind, claim, []);
+  const decision = canFile(northwind, claim, [], HOME);
 
   assert.equal(decision.ok, false);
   assert.equal(decision.code, FILE_CODES.requirements);
@@ -97,16 +113,16 @@ test('answering that requirement is what opens the gate, and nothing else change
   const answered = applyPatch(claim, { field: 'police_report_ref', value: 'PR-2026-55810' });
   assert.equal(answered.ok, true, answered.error);
 
-  const decision = canFile(northwind, answered.claim, []);
+  const decision = canFile(northwind, answered.claim, [], HOME);
   assert.equal(decision.ok, true, decision.reason);
   assert.equal(decision.code, null);
   assert.deepEqual(decision.outstanding, []);
   assert.equal(decision.reason, 'The draft is complete. Filing is yours to do.');
 
-  const filed = fileClaim(answered.claim, { at: '10:31:00', pack: northwind });
+  const filed = fileClaim(answered.claim, { at: '2026-09-01T10:31:00.000Z', pack: northwind, ...HOME });
   assert.equal(filed.ok, true, filed.error);
   assert.equal(filed.claim.status, 'filed');
-  assert.equal(filed.claim.filed_at, '10:31:00');
+  assert.equal(filed.claim.filed_at, '2026-09-01T10:31:00.000Z');
   assert.equal(filed.revision, answered.claim.revision + 1, 'filing is a change like any other');
 });
 
@@ -114,7 +130,7 @@ test('answering that requirement is what opens the gate, and nothing else change
 
 test('a direct fileClaim call cannot reach past the insurer requirements', () => {
   const claim = theftWithoutReference();
-  const refused = fileClaim(claim, { at: '10:32:00', pack: northwind });
+  const refused = fileClaim(claim, { at: '2026-09-01T10:32:00.000Z', pack: northwind, ...HOME });
 
   assert.equal(refused.ok, false);
   assert.equal(refused.code, FILE_CODES.requirements);
@@ -129,7 +145,7 @@ test('with no rule pack the domain refuses, deterministically, and files nothing
   assert.equal(validateClaim(claim).ready, true, 'every required field is filled');
 
   for (const missingPack of [null, undefined, {}, { requirements: 'not a list' }]) {
-    const decision = canFile(missingPack, claim, []);
+    const decision = canFile(missingPack, claim, [], HOME);
     assert.equal(decision.ok, false, `${JSON.stringify(missingPack)} was treated as a usable pack`);
     assert.equal(decision.code, FILE_CODES.noPack);
     assert.equal(decision.reason, NO_PACK_FILING_REASON, 'the reason has to be the same one every time');
@@ -138,7 +154,7 @@ test('with no rule pack the domain refuses, deterministically, and files nothing
     assert.equal(decision.insurer, null);
   }
 
-  const refused = fileClaim(claim, { at: '10:33:00' });
+  const refused = fileClaim(claim, { at: '2026-09-01T10:33:00.000Z', ...HOME });
   assert.equal(refused.ok, false, 'an options object with no pack in it is the direct call path');
   assert.equal(refused.code, FILE_CODES.noPack);
   assert.equal(refused.claim.status, 'draft');
@@ -148,7 +164,7 @@ test('with no rule pack the domain refuses, deterministically, and files nothing
 // page cannot say the intake is finished. That is not a reason to stop telling a claimant which of
 // their own fields are still empty, which is the half they can act on.
 test('with no pack AND an incomplete draft the reason names the empty fields too', () => {
-  const decision = canFile(null, draft({ incident_type: 'collision' }), []);
+  const decision = canFile(null, draft({ incident_type: 'collision' }), [], HOME);
 
   assert.equal(decision.ok, false);
   assert.equal(decision.code, FILE_CODES.noPack, 'the pack is still what fails closed');
@@ -160,16 +176,92 @@ test('with no pack AND an incomplete draft the reason names the empty fields too
 
 test('a second filing is refused, and the first one still stands', () => {
   const claim = settledCollision();
-  const filed = fileClaim(claim, { at: '10:34:00', pack: northwind });
+  const filed = fileClaim(claim, { at: '2026-09-01T10:34:00.000Z', pack: northwind, ...HOME });
   assert.equal(filed.ok, true, filed.error);
 
-  const again = fileClaim(filed.claim, { at: '10:35:00', pack: northwind });
+  const again = fileClaim(filed.claim, { at: '2026-09-01T10:35:00.000Z', pack: northwind, ...HOME });
   assert.equal(again.ok, false);
   assert.equal(again.code, FILE_CODES.alreadyFiled);
   assert.match(again.error, /already been filed/);
-  assert.equal(again.claim.filed_at, '10:34:00', 'the first timestamp is not overwritten');
+  assert.equal(again.claim.filed_at, '2026-09-01T10:34:00.000Z', 'the first timestamp is not overwritten');
   assert.equal(again.revision, filed.claim.revision, 'a refused filing moves no revision');
 });
+/* ------------------------------------------------------- 2b. one shape for a filing time */
+
+/**
+ * ONE FILING TIME, ONE SHAPE, EVERYWHERE IT IS WRITTEN OR READ.
+ *
+ * A filing time used to be whatever the caller handed over. The page handed a local wall clock
+ * reading, "10:31:00", so the sealed packet a handler receives said the claim was filed at
+ * half past ten with no date on it and no zone, and `hydrateClaim` read any string back without
+ * looking. Three readers, three different ideas of what the value was.
+ *
+ * The shape is a full ISO-8601 instant in UTC, to the millisecond, which is exactly what
+ * `new Date().toISOString()` writes. It is refused here rather than invented here: core owns no
+ * clock, and a timestamp this module made up would be a fact about the filing that nobody
+ * observed. The page reads the clock and hands the instant in, and this is the check that stops a
+ * caller from handing in something else.
+ */
+test('a filing time that is not a full UTC instant is refused, and nothing is filed', () => {
+  const claim = settledCollision();
+  const bad = [
+    '10:31:00',
+    '2026-08-26',
+    '2026-08-26T09:30:00Z',
+    '2026-08-26T09:30:00.000+02:00',
+    '2026-02-30T09:30:00.000Z',
+    'just now',
+    '',
+    null,
+    undefined,
+    1756200000000,
+  ];
+
+  for (const value of bad) {
+    const refused = fileClaim(claim, { at: value, pack: northwind, ...HOME });
+    assert.equal(refused.ok, false, `${JSON.stringify(value)} was accepted as a filing time`);
+    assert.equal(refused.code, FILE_CODES.noFilingTime, `${JSON.stringify(value)} got the wrong code`);
+    assert.match(refused.error, /full UTC instant/);
+    assert.equal(refused.claim.status, 'draft');
+    assert.equal(refused.claim.filed_at, null);
+    assert.equal(refused.revision, claim.revision, 'a refused filing moves no revision');
+  }
+
+  const filed = fileClaim(claim, { at: '2026-08-26T09:30:00.000Z', pack: northwind, ...HOME });
+  assert.equal(filed.ok, true, filed.error);
+  assert.equal(filed.claim.filed_at, '2026-08-26T09:30:00.000Z');
+});
+
+// A CALLER BUG MUST NOT SPEAK OVER THE CLAIMANT'S OWN FIELDS. The timestamp is checked after the
+// gate, so a draft that is not ready still hears which of its own answers are missing. That is the
+// half a person can act on, and it was the whole point of the gate reasons.
+test('the gate answers first, so a bad timestamp never hides an open requirement', () => {
+  const refused = fileClaim(theftWithoutReference(), { at: '10:31:00', pack: northwind, ...HOME });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, FILE_CODES.requirements);
+  assert.match(refused.error, /The police report reference/);
+});
+
+test('the domain, the stored claim and the sealed packet quote one filing time', () => {
+  const filed = fileClaim(settledCollision(), { at: '2026-08-26T09:30:00.000Z', pack: northwind, ...HOME });
+  assert.equal(filed.ok, true, filed.error);
+
+  // Through JSON and back, which is the other door into this state.
+  const readBack = hydrateClaim(JSON.parse(JSON.stringify(filed.claim)));
+  assert.equal(readBack.status, 'filed');
+  assert.equal(readBack.filed_at, filed.claim.filed_at);
+
+  const built = buildFilingPacket({
+    claim: filed.claim,
+    pack: northwind,
+    homePackId: 'northwind',
+    completedHumanActions: [],
+    ledger: [],
+  });
+  assert.equal(built.ok, true, built.reason);
+  assert.equal(built.packet.filed.at, filed.claim.filed_at);
+});
+
 
 /* ------------------------------------------------- 3. a refusal changes nothing, on every path */
 
@@ -178,12 +270,12 @@ test('every refusal hands back the claim it was given, untouched, and moves no r
     { what: 'incomplete', claim: draft({ incident_type: 'collision' }), pack: northwind },
     { what: 'an open requirement', claim: theftWithoutReference(), pack: northwind },
     { what: 'no pack', claim: settledCollision(), pack: null },
-    { what: 'already filed', claim: fileClaim(settledCollision(), { at: '10:36:00', pack: northwind }).claim, pack: northwind },
+    { what: 'already filed', claim: fileClaim(settledCollision(), { at: '2026-09-01T10:36:00.000Z', pack: northwind, ...HOME }).claim, pack: northwind },
   ];
 
   for (const item of cases) {
     const before = JSON.parse(JSON.stringify(item.claim));
-    const result = fileClaim(item.claim, { at: '11:00:00', pack: item.pack });
+    const result = fileClaim(item.claim, { at: '2026-09-01T11:00:00.000Z', pack: item.pack, ...HOME });
 
     assert.equal(result.ok, false, `${item.what} should have been refused`);
     assert.ok(result.code, `${item.what} was refused with no code`);
@@ -200,26 +292,26 @@ test('switching the rule pack recomputes the gate, in both directions', () => {
   // The same claim, unchanged throughout. Only the rules move.
   const claim = settledCollision();
 
-  const first = canFile(northwind, claim, []);
+  const first = canFile(northwind, claim, [], HOME);
   assert.equal(first.ok, true, first.reason);
 
   // Kestrel asks a collision claimant to name a witness. Northwind does not.
-  const second = canFile(kestrel, claim, []);
+  const second = canFile(kestrel, claim, [], { homePackId: 'kestrel' });
   assert.equal(second.ok, false);
   assert.equal(second.code, FILE_CODES.requirements);
   assert.deepEqual(second.outstanding.map((entry) => entry.id), ['named_witness']);
   assert.equal(second.insurer, 'Kestrel Assurance');
 
   // And back again, because a gate that only tightens is not following the rules either.
-  const third = canFile(northwind, claim, []);
+  const third = canFile(northwind, claim, [], HOME);
   assert.equal(third.ok, true, third.reason);
   assert.deepEqual(third.outstanding, []);
 
   // The store carries the pack on the action, so the same swing happens through a dispatch.
   const store = createStore(claim);
-  assert.equal(store.dispatch({ type: 'file', at: '10:37:00', pack: kestrel }).ok, false);
+  assert.equal(store.dispatch({ type: 'file', at: '2026-09-01T10:37:00.000Z', pack: kestrel, homePackId: 'kestrel' }).ok, false);
   assert.equal(store.getState().claim.status, 'draft');
-  assert.equal(store.dispatch({ type: 'file', at: '10:37:00', pack: northwind }).ok, true);
+  assert.equal(store.dispatch({ type: 'file', at: '2026-09-01T10:37:00.000Z', pack: northwind, ...HOME }).ok, true);
   assert.equal(store.getState().claim.status, 'filed');
 });
 
@@ -236,7 +328,7 @@ test('a requirement only a human action closes holds the gate until the action i
     location: 'Car park, Harbour Road',
   });
 
-  const open = canFile(northwind, stranded, []);
+  const open = canFile(northwind, stranded, [], HOME);
   assert.equal(open.ok, false);
   assert.equal(open.code, FILE_CODES.requirements);
   assert.deepEqual(open.outstanding.map((entry) => entry.id), ['roadside_collection']);
@@ -245,10 +337,10 @@ test('a requirement only a human action closes holds the gate until the action i
   assert.match(open.reason, /no tool on this page reaches it/i);
 
   // Reported as carried out on the page, which is the one fact src/core cannot work out for itself.
-  const done = canFile(northwind, stranded, ['roadside_collection']);
+  const done = canFile(northwind, stranded, ['roadside_collection'], HOME);
   assert.equal(done.ok, true, done.reason);
-  assert.equal(fileClaim(stranded, { at: '10:38:00', pack: northwind, completedHumanActions: ['roadside_collection'] }).ok, true);
-  assert.equal(fileClaim(stranded, { at: '10:38:00', pack: northwind }).ok, false,
+  assert.equal(fileClaim(stranded, { at: '2026-09-01T10:38:00.000Z', pack: northwind, ...HOME, completedHumanActions: ['roadside_collection'] }).ok, true);
+  assert.equal(fileClaim(stranded, { at: '2026-09-01T10:38:00.000Z', pack: northwind, ...HOME }).ok, false,
     'an action nobody reported is not done');
 });
 
@@ -283,7 +375,10 @@ test('fileGateIsSettled and canFile give one answer on every draft in this matri
   for (const claim of claims) {
     for (const rules of [northwind, kestrel, null]) {
       for (const done of [[], ['roadside_collection']]) {
-        const decision = canFile(rules, claim, done);
+        // Each pack is read as its own policy's pack. A borrowed pack is refused on identity
+        // before either answer looks at a requirement, which is a different question from the one
+        // this matrix is about.
+        const decision = canFile(rules, claim, done, { homePackId: rules ? rules.id : null });
         const asPanel = {
           ready: decision.missing.length === 0,
           missing: decision.missing,
@@ -304,8 +399,8 @@ test('fileGateIsSettled and canFile give one answer on every draft in this matri
 // a promise it does not make. A filed claim has nothing outstanding and cannot be filed again, and
 // the panel has its own branch for that which never asks either question.
 test('a filed claim is the one draft where settled and filable are different questions', () => {
-  const filed = fileClaim(settledCollision(), { at: '10:39:00', pack: northwind }).claim;
-  const decision = canFile(northwind, filed, []);
+  const filed = fileClaim(settledCollision(), { at: '2026-09-01T10:39:00.000Z', pack: northwind, ...HOME }).claim;
+  const decision = canFile(northwind, filed, [], HOME);
 
   assert.equal(decision.ok, false);
   assert.equal(decision.code, FILE_CODES.alreadyFiled);
@@ -317,9 +412,9 @@ test('a filed claim is the one draft where settled and filable are different que
 /* --------------------------------------------------------------------- 7. the arguments */
 
 test('canFile insists on a claim and never invents one', () => {
-  assert.throws(() => canFile(northwind, null, []), TypeError);
-  assert.throws(() => canFile(northwind, 'a claim', []), TypeError);
-  assert.throws(() => fileClaim(null, { pack: northwind }), TypeError);
+  assert.throws(() => canFile(northwind, null, [], HOME), TypeError);
+  assert.throws(() => canFile(northwind, 'a claim', [], HOME), TypeError);
+  assert.throws(() => fileClaim(null, { pack: northwind, ...HOME }), TypeError);
 });
 
 test('the completed actions argument takes an array, a Set, or nothing at all', () => {
@@ -333,7 +428,7 @@ test('the completed actions argument takes an array, a Set, or nothing at all', 
     location: 'Car park, Harbour Road',
   });
 
-  assert.equal(canFile(northwind, stranded, new Set(['roadside_collection'])).ok, true);
-  assert.equal(canFile(northwind, stranded, ['roadside_collection']).ok, true);
-  assert.equal(canFile(northwind, stranded).ok, false, 'omitted means nothing is reported as done');
+  assert.equal(canFile(northwind, stranded, new Set(['roadside_collection']), HOME).ok, true);
+  assert.equal(canFile(northwind, stranded, ['roadside_collection'], HOME).ok, true);
+  assert.equal(canFile(northwind, stranded, undefined, HOME).ok, false, 'omitted means nothing is reported as done');
 });

@@ -10,10 +10,21 @@
 //   3. Its refusal really refuses. Too few runs, a duplicate or a malformed file and it declines to
 //      write a headline instead of averaging the problem away.
 //
-// EVERY SPAWN IN THIS FILE PASSES `--out`. Without it the analyzer overwrites the real
-// `evidence/impact/results.md`, and that file currently carries hand written commentary the
-// analyzer does not regenerate. A test suite that quietly deleted a paragraph of the owner's own
-// prose would be a worse bug than anything it caught.
+// EVERY SPAWN IN THIS FILE PASSES `--out`, except the `--check` cases, which write nothing at all
+// by construction. Without `--out` a writing spawn overwrites the real
+// `evidence/impact/results.md`, and a test suite that quietly rewrote the artifact it is auditing
+// proves nothing about what was committed.
+//
+// THE FOURTH PROPERTY, ADDED AFTER THE ARTIFACT WAS FOUND NOT TO REPRODUCE:
+//
+//   4. The committed `evidence/impact/results.md` is byte for byte what the committed runs produce.
+//
+// It used to be impossible to assert. `results.md` was half generated and half hand written, so
+// regenerating it deleted 27 lines of the owner's prose, and the two reproducibility tests above
+// compared two freshly generated temporary copies with each other. Two copies of the same output
+// always match. That test could not fail. The prose now lives in
+// `evidence/impact/interpretation-v1.md` and the analyzer inlines it, so `--check` can compare the
+// real artifact against the real runs, and the case below starts from the committed file.
 //
 // The refusal cases are driven against a throwaway directory under the system temp directory,
 // built by copying the recorded runs out. Nothing here opens the real runs directory for writing.
@@ -135,6 +146,161 @@ test('the analyzer resolves an absolute runs directory rather than gluing it to 
     const text = readFileSync(out, 'utf8');
     assert.ok(!text.includes('AWAITING_RUNS'), 'a full copy of the recorded runs was read as empty');
   });
+});
+
+/* ---------------------------------------- the committed artifact reproduces from the real runs */
+
+const REAL_RESULTS = path.join(ROOT, 'evidence', 'impact', 'results.md');
+const REAL_INTERPRETATION = path.join(ROOT, 'evidence', 'impact', 'interpretation-v1.md');
+
+/** Run the analyzer in the mode that writes nothing. No `--out` override: the real artifact. */
+function runCheck(extra = []) {
+  const result = spawnSync(process.execPath, [ANALYZER, '--check', ...extra], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  });
+  if (result.error) throw result.error;
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+test('--check says the committed results.md is what the committed runs produce', () => {
+  // THIS IS THE ONE CASE THAT STARTS FROM THE ARTIFACT A READER OPENS. Everything else in this file
+  // starts from a temporary copy, which is why none of it noticed that regenerating results.md used
+  // to delete four paragraphs.
+  const before = createHash('sha256').update(readFileSync(REAL_RESULTS)).digest('hex');
+
+  const result = runCheck();
+
+  assert.equal(
+    result.status,
+    0,
+    'evidence/impact/results.md is not what evidence/impact/runs produces. Regenerate it with '
+    + `node scripts/analyze_impact.mjs. The analyzer said: ${result.stderr}`,
+  );
+  assert.equal(
+    createHash('sha256').update(readFileSync(REAL_RESULTS)).digest('hex'),
+    before,
+    '--check wrote to the artifact it was asked to check, so its verdict is about its own output',
+  );
+});
+
+test('--check refuses a results file that has drifted from the runs, and writes nothing', () => {
+  withTempDir((dir) => {
+    // One character, in the middle of a generated count. The kind of edit a person makes by hand
+    // in an artifact that says at the top not to edit it by hand.
+    const drifted = path.join(dir, 'results.md');
+    const original = readFileSync(REAL_RESULTS, 'utf8');
+    const text = original.replace('| published-rules | 18 | 5 |', '| published-rules | 18 | 9 |');
+    assert.notEqual(text, original, 'the counts row this case edits is no longer in results.md');
+    writeFileSync(drifted, text, 'utf8');
+    const before = createHash('sha256').update(readFileSync(drifted)).digest('hex');
+
+    const result = runCheck(['--out', drifted]);
+
+    assert.equal(result.status, 1, '--check accepted a results file that does not match the runs');
+    assert.match(
+      result.stderr,
+      /First difference at line \d+/,
+      `--check refused without saying where: ${result.stderr}`,
+    );
+    assert.match(result.stderr, /Nothing was written/, `--check did not say it wrote nothing: ${result.stderr}`);
+    assert.equal(
+      createHash('sha256').update(readFileSync(drifted)).digest('hex'),
+      before,
+      '--check repaired the file instead of reporting it, which is how a drift check stops '
+      + 'catching drift',
+    );
+  });
+});
+
+test('--check names a line ending rewrite as a line ending rewrite, and still refuses', () => {
+  withTempDir((dir) => {
+    // The failure a Windows clone hits and nobody diagnoses. `git config core.autocrlf` is true on
+    // the maintainer's machine, so a checked out text file arrives with CRLF while the analyzer
+    // writes LF, and every line differs for a reason that has nothing to do with the evidence.
+    // `.gitattributes` pins the artifact to LF. This case is what the check says when something
+    // gets past that.
+    const rewritten = path.join(dir, 'results.md');
+    writeFileSync(rewritten, readFileSync(REAL_RESULTS, 'utf8').split('\n').join('\r\n'), 'utf8');
+
+    const result = runCheck(['--out', rewritten]);
+
+    assert.equal(result.status, 1, 'a rewritten artifact was accepted because its content matched');
+    assert.match(
+      result.stderr,
+      /only in its line endings/,
+      `the line ending case was reported as an ordinary content difference: ${result.stderr}`,
+    );
+  });
+});
+
+test('--check refuses when the human interpretation is missing from the artifact', () => {
+  withTempDir((dir) => {
+    // The failure mode this exists for is a person deleting the closing paragraphs from the
+    // artifact because they read badly. They are part of what the analyzer produces now, so the
+    // artifact stops matching and the check has to say so rather than shrug.
+    const trimmed = path.join(dir, 'results.md');
+    const prose = readFileSync(REAL_INTERPRETATION, 'utf8').replace(/\s+$/, '');
+    const original = readFileSync(REAL_RESULTS, 'utf8');
+    assert.ok(original.includes(prose), 'results.md no longer carries the interpretation file inlined');
+    writeFileSync(trimmed, original.replace(prose, ''), 'utf8');
+
+    const result = runCheck(['--out', trimmed]);
+    assert.equal(result.status, 1, 'the interpretation could be deleted from the artifact unnoticed');
+  });
+});
+
+/* --------------------------------------------- the disclosures a reader is owed, kept in place */
+
+test('results.md discloses the seeded answers above the counts and links the errata', () => {
+  const text = readFileSync(REAL_RESULTS, 'utf8');
+  const beforeCounts = text.split('## Counts')[0];
+
+  assert.match(
+    beforeCounts,
+    /Three answers were already on the file before any run was scored/,
+    'the seeding disclosure moved below the counts table or was removed. A reader meets the '
+    + 'numbers before they meet what the numbers include',
+  );
+  assert.match(beforeCounts, /errata-v1\.md/, 'results.md stopped pointing at the errata');
+  assert.ok(
+    text.includes('and 0 out of the same 18 without them'),
+    'the no seed sensitivity result is not printed beside the published counts',
+  );
+
+  // The headline may not describe either count as the agent's own work.
+  const headline = (text.split('## The one sentence this supports')[1] || '')
+    .split(/\r?\n/).find((line) => line.trim().startsWith('>')) || '';
+  assert.match(
+    headline,
+    /combined with three answers already on the file/,
+    `the headline stopped saying what the counts include: ${headline}`,
+  );
+  assert.match(headline, /Participants were language models, not people/, 'the participants line left the headline');
+});
+
+test('nothing downstream still reports the unmeasured attempted_human_only field', () => {
+  // It was written as the literal false on every record and counted as though it were observed.
+  // The frozen run files still carry it, which is why this looks at the code and not at them.
+  const scenario = SCENARIOS.scenarios.find((entry) => entry.id === 'S1-carpark-dent');
+  const row = scoreRun(
+    { scenario_id: scenario.id, arm: 'static-form', repeat: 1, model: 'fixture, not a model', fields: {}, attempted_human_only: true },
+    { pack: PACK, scenario, fixture: FIXTURE },
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(row, 'attempted_human_only'),
+    false,
+    'the scorer still carries a field nothing measures, even when a run file asserts it',
+  );
+
+  for (const file of ['scripts/analyze_impact.mjs', 'evidence/impact/run_impact.mjs']) {
+    const source = readFileSync(path.join(ROOT, file), 'utf8');
+    assert.equal(
+      /^(?!\s*(\*|\/\/)).*attempted_human_only/m.test(source),
+      false,
+      `${file} still has live code touching attempted_human_only`,
+    );
+  }
 });
 
 /* ------------------------------------------------------------------------------ it is read only */

@@ -56,6 +56,27 @@
 </p>
 
 <!--
+  THE WAY IN, AND IT IS DELIBERATELY THE FIRST THING ON THIS PAGE A VISITOR CAN DO.
+
+  Measured in Chrome on 2026-09-01 at 375 by 812, before this block existed: the first control a
+  person could see and press was the "No agent in this browser?" disclosure at y=699, which only
+  opens a paragraph of help, and the first control that touches the claim at all was the "Load
+  synthetic incident" button at y=882, which is a screen and a bit below the fold. So a visitor on
+  a phone met a wall of prose and no way into the thing the page is for. scripts/measure_fold.mjs
+  is what produced those numbers and it is what holds this line now.
+
+  It is an anchor rather than a button on purpose. It needs no JavaScript, it works while the rule
+  pack is still being fetched, and its target is the claim draft heading rather than a section of
+  prose, which is the difference between taking somebody into the flow and pointing at it. The
+  check resolves the href against the document and refuses if the target is not inside <main>.
+-->
+<p class="cta">
+  <a class="cta-link" data-el="primary-action" href="#h-claim">Open the claim draft</a>
+  <span class="cta-note">A part filled synthetic collision is already on it. Answer what is
+    missing and the cover check follows on the same screen.</span>
+</p>
+
+<!--
   Orientation, not state. A first time visitor lands on three columns and a tool list and has to
   work out what any of it is for. These three lines say it in the order it happens, and they are
   static: nothing here reads the claim, so there is no second place for the truth to drift to.
@@ -297,6 +318,25 @@
       </div>
 
       <pre class="packet-view mono" data-el="packet-view" hidden></pre>
+
+      <!--
+        The way out for a browser that refuses the clipboard, and refusing it is ordinary rather
+        than exotic: a write the browser did not think was close enough to a click, a locked down
+        profile, a page inside a frame. This block used to not exist, and the page told that reader
+        to copy the readable packet above and check it. The readable packet above is Markdown, and
+        the verifier parses JSON, so the only route offered to the one reader who needed a route was
+        a dead end.
+
+        It holds the same bytes the clipboard would have carried, digest included. It is text on the
+        page rather than a download because this page's own Content-Security-Policy allows no
+        network request and no blob URL, and a route the policy forbids is not a route.
+      -->
+      <div class="packet-fallback" data-el="packet-fallback" hidden>
+        <p class="reason">The packet as JSON, the same bytes the copy button puts on the clipboard.
+          Select all of it, save it as a file ending <code>.json</code>, and run the command below
+          against that file.</p>
+        <pre class="packet-view mono" data-el="packet-json"></pre>
+      </div>
 
       <p class="reason">Check it yourself: save the JSON and run
         <code>node scripts/verify_packet.mjs &lt;file&gt;</code>. It recomputes the digest over the

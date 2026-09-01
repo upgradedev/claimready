@@ -113,9 +113,12 @@ what keeps that honest.
 **Two. The capability set is a function of the claim, and a REST surface is a function of the
 deploy.** `get_assistance_options` does not exist while the page thinks the car is drivable. Say the
 car cannot be driven and it is registered, live, into the agent's own tool list. Say it is drivable
-again and it is withdrawn. Watch the count move from 8 to 9 on the status strip. An OpenAPI document
-describes what a service offers; it cannot describe what this service offers *right now*, for *this*
-claim, and it certainly cannot hand a new capability to an agent in the middle of a conversation.
+again and it is withdrawn. Watch the count move from 8 to 9 on the status strip. Be precise about
+what that beats, because the sloppy version of this claim is easy to falsify: a service can
+absolutely serve a per-session OpenAPI document that changes as the claim changes. What it cannot do
+is put the new capability into the agent's own tool list in the middle of a conversation without the
+agent having been built to re-fetch and re-bind. Here the browser owns that step, so an agent that
+never heard of this insurer gains and loses a tool at runtime with nothing built for it in advance.
 
 That second point is the one this repository spends its evidence on, because it is the one a
 reviewer should be most suspicious of. `evals/negative-control.json` is a case that is required to
@@ -128,6 +131,26 @@ no insurer has run this and inventing that number would be worse than not having
 repository can support is what the mechanism does, and it is all reachable: nine registered tools,
 one more declared by a form, two rule packs, one conditional tool, one refusal protocol, and a
 ledger that prints every call.
+
+One thing was measured, it is in this repository, and it went against the page, so read that
+sentence above for exactly what it says. `evidence/impact/` holds a 36 run study whose participants
+were language models rather than people, preregistered in `evidence/impact/protocol-v1.md` before
+any run. Combined with three answers the demo fixture already carried, the arm that got the
+published rules came out policy complete in 5 of 18 runs against 6 of 18 for a static form, with two
+truth mismatches against none. That is a negative result for the page and it is published in
+`evidence/impact/results.md` with the counts, with what the first version of that file failed to
+disclose in `evidence/impact/errata-v1.md`, and with what it does and does not license anyone to
+conclude in `evidence/impact/interpretation-v1.md`. It is not a measurement of real intakes and it
+is not evidence that the mechanism helps. It is here because deleting a study that came out badly
+would be the dishonest move, and a judge is entitled to weigh it against everything else.
+
+**A second protocol is written and has not been run, and nothing in this repository claims
+otherwise.** `evidence/impact/protocol-v2.md` and its runner exist because the errata list a set of
+things v1 did not record. `evidence/impact/runs-v2/` is empty on purpose, and
+`evidence/impact/results-v2.md` therefore reads `AWAITING_RUNS` over a table of zeros, which is the
+analyzer refusing to write a headline from a partial set. No number anywhere in this entry comes
+from v2. If a judge finds the v2 files first, that is what they are: an instrument with nothing in
+it yet, not a result being withheld and not a second study we are hinting at.
 
 ## One number you can reproduce
 
@@ -561,50 +584,177 @@ instruction can ask for reaches it through a tool.
 ## Quickstart, with nothing installed
 
 This repo has no dependencies. There is no `npm install` to run, and there is no lockfile, because
-there is nothing to lock. The quickstart uses Python's built in server rather than `npx serve`,
-since `npx` would download a package, and the point is that nothing here needs downloading.
+there is nothing to lock.
+
+**Time to first result, measured rather than guessed.** On 2026-09-01, on a Windows laptop: **6.0
+seconds** from an empty directory to the page answering on localhost, and 3.0 seconds on a second
+clone once git's object cache was warm. Steps 1 and 2 are the whole of that. The unit tests in step
+3 take about 8 seconds, and the self test in step 8 takes about a minute and is the only slow
+thing in this section.
+
+Read the steps in order. The prerequisites come first because two of the steps need something you
+may not have, and step 2 blocks forever by design, which is worth knowing before you run it rather
+than after.
+
+### Step 0. What you need before you start
+
+- **Node 20 or later.** Check with `node --version`. Every script here is a plain ES module that
+  imports nothing outside Node itself.
+- **Python 3**, for the local server in step 2 and for nothing else. The server is Python's built in
+  one rather than `npx serve`, because `npx` would download a package and the point of this section
+  is that nothing here needs downloading.
+- **git**, to get the code in step 1.
+- **A browser.** Step 9 additionally wants a Chrome on the machine, and finds it by itself.
+
+There is no account to make, no token to paste and no API key to find, because there is no API to
+call. Nothing in the steps below reaches the network except step 1, which clones, and
+`node scripts/readiness.mjs` in step 6, which fetches the live judge URL and says so.
+
+### Step 1. Get the code
 
 ```sh
-# serve the repo root on http://localhost:4173
-python -m http.server 4173
+git clone https://github.com/upgradedev/claimready
+cd claimready
+```
 
+**Expected:** git prints `Cloning into 'claimready'...` and leaves you in a directory of about 3 MB.
+Every command from here on is run from that directory. Nothing is installed and nothing is built.
+
+### Step 2. Terminal A. Serve the page, and then leave this terminal alone
+
+**This command blocks and never returns. It is the only one in this section that does.** It is
+Terminal A. Open a second terminal for every step after this one.
+
+```sh
+python -m http.server 4173
+```
+
+**Expected:** `Serving HTTP on :: port 4173 (http://[::]:4173/) ...` and then silence until
+something asks for a page. Open <http://localhost:4173/> in your browser and the claim desk loads,
+with a part filled synthetic collision already on the draft and an **Open the claim draft** button
+as the first thing on the page. Requests are logged into Terminal A as they arrive, so that window
+is also the proof the browser reached it. Press `Ctrl+C` there when you are finished.
+
+`python -m http.server` does not send the production security headers, so a page that works here can
+still break on the deployed origin. That is what the readiness gate's `IDX` row is for: it catches
+the usual cause, an inline `<style>` or `<script>` block that our Content Security Policy forbids.
+
+### Step 3. Terminal B. The domain tests
+
+Everything from here runs in Terminal B, while Terminal A keeps serving.
+
+```sh
 # run the domain tests, no runner and no config
 node --test tests/unit
+```
 
+**Expected:** `# pass 771` and `# fail 0`, in about 8 seconds. Observed on 2026-09-01 in this tree.
+Any failure at all is a real failure: there is no flaky test here and nothing is skipped.
+
+### Step 4. The style gate
+
+```sh
 # the style gate: em dashes, annotations that do not exist, tool budgets
 node scripts/check_style.mjs
+```
 
+**Expected:** `style: PASS.` followed by the number of text files it scanned, 175 in this tree, and
+the four rules it applied. It exits 0 on a pass and non zero on any finding.
+
+### Step 5. What the intake actually asks for
+
+```sh
 # count the intake: what a static form asks everyone against what this page derives
 node scripts/measure_intake.mjs
+```
 
+**Expected:** a comparison of what a static form asks everyone against what this page derives from
+the loaded rule pack, ending with the line `counted by: node scripts/measure_intake.mjs`. It also
+names the fields it counts on neither side and says why, which is the part worth reading.
+
+### Step 6. The readiness gate, which fetches the live URL
+
+```sh
 # the readiness gate, one table, every row saying what it blocks. It fetches the live URL
 node scripts/readiness.mjs
+```
 
+**Expected today:** the full table, then
+`MANDATORY, what the rules require:   4 of 5 PASS  (LIVE PASS, LIC PASS, D1 PASS, D3 PASS, D4 FAIL)`
+and `NOT READY. A mandatory deliverable is missing: D4.` It exits 1. **That is the correct output
+and not a broken checkout.** `D4` is the public video, and a mandatory deliverable that does not
+exist turns this red in every mode. The `LIVE` row is the one to read first: it fetches
+<https://upgradedev.github.io/claimready/> and a red one means the page a judge opens is really
+down.
+
+### Step 7. The same gate with no network
+
+```sh
 # offline, with no network. The LIVE row then proves nothing and prints NOT DEPLOYED
 node scripts/readiness.mjs --ci --allow-undeployed
+```
 
+**Expected:** the `LIVE` row reads `NOT DEPLOYED` rather than `PASS`, and the tally says
+`18 of 20 PASS, 90 percent (provisional, the live row proved nothing)`. It exits 1, for `D4` again.
+Nothing was fetched, so nothing about the live surface is claimed either way, which is the whole
+difference between this mode and step 6.
+
+### Step 8. Prove the gate can fail
+
+```sh
 # prove the gate can fail, by breaking every row in turn and requiring each one to refuse
 node scripts/readiness.mjs --selftest
+```
 
+**Expected:** `34 breaks over 20 rows`, every line beginning `ok`, and
+`selftest passed. Every row has been watched to fail, and to pass, for its own reason.` It exits 0
+and takes about a minute. Each case copies this repository into a temporary directory, damages one
+input, and requires that row to refuse. It prints the directory it used at the end; the copies of
+cases that behaved are deleted, and only a case that misbehaved leaves its evidence on disk.
+
+### Step 9. What a visitor can reach without scrolling
+
+```sh
+# measure the page in a real Chrome at 375 by 812 and at 1280 by 800
+node scripts/measure_fold.mjs
+```
+
+**Expected:** `measure_fold passed at every viewport.` and exit 0. It finds Chrome on the machine,
+serves this checkout on a loopback port it picks itself, and reads `getBoundingClientRect` off the
+real layout at both sizes. Observed on 2026-09-01: the primary action sits at y=331 on the phone and
+y=217 on the laptop, against a fold at 812 and 800. Nothing here models a layout, and every number
+it prints came back from the browser. Add `--report` to see the table without the assertions.
+
+### Step 10. The eval journeys, and the control that proves they mean something
+
+```sh
 # replay the three eval journeys against the real registration path, with a fake agent host
 node evals/replay.mjs
 
 # the negative control: a patch that lands must WITHDRAW the ninth tool, so this case must fail
 node evals/replay.mjs --negative-control
+```
 
+**Expected:** the first prints `VERDICT: every journey replayed clean against the fake host.` and
+exits 0. The second prints `VERDICT: PROVEN. The lifecycle answered a patch that was applied.` and
+exits 0, having first shown the error it went looking for,
+`tool "get_assistance_options" is not available.`
+
+```sh
 # and prove that control can fail, three different ways. Each of these must exit non zero
 node evals/replay.mjs --negative-control --mutate applied-patch-refused
 node evals/replay.mjs --negative-control --mutate withdrawal-ignored
 node evals/replay.mjs --negative-control --mutate ninth-tool-never-registered
 ```
 
-Both readiness runs above exit non zero while the video row `D4` is red, and that is deliberate:
-a mandatory deliverable that is missing turns the build red in every mode, `--ci` included.
+**Expected: all three print `VERDICT: NOT PROVEN` and exit 1, and that is a pass.** These deliberately
+sabotage the control in three different places and require it to notice each time. A zero exit from
+any of them would mean the control cannot tell a working lifecycle from a broken one.
 
-Node 20 or later. `python -m http.server` does not send the production security headers, so a page
-that works locally can still break on the deployed origin. The readiness gate's `IDX` row catches
-the usual cause, which is an inline `<style>` or `<script>` block that our Content Security Policy
-forbids.
+### Step 11. When you are done
+
+Press `Ctrl+C` in Terminal A to stop the server. Nothing was installed, so there is nothing to
+uninstall, and no `node_modules` was created anywhere.
 
 ## Status
 
@@ -626,18 +776,18 @@ go stale between commits.
 | Page and tool call ledger | built | open `index.html`, and row `IDX` |
 | Unit tests | built | `node --test tests/unit` prints the pass and fail counts |
 | Live URL a judge can open | deployed | `node scripts/readiness.mjs` row `LIVE`, which fetches it and fails on anything but a 200 carrying the first sentence of this file |
-| Content Security Policy actually exercised against the page | the policy is in the served bytes, re-checked 2026-09-01. The clean console was last observed 2026-08-28, on the commit served that day | open the live URL with the console open: the policy ships in the document, and the page loads with no console output at all. The date matters, and this row has two halves with different ages. The policy itself is readable in what the host sends, and on 2026-09-01 the deployed `index.html` still carried the `Content-Security-Policy` meta tag with no inline `<style>` and no inline `<script>` anywhere in it. The clean console is the half that needs a browser, and it was last observed on 2026-08-28 against the commit served then, not against the `9b64fb2` served now. The one automated check that reads a console is `CAPTURE_JS` in the video pipeline, which fails a capture on any `console.error`. The eval harness does not: see `evals/README.md` |
+| Content Security Policy actually exercised against the page | the policy is in the served bytes, re-checked 2026-09-01. The clean console was last observed 2026-09-01, on the `9b64fb2` served that day | open the live URL with the console open: the policy ships in the document, and the page loads with no console output at all. The date matters, and this row has two halves with different ages. The policy itself is readable in what the host sends, and on 2026-09-01 the deployed `index.html` still carried the `Content-Security-Policy` meta tag with no inline `<style>` and no inline `<script>` anywhere in it. The clean console is the half that needs a browser. It was observed again on 2026-09-01, against the `9b64fb2` the host serves now: the live page was opened at 375px in a fresh browser and `console` returned no messages at all, not one error and not one log. That reading was taken by a workspace agent rather than by an outside reader, which is worth knowing, and it is a single load of the default demo rather than a walk of the whole path. The one automated check that reads a console is `CAPTURE_JS` in the video pipeline, which fails a capture on any `console.error`. The eval harness does not: see `evals/README.md` |
 | Damage sketch module, agent draws and human corrects | not yet built | absent from `src/webmcp/tools` |
 | Conditional tool that appears while the vehicle cannot be driven | built | `cat src/webmcp/tools/get_assistance_options.js`, and `CONDITIONAL_TOOLS` in `src/webmcp/register.js` |
 | Roadside assistance dispatch simulation, the booking a person's click would send | not yet built | no dispatch call in `src/ui/app.js` |
-| Declarative form step, the HTML attribute API | built, and not registered by anything | `grep -n 'toolname=' index.html` for the declared tool, `node --test tests/unit/declarative_form.test.js` for the assertion that the markup matches `src/webmcp/declarative_form.js`. It is live once GitHub Pages has built the commit that carries it, which the two commands under [Open it yourself](#open-it-yourself) settle. What is verified and what is not is the table in [the declarative half](#the-declarative-half-a-form-with-four-attributes): the form is verified as a form, and no browser has yet been watched synthesising a tool from the attributes |
+| Declarative form step, the HTML attribute API | built, and not registered by anything | `grep -n 'toolname=' index.html` for the declared tool, `node --test tests/unit/declarative_form.test.js` for the assertion that the markup matches `src/webmcp/declarative_form.js`. It is live once GitHub Pages has built the commit that carries it, which the two commands under [Open it yourself](#open-it-yourself) settle. What is verified and what is not is the table in [the declarative half](#the-declarative-half-a-form-with-four-attributes): the form is verified as a form in any browser, and Chrome `151.0.7922.174` has been watched synthesising `record_supporting_details` out of the four attributes and executing it, on 2026-08-31 against the page as deployed that day. This row used to say no browser had been watched doing that, which the same table three sections above already contradicted. The surface that is still open is the ChatGPT desktop browser, where the declared form has not been seen working and this page claims nothing either way |
 | The insurer rule pack is load bearing, not decoration | proven, in CI on every push | `node scripts/compare_packs.mjs`. One claim, both packs, five fields compared, and exit 1 if they agree on everything. Seen to fail by pointing both pack names at one file |
 | Handler packet after a human files | built | `node --test tests/unit/packet.test.js` and `tests/unit/packet_is_not_a_tool.test.js`. A filed claim produces a canonical JSON packet and a readable view carrying the facts, the clause and excess, every intake requirement with what answered it, the pinned rows, the route each answer took and the tool calls, digested with SHA-256. `node scripts/verify_packet.mjs <file>` recomputes it and exits 1 when a character moved, which was demonstrated by changing one severity. That script imports the same module that produced the digest, so it proves the packet is unchanged and proves nothing about the algorithm: [docs/handler-verification.md](docs/handler-verification.md) gives two routes that use none of our code and shows all three agreeing on one worked example. It refuses for a draft that was never filed, for no pack, for a half built pack, for another insurer's rules and for a filed status the gate could not have granted. `src/webmcp` never imports the module, so no registered tool builds it or hands it back |
 | Intake measurement, counted from the shipped rule packs | built | `node scripts/measure_intake.mjs`. It counts fields in `fixtures/insurers/` and `src/core/claim.js` and extrapolates nothing. See [One number you can reproduce](#one-number-you-can-reproduce) |
 | Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` prints the count. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser. This row used to hardcode a number and the number was wrong, so it now names the command instead, which is what the paragraph above this table promises |
 | The tool surface running in a real browser's own WebMCP implementation | proven in CI, against the exact bytes the host serves | [run 33512549120](https://github.com/upgradedev/claimready/actions/runs/33512549120), 2026-09-01 13:18 UTC, `headSha` `9b64fb2`. Two jobs. The smoke evals reported `Passed steps: 16/16 across 3 case(s)` against the deployed page, driven by Chrome's own `webmcp-evals` harness, which launches Chrome with `--enable-features=WebMCP`. No shim of ours is involved. The negative control in the same run reported `Passed steps: 7/8 across 1 case(s)` with the verdict `PROVEN`, because its eighth step is REQUIRED to fail: the ninth tool has to be gone after a patch that puts the car back on the road. The second job is our own dependency free `node evals/browser_probe.mjs`, run on a runner for the first time, which printed `probe: PASS. 53 checks against the deployed page, none failed`. **Why this row is worded so carefully.** It read `against the bytes the host serves` twice before while naming a commit five changes behind what was deployed, and both times it was wrong. So do not take its word for what is served: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 9b64fb2` fetches all 26 files the page loads and refuses if one of them differs. Run on 2026-09-01 it printed `the deployed page is 9b64fb2, on every one of those files` and exited 0. The evals workflow runs on a daily schedule and on dispatch, not on push, so this row goes stale on the next commit that touches a file the page loads, and that is a gap in the evidence rather than in the page. |
 | Evals against the tool surface | built and executed | Three journeys over the nine registered tools, and none over the declared form, plus a fourth case that is a negative control and is required to FAIL. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat evals/negative-control.json`, `cat .github/workflows/evals.yml` |
-| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not on their own assert that the refusals refused. What the negative control adds is the other direction: it applies a patch that is legal, requires the ninth tool to be WITHDRAWN, and fails the workflow unless the harness reports exactly seven of eight steps passed and names the last one. Read as a pair, the surface moves when a patch lands and holds still when one is refused, which is what makes journey 2 evidence rather than a no op. That pair has been replayed offline and made to fail three ways, **and it has now run in a browser**: in run 33334936720 the negative control job reported `Passed steps: 7/8` and named the reason, `step 8 (get_assistance_options): tool "get_assistance_options" is not available.` This file used to say the withdrawal half had never been seen in a browser. It has been seen twice: there, and on a desktop, where `node evals/browser_probe.mjs` watched `getTools()` go from nine entries to ten when the car could not be driven and back to nine when it could, on Chrome `151.0.7922.174` stable against the page as deployed on 2026-08-31, which was `21fc9f2`. A second limit lives there too: smoke mode gathers the page's browser console errors and never reports or gates on them, so a green run says nothing at all about the console |
+| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not on their own assert that the refusals refused. What the negative control adds is the other direction: it applies a patch that is legal, requires the ninth tool to be WITHDRAWN, and fails the workflow unless the harness reports exactly seven of eight steps passed and names the last one. Read as a pair, the surface moves when a patch lands and holds still when one is refused, which is what makes journey 2 evidence rather than a no op. That pair has been replayed offline and made to fail three ways, **and it has now run in a browser**: in [run 33512549120](https://github.com/upgradedev/claimready/actions/runs/33512549120), the run of record above and the one whose `headSha` is the `9b64fb2` the host serves, the negative control job reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`, and named the reason, `step 8 (get_assistance_options): tool "get_assistance_options" is not available.` It reported the same thing in the two earlier runs 33334936720 and 33458929502, which are history rather than evidence about the live page, because each was driven against a commit later work superseded. This row cited 33334936720 as though it were current after that stopped being true. This file also used to say the withdrawal half had never been seen in a browser. It has been seen twice: there, and on a desktop, where `node evals/browser_probe.mjs` watched `getTools()` go from nine entries to ten when the car could not be driven and back to nine when it could, on Chrome `151.0.7922.174` stable against the page as deployed on 2026-08-31, which was `21fc9f2`. A second limit lives there too: smoke mode gathers the page's browser console errors and never reports or gates on them, so a green run says nothing at all about the console |
 | Public video | not yet built. It is the only row that blocks the readiness **exit code**, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows. It is **not** the only thing between this repository and a finished submission: `node scripts/readiness.mjs` prints a `READY TO SUBMIT` tally that counts the owner gated rows too, so the number a reader should trust is lower than the automated one. Run it rather than quoting a figure from here: the outstanding rows are `D4` plus the owner gated ones, including `O3`, whether the form reads Submitted | `node scripts/readiness.mjs` row `D4` |
 | Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
 
@@ -668,6 +818,12 @@ docs/review/          our own adversarial review of this entry against the four 
 docs/handler-verification.md
                       how somebody outside this project checks a packet's digest, with two routes
                       that use none of our code
+evidence/impact/      the 36 run study, its preregistered protocol, its errata and its result, which
+                      went against the page. protocol-v2 and runs-v2 are a follow up with no runs in
+                      them yet, and results-v2.md says AWAITING_RUNS for that reason
+evidence/handler-review/
+                      fixed questions for a claims handler outside this project. Nobody has been
+                      approached and no answer is recorded. It is an empty instrument, not a result
 video/                the per beat video pipeline and its sync gate
 ```
 

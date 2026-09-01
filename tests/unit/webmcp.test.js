@@ -538,8 +538,11 @@ test('a filed claim is closed to the writing tool, and says so without asking fo
 
   try {
     await registerTools(context, ALWAYS_ON_TOOLS);
-    // Filed the way the page files: the rules the filing is decided against travel on the action.
-    const filed = context.store.dispatch({ type: 'file', at: '10:00:00', pack: context.pack, completedHumanActions: [] });
+    // Filed the way the page files: the rules the filing is decided against, and the insurer the
+    // policy is with, both travel on the action. The gate refuses a filing that cannot name either.
+    const filed = context.store.dispatch({
+      type: 'file', at: '2026-09-01T10:00:00.000Z', pack: context.pack, completedHumanActions: [], homePackId: context.homePackId,
+    });
     assert.equal(filed.ok, true, `the fixture claim must file: ${filed.error}`);
 
     const text = await callRegistered(host, 'apply_claim_patch', {

@@ -48,7 +48,7 @@
  * filing.js before adding anything to the top level of this module that reads it.
  */
 
-import { canFile } from './filing.js';
+import { canFile, FILE_CODES } from './filing.js';
 
 /** Incident categories a claim may declare. Also the enum for the tool schema. */
 export const INCIDENT_TYPES = ['collision', 'theft', 'glass', 'weather', 'fire', 'vandalism'];
@@ -235,15 +235,50 @@ const BOOLEAN_FALSE = ['false', 'no'];
 /** Enough of the protected list to be useful in a refusal, without a wall of text. */
 const PROTECTED_IN_MESSAGES = 'policy facts, the validation result, revision, provenance, locked and status';
 
-function isIsoDate(value) {
+/**
+ * Whether this is a real day on the calendar, written the one way this build writes a date.
+ *
+ * EXPORTED BECAUSE A SECOND READER NEEDS THE SAME GRAMMAR AND MUST NOT WRITE ITS OWN. A rule pack
+ * states a policy period as two dates, and src/core/coverage.js decides whether a loss falls inside
+ * that period by comparing the strings: `date >= start && date <= end`. That comparison is only
+ * chronological while every one of the three is YYYY-MM-DD, so the loader in src/core/policy.js has
+ * to hold a pack's period to the same shape the claim's own date is held to. One function, two
+ * callers, no copy to drift.
+ *
+ * THE YEAR WINDOW IS NOT PART OF THIS, ON PURPOSE. A claim on this page happens between 2000 and
+ * 2099, which is a fact about the claim and not about the calendar. A policy period that starts
+ * before 2000 is still two dates that compare correctly against a claim date inside the window, so
+ * refusing it would be this build inventing a rule the schedule never agreed to. isIsoDate below
+ * adds the window back for the field that genuinely has one.
+ *
+ * @param {*} value
+ * @returns {boolean}
+ */
+export function isCalendarDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const year = Number(value.slice(0, 4));
   const month = Number(value.slice(5, 7));
   const day = Number(value.slice(8, 10));
-  if (year < MIN_YEAR || year > MAX_YEAR) return false;
   if (month < 1 || month > 12) return false;
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return day >= 1 && day <= daysInMonth;
+}
+
+/**
+ * Whether a claim on this page could carry this as its incident date.
+ *
+ * The calendar test above plus the window this build works in. It is the incident_date validator
+ * below, and it is exported for the same reason isCalendarDate is: src/core/policy.js refuses a rule
+ * pack that compares incident_date against a value no claim could ever hold, and the only honest
+ * answer to "could a claim hold this" is the function the claim itself uses.
+ *
+ * @param {*} value
+ * @returns {boolean}
+ */
+export function isIsoDate(value) {
+  if (!isCalendarDate(value)) return false;
+  const year = Number(value.slice(0, 4));
+  return year >= MIN_YEAR && year <= MAX_YEAR;
 }
 
 function textField(label, maxLength) {
@@ -339,6 +374,50 @@ const VALIDATORS = {
   police_report_ref: textField('police_report_ref', POLICE_REF_MAX_LENGTH),
   witness_name: textField('witness_name', WITNESS_MAX_LENGTH),
 };
+
+/**
+ * THE ONE SHAPE A FILING TIME TAKES, ANYWHERE IN THIS PROJECT.
+ *
+ * A full ISO-8601 instant in UTC, to the millisecond, which is exactly what
+ * `new Date().toISOString()` writes. Nothing else is accepted through either door into this state:
+ * `fileClaim` refuses a caller that hands in something else, and `hydrateClaim` refuses a stored
+ * claim that carries something else.
+ *
+ * WHY THIS SHAPE AND NOT A FRIENDLIER ONE. The page used to hand `fileClaim` a local wall clock
+ * reading, "19:15:31", and that string travelled untouched into the claim, into the sentence under
+ * the File button, and into the sealed packet a handler receives, under a digest. So a handler in
+ * another country was given a time with no date on it and no zone on it, sealed as though somebody
+ * had checked it. A partial reading cannot be compared, ordered or converted, and those are the
+ * only three things anyone ever does with a filing time.
+ *
+ * AN OFFSET IS REFUSED TOO, not only a missing one. "09:30:00.000Z" and "11:30:00.000+02:00" are
+ * the same moment written two ways, and the digest is over the bytes rather than over the moment.
+ * One shape means two exports of one filing agree, which is the whole promise of the digest.
+ */
+const FILING_INSTANT_EXAMPLE = '2026-09-01T09:15:00.000Z';
+
+const FILING_INSTANT_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/** Said wherever a filing time is refused, so every surface refuses it in the same words. */
+const FILING_INSTANT_REASON =
+  `a filing time is a full UTC instant like ${FILING_INSTANT_EXAMPLE}`;
+
+/**
+ * Is this a filing time this project is willing to write down.
+ *
+ * THE ROUND TRIP THROUGH Date IS THE LOAD BEARING HALF. The pattern on its own accepts
+ * "2026-02-30T09:30:00.000Z", a day that does not exist, and a claim sealed as filed on it would
+ * carry a date nobody can act on. Parsing it and asking for the same string back is what closes
+ * that, and it costs one allocation on a path that runs once per filing.
+ *
+ * @param {*} value
+ * @returns {boolean}
+ */
+export function isFilingInstant(value) {
+  if (typeof value !== 'string' || !FILING_INSTANT_SHAPE.test(value)) return false;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+}
 
 /* --------------------------------------------------------------- internals */
 
@@ -480,6 +559,12 @@ export function createClaim(fixture) {
  * throws with the field named, and a provenance badge survives only when its source is one this
  * model knows and the field it is about actually holds a value.
  *
+ * AND THE BOOKKEEPING IS HELD TO THE SAME STANDARD, which took a second pass. The revision, the
+ * status, the pins and the filing time are not claim answers, they are what decides whether a later
+ * writer is allowed to do anything, and every one of them used to be repaired in silence into the
+ * more permissive reading. `storedRevision`, `storedStatus`, `storedLocks` and `storedFilingTime`
+ * refuse instead, and the reasoning is written out above them.
+ *
  * @param {object} value
  * @returns {object} a complete, normalised claim
  * @throws {TypeError} when a stored field is unknown or its value is invalid
@@ -492,16 +577,16 @@ export function hydrateClaim(value) {
   const claim = emptyClaim();
 
   // Protected fields first, because the patchable ones are checked against the same rules a patch
-  // uses and those rules do not describe a status or a revision.
+  // uses and those rules do not describe a status or a revision. These four have rules of their
+  // own, a few lines further down, and the shape of all four is the same: a missing value takes the
+  // documented default, a present one that this model would never have written is refused.
   claim.policy_id = optionalString(value.policy_id, 'policy_id');
   claim.reference = optionalString(value.reference, 'reference');
-  claim.revision = Number.isInteger(value.revision) && value.revision >= 0 ? value.revision : 0;
-  claim.status = value.status === 'filed' ? 'filed' : 'draft';
-  claim.filed_at = optionalString(value.filed_at, 'filed_at');
+  claim.revision = storedRevision(value.revision);
+  claim.status = storedStatus(value.status);
+  claim.filed_at = storedFilingTime(value.filed_at);
   claim.evidence_notes = normaliseNotes(value.evidence_notes);
-  claim.locked = Array.isArray(value.locked)
-    ? value.locked.filter((field) => PATCHABLE_FIELDS.includes(field))
-    : [];
+  claim.locked = storedLocks(value.locked);
 
   // A filed claim with no filed_at is not a claim anyone can answer for. Rather than invent a
   // timestamp, which would be a fact this function made up, the state that carries no time is read
@@ -538,6 +623,94 @@ export function hydrateClaim(value) {
   }
 
   return claim;
+}
+
+/**
+ * THE FOUR STORED VALUES THAT ARE NOT ANSWERS, AND THE RULE THEY ARE ALL READ UNDER.
+ *
+ * Revision, status, locked and filed_at are bookkeeping. Nobody types them. They decide what a
+ * later writer is allowed to do: how many times this draft has moved, whether it is still open,
+ * which fields a person pinned, and when it went in. Every one of them used to be repaired in
+ * silence. A revision of "17" became 0, a status of "archived" became draft, a lock on a name this
+ * model does not know was filtered out of the list, and a filing time could be any string at all.
+ *
+ * SECURITY RELEVANT PERSISTED STATE MUST NEVER SILENTLY RESET INTO A MORE PERMISSIVE STATE, and
+ * every one of those repairs did exactly that. A counter reset to 0 makes a patch quoting a stale
+ * revision look current, which is the one check that makes a draft safe to write to from two sides.
+ * A lock dropped from the list makes a field the claimant pinned writable again by an agent. A
+ * status that is not one of the two this model knows became the open one. None of them refused, and
+ * a caller could not tell a repaired claim from a clean one, because the only difference was a
+ * value that was no longer there.
+ *
+ * ABSENT IS NOT THE SAME AS PRESENT AND WRONG. A claim written before the revision counter existed
+ * carries no revision at all, and opening it at 0 with an empty lock list is the documented way to
+ * read an older draft. That is a gap, and the default fills it. A value somebody stored that this
+ * model would never have written is not a gap. It is either a corrupted write or a forged one, and
+ * the only safe answer to both is to refuse the whole claim by name.
+ */
+function storedRevision(held) {
+  if (held === null || held === undefined) return 0;
+  if (!Number.isInteger(held) || held < 0) {
+    throw new TypeError(
+      'Stored claim field "revision" is not usable: it must be a whole number of zero or more, '
+      + `and it is ${JSON.stringify(held)}.`,
+    );
+  }
+  return held;
+}
+
+function storedStatus(held) {
+  if (held === null || held === undefined) return 'draft';
+  if (held !== 'draft' && held !== 'filed') {
+    throw new TypeError(
+      'Stored claim field "status" is not usable: it must be "draft" or "filed", '
+      + `and it is ${JSON.stringify(held)}.`,
+    );
+  }
+  return held;
+}
+
+function storedFilingTime(held) {
+  if (held === null || held === undefined) return null;
+  if (!isFilingInstant(held)) {
+    throw new TypeError(
+      `Stored claim field "filed_at" is not usable: ${FILING_INSTANT_REASON}, `
+      + `and it is ${JSON.stringify(held)}.`,
+    );
+  }
+  return held;
+}
+
+/**
+ * The pins, refused rather than filtered.
+ *
+ * A duplicate is refused too. Nothing this model writes produces one, so a list holding the same
+ * field twice is a list something else built, and silently collapsing it would hide that.
+ */
+function storedLocks(held) {
+  if (held === null || held === undefined) return [];
+  if (!Array.isArray(held)) {
+    throw new TypeError(
+      'Stored claim field "locked" is not usable: it must be a list of field names, '
+      + `and it is ${typeof held}.`,
+    );
+  }
+  const locks = [];
+  for (const field of held) {
+    if (!PATCHABLE_FIELDS.includes(field)) {
+      throw new TypeError(
+        `Stored claim field "locked" is not usable: ${JSON.stringify(field)} is not a field a `
+        + 'person can pin.',
+      );
+    }
+    if (locks.includes(field)) {
+      throw new TypeError(
+        `Stored claim field "locked" is not usable: ${JSON.stringify(field)} is pinned twice.`,
+      );
+    }
+    locks.push(field);
+  }
+  return locks;
 }
 
 /** A stored string field, or null. Anything else is a stored claim we cannot answer for. */
@@ -973,7 +1146,10 @@ export function provenanceOf(claim, field) {
  * @param {object} claim
  * @param {{at?: string, pack?: (object|null),
  *          completedHumanActions?: (string[]|Set<string>)}} [options]
- *        `at` is a timestamp supplied by the caller and never invented here.
+ *        `at` is the filing time, supplied by the caller and never invented here.
+ *        It has to be a full UTC instant, `2026-09-01T09:15:00.000Z`, and a
+ *        filing that arrives without one is refused rather than recorded with a
+ *        null or a wall clock reading in its place.
  *        `pack` is the insurer rule pack the page is reading against, as plain
  *        data. `completedHumanActions` are the ids of requirements whose human
  *        action has been carried out on the page.
@@ -998,9 +1174,32 @@ export function fileClaim(claim, options = {}) {
     };
   }
 
+  // ONE SHAPE FOR A FILING TIME, REFUSED HERE RATHER THAN INVENTED HERE.
+  //
+  // This module owns no clock. It has no DOM, no browser globals, no network, no timers and no
+  // I/O, and a timestamp made up in here would be a fact about the filing that nobody observed.
+  // So the caller reads the clock and hands the instant over, and this is where a caller that
+  // hands over something else is stopped. It used to be `typeof options.at === 'string'`, which
+  // let "19:15:31" through and wrote a filing time with no date and no zone into a document that
+  // then got hashed.
+  //
+  // IT RUNS AFTER THE GATE ON PURPOSE. A draft that is not ready still hears which of the
+  // claimant's own answers are missing, because that is the half a person can act on. A bad
+  // timestamp is our bug, and our bug does not get to speak over theirs.
+  if (!isFilingInstant(options.at)) {
+    return {
+      claim,
+      ok: false,
+      error: `This filing was not recorded: ${FILING_INSTANT_REASON}, and it is `
+        + `${JSON.stringify(options.at ?? null)}.`,
+      code: FILE_CODES.noFilingTime,
+      revision,
+    };
+  }
+
   const next = copyClaim(claim);
   next.status = 'filed';
-  next.filed_at = typeof options.at === 'string' ? options.at : null;
+  next.filed_at = options.at;
   next.revision = revision + 1;
   return { claim: next, ok: true, error: null, code: null, revision: next.revision };
 }

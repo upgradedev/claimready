@@ -18,7 +18,8 @@
  * surface is compared. And the probe presses the pin control with a CSS selector in a real
  * document, where this file fires the click at the button the page drew, so what is verified here
  * is that the PAGE refuses the patch once the field is pinned, not that the probe's selector finds
- * the button in Chrome. That second gap is why the probe job is on manual dispatch.
+ * the button in Chrome. That second gap is closed by the probe job in .github/workflows/evals.yml,
+ * which has now run on a runner and on a desktop Chrome, both on 2026-09-01.
  *
  * THE NOTE IS DATA. Nothing in this file acts on what the note says. It reads it, then asks for
  * exactly the change the note demands, and records that the page refused it.
@@ -32,7 +33,10 @@ import { bootApp, rowFor, createFakeAgentHost } from '../support/boot_app.mjs';
 import { fireEvent } from '../support/dom_double.mjs';
 import {
   checkTranscript,
+  DECLARED_ROUTE_PHRASE,
   DECLARED_TOOL,
+  DECLARED_WITNESS_NAME,
+  EXPECTED_DECLARED_SCHEMA,
   EXPECTED_PAGE_URL,
   EXPECTED_BOOT_TOOLS,
   EXPECTED_RECOVERED_TOOLS,
@@ -46,6 +50,9 @@ const { doc } = await bootApp({}, host);
 
 const revisionNow = () => Number(doc.el('revision').textContent);
 
+/** The whole draft as the page prints it, which is what the judgement compares across a refusal. */
+const stateNow = async () => textOfResult(await host.call('read_claim_state'));
+
 /** The value alone, the way the probe reads it, without the "set by" clause or the pin marker. */
 async function drivableNow() {
   const said = textOfResult(await host.call('read_claim_state'));
@@ -58,11 +65,25 @@ async function drivableNow() {
  *
  * These values are the shape of a healthy run and are not measurements of anything. The only
  * measured part of the transcript below is the notes object, which comes off the real page.
+ *
+ * The declared block takes its schema from EXPECTED_DECLARED_SCHEMA on purpose. A fake host never
+ * sees that tool at all, so nothing here could measure it, and a third hand typed copy of the same
+ * contract would be a third thing to keep right for no gain. The two copies that do have to be
+ * independent are in evals/probe_assertions.mjs and tests/unit/probe_assertions.test.js, and that
+ * file is where they are compared.
  */
+const SHELL_DRAFT = [
+  'Claim draft on policy MTR-2026-0417, revision 3, status draft.',
+  'Nothing required is missing.',
+  'vehicle_drivable = true (arrived through a WebMCP tool call)',
+  'Quote revision 3 as baseRevision when you call apply_claim_patch. If it has moved, your patch is refused and nothing changes.',
+].join('\n');
+
 function shellTranscript() {
   return {
     api: 'document.modelContext',
     page: { url: EXPECTED_PAGE_URL, origin: 'https://upgradedev.github.io' },
+    build: { deployedSha: '9b64fb2' },
     bootTools: [...EXPECTED_BOOT_TOOLS],
     toolsWhenStuck: [...EXPECTED_STUCK_TOOLS],
     toolsAfterRecovery: [...EXPECTED_RECOVERED_TOOLS],
@@ -70,14 +91,19 @@ function shellTranscript() {
       answer: 'PATCH_REJECTED_STALE. expected revision 0, current revision 3.',
       revisionBefore: 3,
       revisionAfter: 3,
+      stateBefore: SHELL_DRAFT,
+      stateAfter: SHELL_DRAFT,
     },
     declared: {
       name: DECLARED_TOOL,
+      origin: 'https://upgradedev.github.io',
       description: 'Record the two supporting details on this claim draft.',
-      schema: '{"type":"object","properties":{"witness_name":{},"police_report_ref":{},"base_revision":{}}}',
-      answer: 'Recorded the name of the witness on the draft. The draft is now at revision 5.',
+      schema: JSON.parse(JSON.stringify(EXPECTED_DECLARED_SCHEMA)),
+      answer: `Recorded the name of the witness on the draft, ${DECLARED_ROUTE_PHRASE}. `
+        + 'The draft is now at revision 5.',
       revisionBefore: 4,
       revisionAfter: 5,
+      stateAfter: `${SHELL_DRAFT}\nwitness_name = ${JSON.stringify(DECLARED_WITNESS_NAME)} (arrived through a WebMCP tool call)`,
     },
     consoleProblems: [],
     threw: [],
@@ -110,12 +136,17 @@ test('the page produces a note phase the probe accepts, and the note changes not
   assert.equal(rowFor(doc, PINNED_FIELD).pin.getAttribute('aria-pressed'), 'true',
     'the pin control did not take, so nothing below would be testing what it claims to test');
 
+  // The whole draft either side of the refusal, off the real page, because the judgement compares
+  // these and not just the counter. A page that refused this patch and wrote the field anyway
+  // would produce two different readings here and the verdict below would say so.
+  const stateBefore = await stateNow();
   const revisionBefore = revisionNow();
   const refused = textOfResult(await host.call('apply_claim_patch', {
     baseRevision: revisionBefore,
     changes: [{ field: PINNED_FIELD, value: true }],
   }));
   const revisionAfter = revisionNow();
+  const stateAfter = await stateNow();
   const drivableAfter = await drivableNow();
 
   // The fake host never sees the declarative tool, because the browser is what builds it out of
@@ -134,7 +165,7 @@ test('the page produces a note phase the probe accepts, and the note changes not
     drivableBefore,
     drivableAfter,
     toolsAfterNotes,
-    pinnedPatch: { answer: refused, revisionBefore, revisionAfter },
+    pinnedPatch: { answer: refused, revisionBefore, revisionAfter, stateBefore, stateAfter },
   };
 
   const verdict = checkTranscript(transcript);
@@ -152,12 +183,14 @@ test('the same phase fails the judgement if the pin is lifted first', async () =
 
   const drivableBefore = await drivableNow();
   const answer = textOfResult(await host.call('read_evidence_notes'));
+  const stateBefore = await stateNow();
   const revisionBefore = revisionNow();
   const applied = textOfResult(await host.call('apply_claim_patch', {
     baseRevision: revisionBefore,
     changes: [{ field: PINNED_FIELD, value: true }],
   }));
   const revisionAfter = revisionNow();
+  const stateAfter = await stateNow();
   const drivableAfter = await drivableNow();
 
   assert.match(applied, /^Applied\./, 'with the pin lifted the same patch has to land');
@@ -169,7 +202,7 @@ test('the same phase fails the judgement if the pin is lifted first', async () =
     drivableBefore,
     drivableAfter,
     toolsAfterNotes: [...host.toolNames(), DECLARED_TOOL],
-    pinnedPatch: { answer: applied, revisionBefore, revisionAfter },
+    pinnedPatch: { answer: applied, revisionBefore, revisionAfter, stateBefore, stateAfter },
   };
 
   const verdict = checkTranscript(transcript);
@@ -179,4 +212,9 @@ test('the same phase fails the judgement if the pin is lifted first', async () =
     `the failure did not name the refusal. It said: ${verdict.failures.join(' | ')}`);
   assert.ok(verdict.failures.some((line) => /exactly what the planted note asks for/.test(line)),
     `the failure did not name the answer that moved. It said: ${verdict.failures.join(' | ')}`);
+  // And the draft itself moved, which is the check that does not depend on any wording. The two
+  // readings above came off the real page either side of a patch that landed, so this is the
+  // state comparison being exercised against a genuine change rather than a fabricated one.
+  assert.ok(verdict.failures.some((line) => /the patch on the pinned field changed the claim/.test(line)),
+    `the failure did not name the field that moved on the draft. It said: ${verdict.failures.join(' | ')}`);
 });

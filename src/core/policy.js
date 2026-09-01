@@ -20,7 +20,19 @@
  * never decides a claim, and nothing in it can approve, accept or refuse one.
  */
 
-import { PATCHABLE_FIELDS } from './claim.js';
+import {
+  PATCHABLE_FIELDS,
+  INCIDENT_TYPES,
+  SEVERITIES,
+  DAMAGE_ZONES,
+  DESCRIPTION_MAX_LENGTH,
+  DRIVER_MAX_LENGTH,
+  LOCATION_MAX_LENGTH,
+  POLICE_REF_MAX_LENGTH,
+  WITNESS_MAX_LENGTH,
+  isCalendarDate,
+  isIsoDate,
+} from './claim.js';
 
 /** The convention this pack is written against. Ours, versioned, not a standard. */
 export const PACK_CONTRACT = 'claim-intake.v1';
@@ -50,6 +62,8 @@ const GROUP_OPERATORS = ['any_of', 'all_of'];
  *
  * `packId` is null when the pack was refused before its id could be read, which is honest: a file
  * with no usable id has no id to report, and inventing one would be worse than saying nothing.
+ * `ruleId` and `coverageId` are null for the same reason, and they are never both set: a refusal
+ * belongs to one intake rule or to one section of the schedule, never to both at once.
  */
 export class PackRefused extends TypeError {
   constructor(message, origin) {
@@ -57,11 +71,12 @@ export class PackRefused extends TypeError {
     this.name = 'PackRefused';
     this.packId = (origin && origin.packId) || null;
     this.ruleId = (origin && origin.ruleId) || null;
+    this.coverageId = (origin && origin.coverageId) || null;
   }
 }
 
 /**
- * Which pack, and which rule inside it, the refusal being raised belongs to.
+ * Which pack, and which rule or which section inside it, the refusal being raised belongs to.
  *
  * WHY A MODULE VARIABLE RATHER THAN AN ARGUMENT. `fail` is reached from requireString and
  * requireArray, which are called from a dozen places that have no idea which rule is being read.
@@ -70,8 +85,12 @@ export class PackRefused extends TypeError {
  * from its first line to its last: no await, no callback out to anyone else's code, so on one thread
  * only one load can ever be part way through. It is reset at the top of every load, so a refusal
  * from an earlier call cannot leak its rule id into a later one.
+ *
+ * The same care applies between the two halves of one load. Coverages are normalised before
+ * requirements, so a coverage id left lying here would ride onto a refusal raised by a rule that has
+ * nothing to do with it. Both normalisers clear their own field on the way in and on the way out.
  */
-let refusalOrigin = { packId: null, ruleId: null };
+let refusalOrigin = { packId: null, ruleId: null, coverageId: null };
 
 function fail(message) {
   throw new PackRefused(`policy pack: ${message}`, refusalOrigin);
@@ -91,23 +110,101 @@ function requireArray(value, what) {
   return value;
 }
 
+/**
+ * The offending value, written back to its author as the thing they actually wrote.
+ *
+ * JSON.stringify RENDERS Infinity AND NaN AS null, so a refusal built on it told a pack author that
+ * they had written null when they had written NaN, and sent them looking for a key that was not the
+ * problem. Numbers go through String instead, which says NaN and Infinity out loud. Everything else
+ * keeps the quoted JSON form the older refusals in this file already use, so their wording is
+ * unchanged.
+ */
+function showValue(value) {
+  return typeof value === 'number' ? String(value) : JSON.stringify(value ?? null);
+}
+
+/**
+ * One section of the schedule, checked for what it SAYS and not only for what shape it is in.
+ *
+ * WHAT EACH OF THESE THREE CHECKS WAS MEASURED DOING BEFORE IT EXISTED, on a deep copy of
+ * fixtures/insurers/northwind.json with one field bent:
+ *
+ *   active: "true"            loaded, and `entry.active === true` answered false. coverFacts then
+ *                             reported in_force false and excess null on a section the pack says is
+ *                             in force. A judge reading the page is told the opposite of the file
+ *   active: 1                 the same
+ *   active absent             the same, silently
+ *   deductible: -250          loaded, and coverFacts returned excess -250
+ *   deductible: Infinity      loaded, and coverFacts returned excess Infinity
+ *   deductible: NaN           loaded, and coverFacts returned excess NaN
+ *   incident_types: ["banana"] loaded, and applies_to carried "banana" out to the tool surface
+ *
+ * The excess is the number a claimant reads off this page and plans around, so a section that says
+ * nothing usable about it may not load at all. None of this is a new opinion about what a schedule
+ * means: it is the loader refusing to answer for a file it cannot read.
+ *
+ * TWO THINGS THAT LOOK WRONG AND ARE NOT, both checked against the shipped packs before tightening
+ * anything. `deductible: 0` is legal and both packs use it, because a section with no excess is an
+ * ordinary section and the refusal below already tells an author to write the zero. An empty
+ * `incident_types` is legal and both packs use it on third party liability, which is not written
+ * against an incident category at all. A rule that refused either of those would be a rule that
+ * refuses the files this build ships with.
+ */
 function normaliseCoverage(entry, index) {
+  refusalOrigin.coverageId = null;
   if (!entry || typeof entry !== 'object') fail(`coverage ${index} is not an object.`);
   const code = requireString(entry.code, `coverage ${index} code`);
+
+  // From here on the refusal belongs to this section, so a caller can name it without reading the
+  // sentence. Cleared above on the way in, so the section before this one cannot put its code on a
+  // refusal raised by this one.
+  refusalOrigin.coverageId = code;
+
+  // A KEY THAT IS NOT THERE IS NOT A KEY WRITTEN AS null, AND THE REFUSAL HAS TO SAY WHICH. Sending
+  // an author to look for an `"active": null` line that their file does not contain is the same
+  // defect showValue above exists to stop, one argument further along.
+  if (entry.active === undefined) {
+    fail(`coverage "${code}" states no active flag, so nothing in the file says whether this section `
+      + 'is in force. Write true or false, because an absent one is read as not in force and a '
+      + 'section the schedule puts in force would be reported to a claimant as not bought.');
+  }
+  if (typeof entry.active !== 'boolean') {
+    fail(`coverage "${code}" writes active: ${showValue(entry.active)}. It is true or `
+      + 'false and nothing else, because anything else is read as not in force, and a section the '
+      + 'schedule puts in force would be reported to a claimant as not bought.');
+  }
+
+  if (entry.deductible !== undefined && entry.deductible !== null) {
+    if (typeof entry.deductible !== 'number' || !Number.isFinite(entry.deductible)) {
+      fail(`coverage "${code}" writes deductible: ${showValue(entry.deductible)}. An excess is a `
+        + 'number, and this one reaches a claimant as the amount they pay.');
+    }
+    if (entry.deductible < 0) {
+      fail(`coverage "${code}" writes a deductible of ${entry.deductible}. An excess is what the `
+        + 'claimant pays, so it is never below zero. Write 0 if there is no excess.');
+    }
+  }
+
   const coverage = {
     code,
     label: requireString(entry.label, `coverage "${code}" label`),
     clause: requireString(entry.clause, `coverage "${code}" clause`),
-    active: entry.active === true,
+    active: entry.active,
     deductible: typeof entry.deductible === 'number' ? entry.deductible : null,
-    incident_types: requireArray(entry.incident_types, `coverage "${code}" incident_types`).map((type) =>
-      requireString(type, `coverage "${code}" incident type`),
-    ),
+    incident_types: requireArray(entry.incident_types, `coverage "${code}" incident_types`).map((type) => {
+      const named = requireString(type, `coverage "${code}" incident type`);
+      if (!INCIDENT_TYPES.includes(named)) {
+        fail(`coverage "${code}" applies to "${named}", which is not an incident a claim can `
+          + `declare. Incidents: ${INCIDENT_TYPES.join(', ')}.`);
+      }
+      return named;
+    }),
   };
   if (typeof entry.inactive_reason === 'string') coverage.inactive_reason = entry.inactive_reason;
   if (coverage.active && coverage.deductible === null) {
     fail(`coverage "${code}" is active but names no deductible. Write 0 if there is no excess.`);
   }
+  refusalOrigin.coverageId = null;
   return coverage;
 }
 
@@ -120,17 +217,148 @@ function normaliseExcludedDriver(entry, index) {
   };
 }
 
+/**
+ * The two dates the schedule runs between, held to the grammar the comparison needs.
+ *
+ * src/core/coverage.js decides whether a loss falls inside the period with `date >= start && date
+ * <= end`, comparing three strings. That is chronological only while all three are YYYY-MM-DD, so a
+ * period written any other way turns a date comparison into an alphabetical one and the answer it
+ * gives has nothing to do with time. Measured on a deep copy of northwind with `start` set to "the
+ * first of January": the pack loaded, and the cover answer for a claim inside the real period was
+ * decided by comparing "2026-06-15" against "the first of January".
+ *
+ * REVERSED IS THE WORSE ONE, because it looks like a typo and reads as a decision. Also measured,
+ * with start 2026-12-31 and end 2026-01-01: the pack loaded and every claim came back NOT COVERED,
+ * carrying the period clause, so the page told a claimant their loss fell outside a policy that was
+ * running on the day. A pair of dates in that order describes no period at all.
+ *
+ * The calendar grammar is imported from src/core/claim.js rather than written again here, because
+ * the claim date this is compared against is checked by that same function. Two copies of one date
+ * rule is how the two ends of a comparison drift apart.
+ */
 function normalisePeriod(period) {
   if (period === undefined || period === null) return null;
   if (typeof period !== 'object') fail('period must be an object holding start, end and clause.');
+  const start = requireString(period.start, 'period start');
+  const end = requireString(period.end, 'period end');
+  for (const [label, value] of [['start', start], ['end', end]]) {
+    if (!isCalendarDate(value)) {
+      fail(`period ${label} is "${value}", which is not a real day written as YYYY-MM-DD. The cover `
+        + 'check compares the incident date against these two as text, so anything else compares '
+        + 'alphabetically and answers about something other than time.');
+    }
+  }
+  if (start > end) {
+    fail(`period runs from "${start}" to "${end}", which is backwards. Every claim would fall `
+      + 'outside a policy written that way, and the page would tell the claimant so.');
+  }
   return {
-    start: requireString(period.start, 'period start'),
-    end: requireString(period.end, 'period end'),
+    start,
+    end,
     clause: typeof period.clause === 'string' ? period.clause : null,
   };
 }
 
 /* --------------------------------------------------------- condition shape */
+
+/**
+ * What each claim field can actually hold, so a condition can be checked against the field it names.
+ *
+ * ONE CANONICAL SOURCE, IMPORTED. Every list below is the list src/core/claim.js already validates
+ * an incoming value against. Writing them out again here would give this build two answers to "is
+ * severity allowed to be banana", and the day they disagreed the loader would refuse a pack the
+ * claim layer accepts, or wave one through that it does not.
+ *
+ * WHY THE CHECK HAS TO KNOW WHICH FIELD. The evaluator in src/core/requirements.js compares with
+ * `===` and with `Array.includes`, so a condition matches only when the pack's value is the same
+ * type and the same string as the claim's. What is valid therefore depends entirely on the field:
+ * `equals: 3` is a sensible impact position and a nonsense severity, `equals: false` is the only way
+ * to ask about a car that will not drive and can never be an incident type. A check that only asked
+ * "is this a scalar" would pass all four of those.
+ *
+ * MEASURED, ON A DEEP COPY OF northwind, before any of this existed. Every one of these loaded:
+ *
+ *   equals: "banana" on incident_type   the rule never fired for anybody, silently
+ *   equals: "Theft" on incident_type    the same, because the claim layer lowercases and the pack
+ *                                       does not, so a capital letter switches a rule off
+ *   equals: "3" on damage_zone          the same, because the claim holds a number and a JSON author
+ *                                       reaches for a string
+ *   equals: "false" on vehicle_drivable the same, and this is the shape both shipped packs use
+ *   equals: 47 on damage_zone           the same
+ *   in: ["structural", "banana"]        loaded with a member that can never match
+ *   not_equals: {x: 1}                  the rule fired for EVERYBODY, because no claim value is ever
+ *                                       equal to an object
+ *   in: []                              the rule never fired, which is a rule written to do nothing
+ *
+ * None of those is a shape error and none of them says anything on the page. The claimant is asked
+ * for the wrong list, or for nothing, and the only sign is a requirement that quietly is not there.
+ */
+const textValues = (cap) => ({
+  describe: `text, at most ${cap} characters once trimmed`,
+  accepts: (value) => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= cap,
+});
+
+const CLAIM_FIELD_VALUES = {
+  incident_date: {
+    describe: 'a real calendar date written as YYYY-MM-DD, in the years this build reads',
+    accepts: isIsoDate,
+  },
+  incident_type: {
+    describe: `one of ${INCIDENT_TYPES.join(', ')}, in lower case`,
+    accepts: (value) => INCIDENT_TYPES.includes(value),
+  },
+  damage_zone: {
+    describe: `a whole clock position from ${DAMAGE_ZONES[0]} to ${DAMAGE_ZONES[DAMAGE_ZONES.length - 1]}, as a number`,
+    accepts: (value) => DAMAGE_ZONES.includes(value),
+  },
+  severity: {
+    describe: `one of ${SEVERITIES.join(', ')}, in lower case`,
+    accepts: (value) => SEVERITIES.includes(value),
+  },
+  vehicle_drivable: {
+    describe: 'true or false, as a boolean and not as a word',
+    accepts: (value) => typeof value === 'boolean',
+  },
+  description: textValues(DESCRIPTION_MAX_LENGTH),
+  driver: textValues(DRIVER_MAX_LENGTH),
+  location: textValues(LOCATION_MAX_LENGTH),
+  police_report_ref: textValues(POLICE_REF_MAX_LENGTH),
+  witness_name: textValues(WITNESS_MAX_LENGTH),
+};
+
+/**
+ * One value a condition compares a field against.
+ *
+ * IT REFUSES A FIELD IT HAS NO ENTRY FOR, AND THAT IS THE POINT OF THE LAST BRANCH. The map above
+ * has to cover PATCHABLE_FIELDS, and the day somebody adds a field to that list and forgets this
+ * one, the honest answer is that this loader does not know what that field can hold. Failing open
+ * there would be the quiet kind of rot: the operand check would go on reporting success while
+ * silently covering one field fewer. tests/unit/pack_contract.test.js asserts the map covers every
+ * patchable field and prints the count, so the omission is caught at authoring time rather than by
+ * a stranger's pack at boot.
+ */
+function checkOperand(field, value, where, operator) {
+  if (value === null) {
+    fail(`${where} compares ${field} against null. A field with no answer is asked about with `
+      + 'is_not_set: true, and one with any answer at all with is_set: true.');
+  }
+  if (typeof value === 'object') {
+    const shape = Array.isArray(value) ? 'a list' : 'an object';
+    fail(`${where} compares ${field} against ${shape}. ${operator} holds one value, and no claim `
+      + `field ever holds ${shape}, so the test answers the same thing for every claim that will `
+      + 'ever be read against it. For several values write in: [...].');
+  }
+  const known = CLAIM_FIELD_VALUES[field];
+  if (!known) {
+    fail(`${where} watches ${field}, and this loader holds no list of what that field can contain, `
+      + 'so it cannot say whether this pack is asking for something reachable.');
+  }
+  if (!known.accepts(value)) {
+    fail(`${where} compares ${field} against ${showValue(value)}, which no claim can ever hold. `
+      + `${field} is ${known.describe}. A rule written against a value that cannot occur silently `
+      + 'never applies, or silently always does, and nothing on the page says so.');
+  }
+}
 
 /**
  * A `when` block is one leaf test or one group. Anything else is refused here.
@@ -240,7 +468,21 @@ function checkConditionShape(when, where, insideGroup = false) {
     }
   }
 
-  if (when.in !== undefined) requireArray(when.in, `${where} when in`);
+  // THE VALUE CHECKS RUN LAST, SO EVERY REFUSAL ABOVE KEEPS THE SENTENCE IT ALREADY HAD. A block
+  // that names no field, or a field that is not a claim field, is refused for that first, because
+  // "watches made_up" is a more useful thing to read than a complaint about the value beside it.
+  if (when.in !== undefined) {
+    const values = requireArray(when.in, `${where} when in`);
+    if (values.length === 0) {
+      fail(`${where} when in is an empty list. A field is never one of nothing, so the rule could `
+        + 'not apply to any claim, and a rule that cannot apply is a rule the insurer did not get.');
+    }
+    values.forEach((value, index) => checkOperand(field, value, `${where} when in[${index}]`, 'in'));
+  }
+
+  for (const operator of ['equals', 'not_equals']) {
+    if (when[operator] !== undefined) checkOperand(field, when[operator], `${where} when ${operator}`, operator);
+  }
 
   // THE FIELD IS STORED AS IT WAS VALIDATED, AND THAT IS THE WHOLE POINT OF RETURNING ANYTHING.
   //
@@ -347,12 +589,27 @@ function normaliseRequirement(rule, index, seenIds) {
  *         carries the pack id and the rule id where those were known when it was raised
  */
 export function loadPolicyPack(raw, options) {
-  refusalOrigin = { packId: null, ruleId: null };
+  refusalOrigin = { packId: null, ruleId: null, coverageId: null };
 
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     fail(`expected a parsed pack object, received ${JSON.stringify(raw ?? null)}.`);
   }
 
+  // THE CONTRACT IS OPTIONAL AND STAYS OPTIONAL. An absent one means this build's own, which is a
+  // decision this line has always made and which src/core/packet.js was written against: its
+  // `pack_contract` row prints "no contract stated" for a pack that names none. Making it mandatory
+  // now would refuse packs a downstream reader already handles. There is no separate version field
+  // to require either. The version is the tail of the contract string, which is why "claim-intake.v9"
+  // below is refused as a whole rather than compared piece by piece.
+  //
+  // A CONTRACT THAT IS PRESENT AND IS NOT A STRING IS A DIFFERENT THING, and it used to be read as
+  // ours. Measured: `contract: 2` and `contract: null` both loaded, and the loaded pack came back
+  // saying claim-intake.v1, so a pack written to some other convention was answered for under this
+  // one. Saying nothing and saying something unreadable are not the same claim.
+  if (raw.contract !== undefined && typeof raw.contract !== 'string') {
+    fail(`contract is ${JSON.stringify(raw.contract)}, which names no convention. Write `
+      + `"${PACK_CONTRACT}", or leave the key out to mean this one.`);
+  }
   const contract = typeof raw.contract === 'string' ? raw.contract : PACK_CONTRACT;
   if (contract !== PACK_CONTRACT) {
     fail(`contract is "${contract}", this build reads ${PACK_CONTRACT}.`);

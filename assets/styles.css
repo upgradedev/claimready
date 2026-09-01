@@ -234,6 +234,49 @@ a { color: var(--accent); }
   max-inline-size: 62ch;
 }
 
+/* The primary action. Mobile first, like everything else here: full width and thumb sized on a
+   phone, shrunk to its own text beside the note once there is room. It sits between the lede and
+   the three step explainer, which is the only place it can be and still be the first thing a
+   visitor can reach. scripts/measure_fold.mjs asserts that, at 375 by 812 and at 1280 by 800. */
+
+.cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .5rem;
+  max-width: 1400px;
+  margin: 0 auto 1rem;
+}
+
+.cta-link {
+  display: inline-block;
+  font: inherit;
+  font-size: .95rem;
+  font-weight: 650;
+  text-decoration: none;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--accent-ink);
+  border-radius: 8px;
+  padding: .7rem 1.1rem;
+  text-align: center;
+  width: 100%;
+}
+
+.cta-link:hover { filter: brightness(1.08); }
+
+.cta-note {
+  font-size: .84rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  max-inline-size: 62ch;
+}
+
+@media (min-width: 640px) {
+  .cta { flex-direction: row; align-items: center; gap: .9rem; }
+  .cta-link { width: auto; }
+}
+
 /* Status strip */
 
 .strip {
@@ -1078,3 +1121,11 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
 }
 
 .loading-note[hidden] { display: none; }
+
+/*
+ * The clipboard fallback, shown only when the browser has refused a clipboard write. It carries
+ * the same JSON the copy button would have handed over, for a reader to select by hand.
+ */
+.packet-fallback { margin-top: .6rem; }
+.packet-fallback[hidden] { display: none; }
+.packet-fallback .reason { margin: 0 0 .4rem; }

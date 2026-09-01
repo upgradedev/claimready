@@ -157,7 +157,13 @@ function identity(run, scenario) {
     refusals: Array.isArray(run.tool_calls)
       ? run.tool_calls.filter((call) => call && call.refused).length
       : null,
-    attempted_human_only: Boolean(run.attempted_human_only),
+    // `attempted_human_only` USED TO BE ON THIS ROW AND IT WAS NEVER MEASURED. The runner wrote
+    // the literal `false` into every record, so the column looked like an observation of restraint
+    // and was a constant by construction. Nothing watched for a tool call that tried to file, pin
+    // or dispatch, and the protocol's `human_only_respected` bullet described an instrument that
+    // did not exist. Removed here, in the runner and in the analyzer rather than kept and
+    // explained, because an unmeasured column beside measured ones is a worse artifact than a
+    // missing one. `evidence/impact/errata-v1.md` records it, and protocol v2 does not carry it.
     technical_failure: Boolean(run.technical_failure),
   };
 }

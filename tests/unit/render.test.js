@@ -43,7 +43,10 @@ const northwind = loadPolicyPack(JSON.parse(readFileSync(
 /** What the page hands renderActions, built the way src/ui/app.js builds it. */
 function actionState(claim, pack, extra = {}) {
   return {
-    decision: canFile(pack, claim, extra.humanActions || []),
+    // The home insurer travels with the question, exactly as src/ui/app.js sends it. A filing
+    // asserts which insurer the claim went to, so the gate refuses one that cannot name it, and a
+    // call that leaves it out is not the call the page makes.
+    decision: canFile(pack, claim, extra.humanActions || [], { homePackId: 'northwind' }),
     filed: claim.status === 'filed',
     filedAt: claim.filed_at,
     assistanceAt: null,
@@ -210,16 +213,59 @@ test('a rule pack that never loaded is drawn as an unknown, not as a clear answe
   });
 });
 
+test('a draft nobody has placed with an insurer closes the button and says why', () => {
+  withView({}, ({ doc, view }) => {
+    // The rules loaded and the draft is complete. What is missing is the fact the borrowed rules
+    // check compares against, and a comparison with one side missing has no opinion, so filing
+    // closes. The point of this test is the sentence: a control drawn closed with nothing beside
+    // it reads as a control that is broken, and this refusal is about a fact a visitor cannot see.
+    const decision = canFile(northwind, drivableClaim(), [], {});
+    view.renderActions({
+      decision,
+      filed: false,
+      filedAt: null,
+      assistanceAt: null,
+      assistanceAvailable: false,
+    });
+
+    assert.equal(doc.el('file-btn').disabled, true);
+    assert.equal(doc.el('file-reason').textContent, decision.reason, 'the sentence is the domain\'s, word for word');
+    assert.match(doc.el('file-reason').textContent, /has not been told which insurer/);
+    assert.equal(doc.el('file-reason').classList.contains('is-blocked'), true);
+
+    // NEVER GATED TO NULL. The reason is a real sentence on the page, not an empty node beside a
+    // dead control.
+    assert.ok(doc.el('file-reason').textContent.trim().length > 40);
+  });
+});
+
+test('a draft that names no policy closes the button and says that instead', () => {
+  withView({}, ({ doc, view }) => {
+    const decision = canFile(northwind, { ...drivableClaim(), policy_id: null }, [], { homePackId: 'northwind' });
+    view.renderActions({
+      decision,
+      filed: false,
+      filedAt: null,
+      assistanceAt: null,
+      assistanceAvailable: false,
+    });
+
+    assert.equal(doc.el('file-btn').disabled, true);
+    assert.match(doc.el('file-reason').textContent, /does not say which policy/);
+    assert.equal(doc.el('file-reason').classList.contains('is-blocked'), true);
+  });
+});
+
 test('a filed claim says so, and says filing is not on the tool surface', () => {
   withView({}, ({ doc, view }) => {
-    const filed = fileClaim(drivableClaim(), { at: '11:04:22', pack: northwind });
+    const filed = fileClaim(drivableClaim(), { at: '2026-09-01T11:04:22.000Z', pack: northwind, homePackId: 'northwind' });
     assert.equal(filed.ok, true, filed.error);
     view.renderActions(actionState(filed.claim, northwind));
 
     assert.equal(doc.el('file-btn').disabled, true);
     // NAMES THE SURFACE, NOT THE PRESSER. This line is printed by the very click that filed the
     // claim, and the page cannot know whether a person or a browser driving agent made it.
-    assert.match(doc.el('file-result').textContent, /Filed via the page at 11:04:22/);
+    assert.match(doc.el('file-result').textContent, /Filed via the page at 2026-09-01T11:04:22.000Z/);
     assert.doesNotMatch(doc.el('file-result').textContent, /by you/);
     assert.match(doc.el('file-result').textContent, /not exposed as a WebMCP tool/);
     assert.equal(doc.el('file-reason').classList.contains('is-blocked'), false);
@@ -320,7 +366,7 @@ test('every row puts its control before its pin, in document order, not only on 
   });
 
   withView({}, ({ doc, view }) => {
-    const filed = fileClaim(drivableClaim(), { pack: northwind }).claim;
+    const filed = fileClaim(drivableClaim(), { at: '2026-09-01T11:04:22.000Z', pack: northwind, homePackId: 'northwind' }).claim;
     view.renderClaim(filed, []);
     for (const field of PATCHABLE_FIELDS) {
       const row = doc.el('fields').descendants().concat(doc.el('fields-optional').descendants())

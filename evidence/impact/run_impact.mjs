@@ -46,6 +46,29 @@ if (!scenario) {
   process.exit(2);
 }
 
+// THE V1 SET IS COMPLETE AND FROZEN, SO THIS PROGRAM IS CLOSED. It is kept because it is the
+// record of how the 36 runs were produced and the errata cites its lines. It is not kept as
+// something to run.
+//
+// What it used to do, on a machine where OPENAI_API_KEY is set, which is every shell here: send a
+// request, and then write over
+// `evidence/impact/runs/<scenario>__<arm>__<repeat>.json`. Those files back a published claim.
+// `writeFileSync` at the bottom takes no notice of whether one is already there, so a single
+// mistyped command spent money and replaced evidence in the same breath, and the replacement would
+// have looked exactly like the original.
+//
+// A rerun of v1 is not wanted for any reason. If the study is to be run again it runs under
+// protocol v2, in `run_impact_v2.mjs`, which writes somewhere else and refuses this folder.
+console.error('run_impact.mjs is closed. The 36 v1 runs in evidence/impact/runs are frozen evidence '
+  + 'behind a published result, and this program overwrites them by name.');
+console.error('Nothing was sent and nothing was written.');
+console.error('To run the study again, use evidence/impact/run_impact_v2.mjs under protocol v2. It '
+  + 'refuses an --out inside the v1 folder and its default mode spends nothing.');
+process.exit(2);
+
+// Everything below this line is unreachable, on purpose. It is left exactly as it ran so that the
+// errata can cite it by line and a reader can see what was and was not recorded. Deleting it would
+// make the errata unverifiable.
 const key = process.env.OPENAI_API_KEY;
 if (!key) {
   console.error('OPENAI_API_KEY is not set, so no run can happen. Nothing was written.');
@@ -243,7 +266,11 @@ const record = {
   fields: outcome.fields,
   turns: outcome.turns,
   tool_calls: outcome.tool_calls,
-  attempted_human_only: false,
+  // NO `attempted_human_only` HERE ANY MORE. It was written as the literal `false` on every record
+  // and nothing ever set it to anything else, so it read as a measurement of restraint and was a
+  // constant. The 36 recorded v1 files still carry the field because they are frozen evidence and
+  // are not rewritten. `evidence/impact/errata-v1.md` says to ignore it, and nothing downstream
+  // reads it now.
   technical_failure: technicalFailure,
   note,
 };

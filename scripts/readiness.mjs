@@ -865,6 +865,23 @@ function checkVideo(root) {
  *   3. the two denominators in the headline sentence
  * A headline that survives a run file being deleted is a headline nobody is checking.
  */
+/**
+ * One markdown section: the text between a heading and the next one at the same level.
+ *
+ * Written because reading "everything after this heading" is how a gate quietly starts counting a
+ * table that was added underneath it for another purpose. An absent heading gives an empty string,
+ * which the caller already treats as nothing found.
+ *
+ * @param {string} text the whole document
+ * @param {string} heading the exact heading line to start after
+ * @returns {string} the section body, without the following heading
+ */
+function sectionAfter(text, heading) {
+  const after = text.split(heading)[1];
+  if (after === undefined) return '';
+  return after.split(/\r?\n## /)[0];
+}
+
 function checkImpactStudy(root) {
   const label = 'the impact study carries a headline its own run count supports';
   const runsDir = join(root, 'evidence', 'impact', 'runs');
@@ -887,7 +904,14 @@ function checkImpactStudy(root) {
 
   // The counts table, read by position. Arm, runs, policy complete, then three columns this row
   // does not need. Anything that is not a data line with two numbers in those places is not a row.
-  const countsBlock = text.split('## Counts')[1] || '';
+  //
+  // THE BLOCK STOPS AT THE NEXT HEADING, WHICH IT DID NOT USED TO. Splitting on `## Counts` hands
+  // back everything to the end of the file, so any later table whose second and third cells happen
+  // to hold numbers was read as another arm. results.md now carries a clock position table below
+  // the counts, and unbounded this row summed 36 runs of arms with 30 runs of clock positions,
+  // decided the total was 66 against 36 files on disk, and failed a repository that was correct.
+  // Narrowing what the gate reads is not widening what it accepts: every check below is unchanged.
+  const countsBlock = sectionAfter(text, '## Counts');
   const counts = [];
   for (const line of countsBlock.split(/\r?\n/)) {
     if (!line.trim().startsWith('|')) continue;
@@ -910,7 +934,7 @@ function checkImpactStudy(root) {
     );
   }
 
-  const headlineBlock = text.split('## The one sentence this supports')[1] || '';
+  const headlineBlock = sectionAfter(text, '## The one sentence this supports');
   const headline = (headlineBlock.split(/\r?\n/).find((l) => l.trim().startsWith('>')) || '').trim();
   if (!headline) {
     problems.push('results.md carries no headline sentence, so the study concluded nothing a judge could read');
@@ -1016,9 +1040,36 @@ function checkQuickstart(root) {
     return row('QCK', label, FAIL, 'the README shell blocks carry no commands at all', ENGINEERING);
   }
 
+  /*
+   * THE REPOSITORY THE README ITSELF NAMES, taken from its own badge links rather than written
+   * here as a literal.
+   *
+   * The quickstart now opens with `git clone` and `cd`, because a section that starts at "run the
+   * tests" is not a procedure a stranger can follow. This row used to refuse both, on the rule that
+   * a command has to start with node or python, and refusing them is better than waving them
+   * through. So the two shapes are resolved rather than exempted, and each is resolved against a
+   * fact the README already carries: a clone has to name the repository whose CI badge is at the
+   * top of this file, and a cd has to name the directory that clone would actually create. Point
+   * the clone at somebody else's repository, or cd into a directory git never made, and this fails.
+   *
+   * Nothing else is added. Any other command shape still falls through to the refusal below, which
+   * is the property that keeps this row from becoming a list of things it agrees to ignore.
+   */
+  const badge = text.match(/https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/actions\//);
+  const canonicalRepo = badge ? `https://github.com/${badge[1]}/${badge[2]}` : null;
+  const clonedDirectory = badge ? badge[2] : null;
+
   const problems = [];
   let resolved = 0;
   let servers = 0;
+  let cloned = null;
+
+  if (!canonicalRepo) {
+    problems.push(
+      'this README carries no https://github.com/<owner>/<repo>/actions/ link, so there is nothing '
+      + 'to resolve a git clone against',
+    );
+  }
 
   for (const line of danglingBackslash) {
     problems.push(
@@ -1031,6 +1082,34 @@ function checkQuickstart(root) {
     const parts = command.split(/\s+/);
     let script = null;
     let flags = [];
+
+    if (parts[0] === 'git' && parts[1] === 'clone') {
+      const target = (parts[2] || '').replace(/\.git$/, '');
+      if (!target) {
+        problems.push(`${command}: a clone with nothing to clone`);
+      } else if (canonicalRepo && target !== canonicalRepo) {
+        problems.push(
+          `${command}: this clones ${target}, and the repository this README's own badges point at `
+          + `is ${canonicalRepo}. A judge following this lands somewhere else`,
+        );
+      } else {
+        cloned = clonedDirectory;
+        resolved += 1;
+      }
+      continue;
+    }
+
+    if (parts[0] === 'cd') {
+      const target = parts[1] || '';
+      if (!cloned) {
+        problems.push(`${command}: nothing has been cloned yet, so this changes into a directory the reader does not have`);
+      } else if (target !== cloned) {
+        problems.push(`${command}: the clone above creates ${cloned}, not ${target}`);
+      } else {
+        resolved += 1;
+      }
+      continue;
+    }
 
     if (parts[0] === 'python' && parts[1] === '-m') {
       // The local server. There is nothing to resolve about it beyond the page it would serve.
@@ -1213,6 +1292,348 @@ function checkPersonaReview(root) {
     + (without.length > 0 ? `. Naming no commit: ${without.join(', ')}` : ''),
     DELIVERABLE,
   );
+}
+
+/* ------------------------------- the runtime defects found and fixed on 2026-09-01 */
+
+/**
+ * SEVEN ROWS, ADDED BECAUSE THIS GATE COULD PRINT "engineering rows outstanding: 0" OVER ALL OF THEM.
+ *
+ * On 2026-09-01 this table was twenty rows and every engineering row was green, while the sealed
+ * packet told a handler a flat `covered` on a claim the page beside it called provisional, filing
+ * went through on a draft that named no policy, the declarative form accepted writes during the
+ * load and answered them as successes, the pack loader read an excess of minus 250 and an active
+ * flag written as the word true, the probe transcript named a URL and no commit, the committed
+ * impact report could not be rebuilt from the runs it summarises, and the first control a visitor
+ * could reach on a phone was a disclosure at y=699 on an 812 pixel screen.
+ *
+ * None of that was a gap in the checks that existed. Every one of those rows was checking something
+ * real. The gap was that the gate had no opinion at all about any of it, and a total of zero
+ * outstanding reads as a statement about the build rather than as a statement about the table.
+ *
+ * FIVE OF THE SEVEN RUN THE CODE. They shell out to scripts/readiness_probes.mjs, which imports the
+ * modules of the tree being judged and drives them. The reason it is a child process and not a
+ * dynamic import inside this file is written at the top of that script: the self test breaks a file
+ * and re-runs the same check, and an import is served from the module registry the second time, so
+ * the break would be invisible and the case would report a pass on both halves.
+ *
+ * TWO OF THE SEVEN READ FILES, AND THEIR LABELS SAY SO. The impact row runs the analyzer twice and
+ * compares, which is behaviour. The primary action row parses index.html and cannot measure a fold,
+ * because measuring one needs a browser. scripts/measure_fold.mjs is what measures it, on a runner
+ * or by hand, and this row says that rather than implying it did the measuring itself.
+ */
+
+/**
+ * Run one probe against the tree being judged, and hand back what it said.
+ *
+ * The script is resolved inside `root` and run with `root` as the working directory, so a sandbox
+ * is judged by its own code. Running this repository's copy against a sandbox would import this
+ * repository's modules, and every break the self test makes would do nothing.
+ *
+ * @param {string} root the checkout to judge
+ * @param {string} probeName one of the names scripts/readiness_probes.mjs answers to
+ * @returns {{ok: boolean, said: string}}
+ */
+function runProbe(root, probeName) {
+  const script = join(root, 'scripts', 'readiness_probes.mjs');
+  if (!existsSync(script)) {
+    return {
+      ok: false,
+      said: `scripts/readiness_probes.mjs is not in this tree, so the ${probeName} probe could not be `
+        + 'run and this row has proven nothing.',
+    };
+  }
+  const result = runNode([script, probeName], root);
+  const lines = `${result.stdout || ''}${result.stderr || ''}`
+    .trim()
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0);
+  if (result.status === 0) {
+    const summary = lines.find((line) => line.startsWith('ok:')) || lines[0] || 'the probe said nothing';
+    return { ok: true, said: summary.replace(/^ok:\s*/, '') };
+  }
+
+  // A PROBE THAT NEVER JUDGED IS NOT A BEHAVIOUR THAT REGRESSED, AND THE ROW MUST NOT SAY IT WAS.
+  // The probe exits 3 when it throws and 2 when it is asked for a name it does not have. Both used
+  // to arrive here as an ordinary failure, so the row printed its own label, which asserts that a
+  // behaviour has changed, over a stack trace saying nothing was examined. Delete a module the
+  // probe imports and that is the difference between a true sentence and a false one.
+  const said = lines.slice(0, 2).join(' | ') || 'and said nothing';
+  if (result.status === 3 || result.status === 2) {
+    return {
+      ok: false,
+      said: `the ${probeName} probe did not judge anything, so this row has proven nothing either way: ${said}`,
+    };
+  }
+  return { ok: false, said: `the ${probeName} probe exited ${result.status}: ${said}` };
+}
+
+/** One row whose whole evidence is one probe. The probe's own sentence is the detail. */
+function probeRow(root, id, label, probeName) {
+  const { ok, said } = runProbe(root, probeName);
+  return row(id, label, ok ? PASS : FAIL, said, ENGINEERING);
+}
+
+function checkProvisionalAgreement(root) {
+  return probeRow(
+    root,
+    'PRV',
+    'the sealed packet, its markdown and the cover panel agree that a provisional yes is provisional',
+    'provisional',
+  );
+}
+
+function checkFilingIdentity(root) {
+  return probeRow(
+    root,
+    'FID',
+    'filing and the packet both refuse a claim with no policy number and one with no named insurer',
+    'filing-identity',
+  );
+}
+
+function checkLoadingWindow(root) {
+  return probeRow(
+    root,
+    'WIN',
+    'no write lands while the page is saying the draft is not open yet, on any of five paths',
+    'loading-window',
+  );
+}
+
+function checkPackValues(root) {
+  return probeRow(
+    root,
+    'PKV',
+    'the rule pack loader refuses values that are the right shape and can mean nothing',
+    'pack-values',
+  );
+}
+
+/**
+ * The probe judgement will not accept a transcript that cannot name the bytes it ran against, and
+ * the workflow that produces one verifies those bytes before the browser is opened.
+ *
+ * TWO HALVES, AND THE ROW SAYS WHICH IS WHICH. The probe half runs code. The workflow half READS
+ * .github/workflows/evals.yml and looks for the four things that carry a commit from the checkout
+ * to the judgement. It does not run that workflow, it does not fetch anything, and it cannot tell
+ * you that a host is serving anything at all. The LIVE row is the one that fetches.
+ *
+ * THE LIMIT OF THE WORKFLOW HALF, NAMED HERE RATHER THAN LEFT TO BE DISCOVERED, on the same terms
+ * the quickstart row already names its own. It is a substring search over the whole file, comments
+ * included, and that file is heavily commented about the very step being looked for. Comment the
+ * verification step out and leave the paragraph above it explaining what it does, and this half
+ * still passes. Catching that needs a YAML parser and a walk of the job's steps, and the row is
+ * named for what it does rather than for what would be better.
+ */
+function checkProbeCommitBinding(root) {
+  const label = 'the probe judgement refuses a transcript with no deployed commit, and the workflow supplies one';
+  const problems = [];
+
+  const { ok, said } = runProbe(root, 'transcript-sha');
+  if (!ok) problems.push(said);
+
+  const rel = '.github/workflows/evals.yml';
+  const workflow = read(join(root, '.github', 'workflows', 'evals.yml'));
+  if (!workflow) {
+    problems.push(`${rel} is not in this tree, so nothing here says which bytes a probe run was about`);
+  } else {
+    // Written as plain strings and searched for literally. The last one carries a GitHub Actions
+    // expression, which is why none of these is built inside a template literal.
+    const wanted = [
+      ['fetch the deployed files and compare them', '--verify-deployed'],
+      ['name the commit it compares them against', '--deployed-sha'],
+      ['write that commit where a later step can read it', 'CLAIMREADY_DEPLOYED_SHA='],
+      ['hand that commit to the probe step', 'CLAIMREADY_DEPLOYED_SHA: ' + '${{ env.CLAIMREADY_DEPLOYED_SHA }}'],
+    ];
+    for (const [what, needle] of wanted) {
+      if (!workflow.includes(needle)) {
+        problems.push(`${rel} does not ${what}: ${JSON.stringify(needle)} is not in it`);
+      }
+    }
+  }
+
+  return row(
+    'SHA',
+    label,
+    problems.length === 0 ? PASS : FAIL,
+    problems.length === 0
+      ? `${said}. ${rel} verifies the served bytes against a commit and hands that commit to the `
+        + 'probe. This row reads that file. It does not run the workflow and it fetches nothing'
+      : problems.join(' | '),
+    ENGINEERING,
+  );
+}
+
+/**
+ * The impact report on disk is the one the analyzer writes from the runs on disk.
+ *
+ * TWO QUESTIONS, ASKED SEPARATELY, BECAUSE THEY HAVE DIFFERENT ANSWERS. Building the report twice
+ * into two throwaway files asks whether the analyzer is deterministic. `--check` asks whether the
+ * committed file is what it builds. Only one check would leave the row guessing between "the
+ * analyzer moves" and "the artifact is stale", and those are different jobs for whoever reads this.
+ *
+ * NOTHING INSIDE THE TREE IS WRITTEN. The two builds go to a temporary directory outside the
+ * repository and are deleted afterwards, and `--check` writes nothing by design. A gate that
+ * rebuilds the artifact it is auditing cannot tell you what was committed.
+ */
+function checkImpactReproduces(root) {
+  const label = 'the impact analyzer builds one report twice, and the committed results.md is that report';
+  const script = join(root, 'scripts', 'analyze_impact.mjs');
+  if (!existsSync(script)) {
+    return row('RPR', label, FAIL, 'scripts/analyze_impact.mjs is not in this tree, so nothing can be rebuilt', ENGINEERING);
+  }
+
+  const home = mkdtempSync(join(tmpdir(), 'claimready-impact-'));
+  try {
+    const builds = [];
+    for (const name of ['first.md', 'second.md']) {
+      const out = join(home, name);
+      const result = runNode([script, '--out', out], root);
+      const tail = `${result.stdout || ''}${result.stderr || ''}`.trim().split(/\r?\n/).filter(Boolean).slice(-2).join(' | ');
+      if (result.status !== 0) {
+        return row('RPR', label, FAIL,
+          `the analyzer would not write a report at all, exit ${result.status}: ${tail.slice(0, 220)}`, ENGINEERING);
+      }
+      const text = read(out);
+      if (text === null) {
+        return row('RPR', label, FAIL, `the analyzer exited 0 and wrote no file at ${name}`, ENGINEERING);
+      }
+      builds.push(text);
+    }
+
+    if (builds[0] !== builds[1]) {
+      return row('RPR', label, FAIL,
+        'two runs of the analyzer over the same folder of runs wrote two different reports, so the '
+        + 'analyzer is not deterministic and no committed copy of it can be held to anything',
+        ENGINEERING);
+    }
+
+    const checked = runNode([script, '--check'], root);
+    if (checked.status !== 0) {
+      // The FIRST lines, not the last. --check names the line that differs and prints both sides of
+      // it before it says what to do about it, and the line number is the part a reader can act on.
+      const tail = `${checked.stdout || ''}${checked.stderr || ''}`.trim().split(/\r?\n/).filter(Boolean).slice(0, 2).join(' | ');
+      return row('RPR', label, FAIL,
+        'the analyzer builds the same report twice and the committed evidence/impact/results.md is '
+        + `not that report: ${tail.slice(0, 220)}`,
+        ENGINEERING);
+    }
+
+    return row('RPR', label, PASS,
+      `two independent builds agree byte for byte at ${Buffer.byteLength(builds[0], 'utf8')} bytes, and `
+      + '--check says the committed evidence/impact/results.md is that report. Nothing was written inside the tree',
+      ENGINEERING);
+  } finally {
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* it is a temp dir */ }
+  }
+}
+
+/** Every tag a person can operate. Matched as opening tags, on markup with the comments taken out. */
+const INTERACTIVE_TAG = /<(a|button|input|select|textarea|summary)\b[^>]*>/gi;
+
+/**
+ * The way into the claim is in the markup, it leads somewhere real, and nothing but the skip link
+ * is in front of it.
+ *
+ * WHAT THIS ROW CANNOT DO, SAID IN ITS OWN NAME. It cannot tell you whether that link is above the
+ * fold on a phone, because a fold is a fact about a computed layout and this file has no browser.
+ * scripts/measure_fold.mjs opens the Chrome on the machine, tells it it is a 375 by 812 phone and
+ * reads getBoundingClientRect, and that is where the measurement lives. This row holds the three
+ * things a static reader CAN settle, all of which have to be true before a measurement is worth
+ * taking, and it names the count of elements it scanned so the coverage is visible rather than
+ * assumed.
+ *
+ * The skip link is the one control allowed in front, and it is allowed because it sits at
+ * left: -9999px until it is focused. That is a fact about the stylesheet, and it is the reason
+ * measure_fold.mjs does not count it as an action either.
+ */
+function checkPrimaryAction(root) {
+  const label = 'index.html carries one primary action, an in page link into main, with only the skip link before it';
+  const raw = read(join(root, 'index.html'));
+  if (!raw) return row('CTA', label, FAIL, 'index.html is not there at all', ENGINEERING);
+
+  // Comments out first. This page is heavily commented and several of those comments talk about
+  // controls. A comment describing a button is not a button, and counting one would put a phantom
+  // element in front of the primary action.
+  const markup = raw.replace(/<!--[\s\S]*?-->/g, ' ');
+  const tags = [...markup.matchAll(INTERACTIVE_TAG)];
+  const scanned = `${tags.length} interactive element(s) scanned in index.html`;
+
+  // COUNTED, NOT FOUND. findIndex answers where the first one is and says nothing about how many
+  // there are, so a page carrying two elements marked as the primary action passed a row whose
+  // label says "one". A reviewer proved it by adding a second one pointing at an id that does not
+  // exist: the row printed PASS. Which of the two scripts/measure_fold.mjs would have measured is
+  // not a question this page should be able to raise.
+  const marked = tags.filter((tag) => tag[0].includes('data-el="primary-action"'));
+  const index = tags.findIndex((tag) => tag[0].includes('data-el="primary-action"'));
+  if (marked.length > 1) {
+    return row('CTA', label, FAIL,
+      `${marked.length} elements in index.html carry data-el="primary-action", and the label on this `
+      + 'row says one. scripts/measure_fold.mjs reads the same attribute, so it would measure '
+      + `whichever came first: ${marked.map((tag) => tag[0].slice(0, 44)).join(' , ')}. ${scanned}`,
+      ENGINEERING);
+  }
+  if (index === -1) {
+    return row('CTA', label, FAIL,
+      'no element in index.html carries data-el="primary-action", so a visitor arrives at prose and '
+      + `scripts/measure_fold.mjs has nothing to measure either: it looks for the same attribute. ${scanned}`,
+      ENGINEERING);
+  }
+
+  const tag = tags[index][0];
+  const problems = [];
+
+  if (!/^<a\b/i.test(tag)) {
+    problems.push('the primary action is not an anchor, so it needs JavaScript to do anything and it does nothing while the rule packs are still being fetched');
+  }
+  if (/\shidden[\s>=]/i.test(tag) || /aria-disabled="true"/i.test(tag) || /\sdisabled[\s>=]/i.test(tag)) {
+    problems.push('the primary action ships hidden or disabled, so it is not an action');
+  }
+
+  const href = /href="([^"]*)"/i.exec(tag);
+  if (!href || !href[1].startsWith('#')) {
+    problems.push(`the primary action's href is ${JSON.stringify(href ? href[1] : null)}, which is not an in page target`);
+  } else {
+    const targetId = href[1].slice(1);
+    const mainStart = markup.search(/<main\b/i);
+    const mainEnd = markup.search(/<\/main>/i);
+    const at = markup.indexOf(`id="${targetId}"`);
+    if (at === -1) {
+      problems.push(`the primary action points at #${targetId} and nothing in index.html has that id, so it goes nowhere`);
+    } else if (mainStart === -1 || mainEnd === -1 || at < mainStart || at > mainEnd) {
+      problems.push(`#${targetId} is not inside main, so the primary action points at something other than the claim flow`);
+    }
+  }
+
+  // THE SKIP LINK IS IDENTIFIED BY ITS CLASS, NOT BY A SUBSTRING OF IT. This used to be
+  // `includes('skip-link')`, and a reviewer walked straight through it with an element whose class
+  // was `skip-link-decoy`: the row printed PASS while still saying only the skip link comes first.
+  // A gate that matches a name by substring lets a longer name past, which is the same defect class
+  // as a gate that picks the files it covers by searching their text.
+  const isSkipLink = (tag) => /class="(?:[^"]*\s)?skip-link(?:\s[^"]*)?"/i.test(tag);
+  const before = tags.slice(0, index).filter((earlier) => !isSkipLink(earlier[0]));
+  if (before.length > 0) {
+    problems.push(
+      `${before.length} control(s) come before the primary action in the markup and the skip link is `
+      + `the only one allowed to: ${before.map((earlier) => earlier[0].slice(0, 50)).join(' , ')}`);
+  }
+
+  // The browser side of the same question has to still exist and still look for this attribute, or
+  // the two halves of the check have quietly stopped being about one thing.
+  const fold = read(join(root, 'scripts', 'measure_fold.mjs'));
+  if (!fold) {
+    problems.push('scripts/measure_fold.mjs is not in this tree, so nothing here measures the fold in a browser at all');
+  } else if (!fold.includes('primary-action')) {
+    problems.push('scripts/measure_fold.mjs no longer looks for data-el="primary-action", so the browser measurement and this row are about different elements');
+  }
+
+  return row('CTA', label, problems.length === 0 ? PASS : FAIL,
+    problems.length === 0
+      ? `${scanned}, the primary action is an anchor to #${href[1].slice(1)} inside main, and only the skip link `
+        + 'precedes it. Whether it is above the fold is measured in a browser by scripts/measure_fold.mjs, not here'
+      : problems.join(' | '),
+    ENGINEERING);
 }
 
 /* ------------------------------------------------------------ owner gated */
@@ -1795,6 +2216,26 @@ const SELFTEST_CASES = [
     run: (s) => checkQuickstart(s),
   },
   {
+    id: 'QCK',
+    // The clone branch. A quickstart that opens by cloning somebody else's repository sends a judge
+    // to the wrong code and every command after it still resolves, so nothing else in this row
+    // would notice. The owner name is changed and the project name left alone on purpose: that is
+    // the shape a copied line arrives in.
+    name: 'the quickstart clones a repository that is not this one',
+    break: (s) => editFile(s, 'README.md', (t) => t.replace(
+      'git clone https://github.com/upgradedev/claimready',
+      'git clone https://github.com/someone-else/claimready',
+    )),
+    run: (s) => checkQuickstart(s),
+  },
+  {
+    id: 'QCK',
+    // The cd branch. One character, and every later command runs in a directory that is not there.
+    name: 'the quickstart changes into a directory the clone does not create',
+    break: (s) => editFile(s, 'README.md', (t) => t.replace('\ncd claimready\n', '\ncd claim-ready\n')),
+    run: (s) => checkQuickstart(s),
+  },
+  {
     id: 'FRZ',
     // FRZ is red in the real repository today, because nothing declares a freeze commit, so the
     // intact half is written here rather than copied. That is stated rather than hidden by
@@ -1846,6 +2287,141 @@ const SELFTEST_CASES = [
       'utf8',
     ),
     run: (s) => checkPersonaReview(s),
+  },
+
+  /* -------- the seven rows added on 2026-09-01, each broken where its defect actually lived */
+
+  {
+    id: 'PRV',
+    // The JSON half. Dropping the field is what version 1 of the packet did, and it is the state
+    // that put a flat yes under a digest.
+    name: 'the sealed packet stops carrying provisional beside covered',
+    break: (s) => editFile(s, join('src', 'core', 'packet.js'), (t) => t.replace(
+      'provisional: Boolean(decided.provisional),',
+      'provisional: false,',
+    )),
+    run: (s) => checkProvisionalAgreement(s),
+  },
+  {
+    id: 'PRV',
+    // The markdown half, broken on its own. A handler with no JSON viewer reads this copy, and it
+    // was the last surface still printing a flat yes after the JSON had been fixed.
+    name: 'the packet markdown goes back to printing a flat covered',
+    break: (s) => editFile(s, join('src', 'core', 'packet.js'), (t) => t.replace(
+      "? (provisional ? 'covered, provisionally' : 'covered')",
+      "? 'covered'",
+    )),
+    run: (s) => checkProvisionalAgreement(s),
+  },
+  {
+    id: 'FID',
+    // The branch that closes a filing on a draft naming no policy. It is left in place and made
+    // unreachable, which is the shape this kind of regression really arrives in: the code reads as
+    // though the question is still being asked.
+    name: 'the filing gate stops asking which policy the claim is on',
+    break: (s) => editFile(s, join('src', 'core', 'filing.js'), (t) => t.replace(
+      '} else if (!policyId) {',
+      '} else if (policyId === undefined) {',
+    )),
+    run: (s) => checkFilingIdentity(s),
+  },
+  {
+    id: 'WIN',
+    // The guard inside the real handler. Taking it away leaves the three closed boxes on the page,
+    // so the page still LOOKS shut and a submission dispatched by script is accepted, which is
+    // exactly the state that shipped.
+    name: 'the declarative form stops refusing submissions made during the load',
+    // THE BREAK IS AIMED AT THE FUNCTION, NOT AT ONE SPELLING OF THE GUARD. An earlier version
+    // matched the exact three lines the guard happened to be written as. The guard was later
+    // rewritten inline, the pattern stopped matching, the break step threw, and the self test
+    // reported `broken crashed` rather than `broken FAIL`. A break that cannot find what it is
+    // breaking tells you nothing about the row it is meant to be testing. So this finds the
+    // function and turns its condition off, which works whatever the body is written as.
+    break: (s) => editFile(s, join('src', 'ui', 'app.js'), (t) => {
+      const at = t.indexOf('function submitDeclaredForm');
+      if (at === -1) {
+        throw new Error('the selftest could not find submitDeclaredForm in src/ui/app.js, so its break step did nothing.');
+      }
+      const after = t.indexOf(`\n  function `, at + 1);
+      const end = after === -1 ? t.length : after;
+      const body = t.slice(at, end);
+      if (!body.includes('if (loadingReason) {')) {
+        throw new Error('submitDeclaredForm no longer guards on loadingReason, so this row has nothing to break and the guard it names is gone.');
+      }
+      return t.slice(0, at) + body.replace('if (loadingReason) {', 'if (false) { // selftest') + t.slice(end);
+    }),
+    run: (s) => checkLoadingWindow(s),
+  },
+  {
+    id: 'PKV',
+    // WIDENED RATHER THAN DELETED, on purpose. This is what a real regression looks like: somebody
+    // meets a pack that writes the flag as a word, and makes the check accept it instead of fixing
+    // the pack. The refusal is still there and it has stopped covering the case it was written for.
+    name: 'the pack loader is widened to accept an active flag written as a word',
+    break: (s) => editFile(s, join('src', 'core', 'policy.js'), (t) => t.replace(
+      "if (typeof entry.active !== 'boolean') {",
+      "if (typeof entry.active !== 'boolean' && typeof entry.active !== 'string') {",
+    )),
+    run: (s) => checkPackValues(s),
+  },
+  {
+    id: 'SHA',
+    // The commit test swapped for a length test, which is how a field stops being a commit while
+    // still looking checked. "unknown" is seven characters and passes a length test.
+    name: 'the transcript judgement accepts a word where the deployed commit should be',
+    break: (s) => editFile(s, join('evals', 'probe_assertions.mjs'), (t) => t.replace(
+      '/^[0-9a-f]{7,40}$/.test(shaValue)',
+      'shaValue.length > 3',
+    )),
+    run: (s) => checkProbeCommitBinding(s),
+  },
+  {
+    id: 'SHA',
+    // The other half of the row, and the half a probe cannot see: the workflow stops proving which
+    // bytes were served before it opens the browser. The transcript would still carry a commit,
+    // and nothing would have compared it against anything.
+    name: 'the workflow stops verifying the served bytes before the probe runs',
+    break: (s) => editFile(s, join('.github', 'workflows', 'evals.yml'), (t) => t.split('--verify-deployed').join('--print-deployed')),
+    run: (s) => checkProbeCommitBinding(s),
+  },
+  {
+    id: 'RPR',
+    // The analyzer stops being deterministic. Two builds over one folder of runs then disagree,
+    // which is a different failure from a stale artifact and the row has to say which it found.
+    name: 'the impact analyzer starts writing something new on every run',
+    break: (s) => editFile(s, join('scripts', 'analyze_impact.mjs'), (t) => t.replace(
+      "lines.push('# Impact runs, scored');",
+      "lines.push('# Impact runs, scored');\nlines.push(String(Math.random()));",
+    )),
+    run: (s) => checkImpactReproduces(s),
+  },
+  {
+    id: 'RPR',
+    // The committed artifact drifts from the runs it summarises. Deliberately a different edit from
+    // the two IMP cases above, which change a headline number and delete a run file, so a red row
+    // here and a red row there stay attributable to different things.
+    name: 'a hand edit lands in the committed results.md and the analyzer no longer writes that file',
+    break: (s) => editFile(s, join('evidence', 'impact', 'results.md'), (t) => `${t}\nA paragraph added by hand, which the analyzer does not write.\n`),
+    run: (s) => checkImpactReproduces(s),
+  },
+  {
+    id: 'CTA',
+    // The link points at an id nothing has. Every other check in the row still passes, which is the
+    // point: a way in that goes nowhere looks exactly like a way in.
+    name: 'the primary action points at a target the page does not have',
+    break: (s) => editFile(s, 'index.html', (t) => t.replace('href="#h-claim"', 'href="#h-nowhere"')),
+    run: (s) => checkPrimaryAction(s),
+  },
+  {
+    id: 'CTA',
+    // A control in front of it. The disclosure this replaces is the one a visitor on a phone met
+    // first before any of this existed, and it opens a paragraph of help and touches nothing.
+    name: 'another control is added ahead of the primary action',
+    break: (s) => editFile(s, 'index.html', (t) => t.replace(
+      '<p class="cta">',
+      '<p><button type="button">No agent in this browser?</button></p>\n<p class="cta">',
+    )),
+    run: (s) => checkPrimaryAction(s),
   },
 ];
 
@@ -1958,6 +2534,16 @@ async function main() {
     checkQuickstart(ROOT),
     checkFreezeCommit(ROOT),
     checkPersonaReview(ROOT),
+    // Seven runtime defects that were fixed on 2026-09-01 and that this table had no opinion about
+    // while every engineering row was green. Five of them run the code in a child process, one
+    // rebuilds an artifact and compares, and one parses the markup and says so.
+    checkProvisionalAgreement(ROOT),
+    checkFilingIdentity(ROOT),
+    checkLoadingWindow(ROOT),
+    checkPackValues(ROOT),
+    checkProbeCommitBinding(ROOT),
+    checkImpactReproduces(ROOT),
+    checkPrimaryAction(ROOT),
   ];
 
   console.log('ClaimReady readiness gate');
