@@ -115,6 +115,24 @@ answered `Refused. PATCH_REJECTED_STALE: expected revision 2, current revision 3
 browser builds from the form is not a shortcut around the rules: it enforces the same revision
 protocol as the registered ones and returns the refusal in the page's own words.
 
+**The probe fails closed now, and that is a change worth stating plainly.** It used to print what
+it saw and exit 0 whatever that was: pointed at a browser with no WebMCP it reported `api: null` and
+called it a success, so a run that proved nothing looked exactly like a run that proved the
+lifecycle. The judgement moved into `evals/probe_assertions.mjs`, which asserts the API, the exact
+boot tool set by name, the absence of every human only name, the conditional tool appearing and
+being withdrawn, a stale patch refused with the revision unmoved, the declared tool's schema and its
+one revision step, an empty console, and no tool that threw.
+
+Two runs on 2026-09-01, against `21fc9f2`:
+
+| Browser | Result |
+|---|---|
+| Chrome 151 stable, `--enable-features=WebMCP` | `probe: PASS. 24 checks against the deployed page, none failed.` |
+| the same Chrome, same page, **flag left off** | `probe: FAIL`, exit 1, naming eight of them, starting with the API that is not there |
+
+`tests/unit/probe_assertions.test.js` breaks the transcript fourteen more ways, one per assertion,
+and requires a failure each time. A gate nobody has watched fail is not a gate.
+
 **The honest limit, and it is the same one as everywhere else on this page: the caller was a script,
 not a model.** This shows that a real browser publishes, executes and withdraws the tools this page
 declares, that the declarative half is a real tool to an agent and not a decoration, and that a
