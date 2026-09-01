@@ -194,6 +194,19 @@ async function boot() {
      that replaced it. */
   let pendingCommit = null;
 
+  /* Why the draft is closed, or null once it is open.
+
+     THE CONTROLS ARE NOT THE GUARD. They are drawn disabled while the rule packs are in flight,
+     which is what a person meets, but `disabled` is a property of one painted control and the
+     handlers live on the two hosts. Anything that reaches a handler another way, an event
+     dispatched by script or a control drawn before the flag was read, would otherwise be committed
+     to a store whose subscriber is not attached yet: the value lands, the revision chip does not
+     move, and the redraw after the fetch paints the empty field back over it. That is the exact
+     silent loss this window was fixed for, so the refusal is here, in the one place every edit
+     passes through, and it says so on the page rather than dropping the edit. */
+  let loadingReason = 'The page is still reading the insurer rules, so the draft is not open yet. '
+    + 'Nothing was written. Try again in a moment.';
+
   /* Requirement redraw bookkeeping. The panel is rebuilt only when the derived list actually moves,
      so a keystroke in the description does not replay the "just appeared" highlight, and nothing is
      marked new on the first draw or after a reset. */
@@ -228,15 +241,27 @@ async function boot() {
   // src/core rather than deciding anything with them. Nothing under src/webmcp reads this
   // function now, and putting it back would put the inference back within reach.
 
+  // WIRED BEFORE ANYTHING IS DRAWN. The listeners live on the two field hosts and read the event's
+  // target, so they cost nothing before there is data and they cannot miss an edit once there is.
+  // They used to be attached after the rule packs had been fetched, which left a window where the
+  // draft looked open and was not.
+  wireControls();
+
   view.renderPersona(persona);
   refreshStatus();
   view.renderRevision(claimNow().revision);
   view.renderCoverage(null);
   view.renderEstimate(null);
   view.renderLedger(ledger);
+  // Closed until the rules are in, with the reason on the page. The redraw after the fetch would
+  // paint over anything typed in the meantime, so the honest thing is to say the draft is not open
+  // yet rather than to accept a keystroke and lose it.
+  view.setClaimBusy("Reading this insurer's rules. The draft opens as soon as they are in.");
   redraw([]);
 
   await loadPacks();
+  loadingReason = null;
+  view.setClaimBusy(null);
   applyPack(activePackId);
   view.renderPackChoices(packChoices(), activePackId);
   redraw([]);
@@ -268,8 +293,6 @@ async function boot() {
     if (changed.length === 0) restampPanels(next.revision);
     else expirePanels(next.revision);
   });
-
-  wireControls();
 
   // One call brings up the whole surface and keeps it matching the claim. register.js holds the
   // lists, subscribes to the same store, serialises its own registrations and listens for the
@@ -790,6 +813,12 @@ async function boot() {
     // too, and the same text was committed twice: two revisions for one edit, with the second one
     // re-stamping provenance on a draft nobody had moved.
     cancelPendingCommit();
+
+    if (loadingReason) {
+      view.showFieldError(loadingReason);
+      return;
+    }
+
     view.showFieldError('');
 
     // An empty control means clear. The rules allow that for an optional field and refuse it for a
@@ -952,6 +981,13 @@ async function boot() {
     // Pinning closes a field to every patch, so a commit already scheduled against it would be
     // refused as locked a moment after the person pinned it on purpose.
     cancelPendingCommit();
+
+    // Same window as commitControl. A pin taken before the rules are in is a pin against a draft
+    // the page is about to redraw, so it is refused with the reason rather than half applied.
+    if (loadingReason) {
+      view.showFieldError(loadingReason);
+      return;
+    }
 
     const pinned = button.getAttribute('aria-pressed') === 'true';
     const result = store.dispatch({ type: pinned ? 'unlock' : 'lock', field });

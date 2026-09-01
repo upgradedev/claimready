@@ -134,6 +134,7 @@ export function createView(doc) {
     packNote: pick('pack-note'),
     resetNote: pick('reset-note'),
     fields: pick('fields'),
+    claimBusy: pick('claim-busy'),
     fieldsOptional: pick('fields-optional'),
     optionalDetails: pick('optional-details'),
     optionalNote: pick('optional-note'),
@@ -227,6 +228,18 @@ export function createView(doc) {
     els.reqProgressFill.style.width = known ? `${Math.round((answered / total) * 100)}%` : '0%';
     text(els.reqProgressText, known ? `${answered} of ${total} answered` : '');
   }
+
+  /**
+   * Why the draft is closed at this moment, or null when it is open.
+   *
+   * BOOT USED TO PAINT AN OPEN DRAFT OVER A PAGE WITH NO LISTENERS ON IT. The claim controls were
+   * drawn before the rule packs were fetched and before wireControls ran, so a visitor who typed
+   * during a slow load had the keystroke ignored and then overwritten by the redraw that followed
+   * the fetch. Nothing said so. The workspace rule is that no control is disabled without a visible
+   * reason and nothing is ever gated to null, so the draft is now closed with the reason beside it
+   * until the page is ready to accept what somebody types.
+   */
+  let busyReason = null;
 
   return {
     els,
@@ -403,6 +416,9 @@ export function createView(doc) {
     renderClaim(claim, changed) {
       const justChanged = new Set(changed || []);
       const filed = Boolean(claim && claim.status === 'filed');
+      // While the rules are still arriving nothing on the draft may be edited, because the redraw
+      // that follows the load would paint over whatever was typed. See setClaimBusy.
+      const busy = Boolean(busyReason);
       let openOptional = false;
 
       for (const field of PATCHABLE_FIELDS) {
@@ -421,8 +437,8 @@ export function createView(doc) {
 
         // Pinning refuses a patch from either side, so the control has to close with it. A
         // disabled control with no reason beside it is a dead end, so the reason is drawn too.
-        row.control.disabled = filed || pinned;
-        row.pin.disabled = filed;
+        row.control.disabled = filed || pinned || busy;
+        row.pin.disabled = filed || busy;
         row.pin.setAttribute('aria-pressed', pinned ? 'true' : 'false');
         text(row.pinWord, pinned ? 'Pinned' : 'Pin');
         row.pinIcon.textContent = pinned ? '\u{1F512}' : '\u{1F513}';
@@ -560,6 +576,17 @@ export function createView(doc) {
     setPacketCopyable(allowed, reason) {
       els.packetCopy.disabled = !allowed;
       text(els.packetSaid, allowed ? '' : (reason || ''));
+    },
+
+    /**
+     * Close the draft while the page is not ready to keep an edit, with the reason on screen.
+     *
+     * @param {(string|null)} reason null when the draft is open
+     */
+    setClaimBusy(reason) {
+      busyReason = reason || null;
+      els.claimBusy.hidden = !busyReason;
+      text(els.claimBusy, busyReason || '');
     },
 
     /** Fold the packet open or closed, and say which state it is in. */
