@@ -355,6 +355,10 @@ export function installFetchDouble(options = {}) {
   globalThis.fetch = async (path) => {
     const asString = String(path);
     asked.push(asString);
+    // A slow network, on purpose. The page draws the claim before the rule packs arrive, and the
+    // window between those two used to accept an edit and then paint over it. A test that needs to
+    // type in that window needs the window to exist for longer than one microtask.
+    if (options.delayMs) await new Promise((resolve) => { setTimeout(resolve, options.delayMs); });
     if (wanted(asString)) {
       const status = options.status || 404;
       // A refused file is a status, not a thrown error, on the path a real server takes.

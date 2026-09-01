@@ -1066,3 +1066,15 @@ textarea.field-control { resize: vertical; min-height: 3.4rem; line-height: 1.4;
 }
 
 .packet-view[hidden] { display: none; }
+
+/* Said while the rule packs are still arriving, and taken away when they have. */
+.loading-note {
+  margin: 0 0 .7rem;
+  padding: .5rem .65rem;
+  border-radius: 8px;
+  background: var(--rule, rgba(127, 127, 127, .14));
+  font-size: .84rem;
+  line-height: 1.45;
+}
+
+.loading-note[hidden] { display: none; }
