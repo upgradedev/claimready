@@ -62,7 +62,7 @@ run happened, and all three are settled below.
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step. That string was read from the log of 33588857520; the dev channel moves, so re-read it from the run you are quoting |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179`, which is pinned in the workflow and so is the same in both runs |
 | Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
-| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 81 checks against the deployed page, none failed`. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle, not to the product |
+| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 81 checks against the deployed page, none failed`. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle, not to the product. **That run's 81 is now history too.** Later on 2026-09-02 the two accepted patches and the read between them were found to have no reading of the draft either side of them, so a collateral write by any of the three was recorded by nothing. Closing that took the matrix to 110, and no browser run has been made against the judgement at 110 yet |
 
 Earlier runs were green as well:
 [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
@@ -158,7 +158,7 @@ day**, which was smaller than the one in the file now:
 | Chrome 151 stable, `--enable-features=WebMCP` | `probe: PASS. 24 checks against the deployed page, none failed.` |
 | the same Chrome, same page, **flag left off** | `probe: FAIL`, exit 1, naming eight of them, starting with the API that is not there |
 
-`tests/unit/probe_assertions.test.js` breaks the transcript with 65 mutations, at least one per
+`tests/unit/probe_assertions.test.js` breaks the transcript with 68 mutations, at least one per
 assertion, and requires a failure each time. A gate nobody has watched fail is not a gate.
 
 **The note phase has now been watched against a live browser, so the probe is off manual dispatch.**
@@ -170,16 +170,20 @@ desktop run the same evening against `c93b138` on Chrome 152.0.7977.65, which pr
 `probe: PASS. 71 checks against the deployed page, none failed`. The `if:` line is gone and the job
 runs on the same triggers as the smoke evals.
 
-**Those two runs are against the judgement as it stood on 2026-09-01, and it has grown since.** On
-2026-09-02 the note phase and the declarative phase were both found to pass a forged transcript, and
-closing them took the matrix from 71 checks to 81 and changed the shape of the transcript the probe
-collects. So a fresh run prints 81 rather than 71, and neither number above can be reproduced by
-re-running the probe as it is now. **Where the 81 comes from, because a count needs its command.**
-`tests/unit/probe_assertions.test.js` holds a floor at `verdict.checks >= 81` over the healthy
-transcript, and the judgement runs exactly that many: raise the floor above it and the assertion
-message prints the count it actually ran. Measured that way on 2026-09-02, on Windows, it printed
-`expected a real matrix, ran 81 checks`. The two lines are kept because they are true about the runs they
-name, and 81 is the number to quote now. It has been run twice on a runner since, in
+**Those two runs are against the judgement as it stood on 2026-09-01, and it has grown twice since.**
+On 2026-09-02 the note phase and the declarative phase were both found to pass a forged transcript,
+and closing them took the matrix from 71 checks to 81 and changed the shape of the transcript the
+probe collects. Later the same day the three calls in the journey that had no reading of the draft
+either side of them were bracketed as well: the accepted patch that takes the car off the road, the
+read of the assistance options after it, and the accepted patch that puts the car back on. That took
+the matrix from 81 to 110 and changed the transcript shape again. So no number recorded against any
+run above can be reproduced by re-running the probe as it is now. **Where the 110 comes from,
+because a count needs its command.** `tests/unit/probe_assertions.test.js` holds a floor at
+`verdict.checks >= 110` over the healthy transcript, and the judgement runs exactly that many: raise
+the floor above it and the assertion message prints the count it actually ran. Measured that way on
+2026-09-02, on Windows, it printed `expected a real matrix, ran 110 checks`. The earlier lines are
+kept because they are true about the runs they name, and 110 is the number to quote now.
+**No browser run has been made at 110.** The probe has been run twice on a runner since 81, in
 [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) and [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240), both against the `e942ee3`
 the host serves. **Neither describes the runtime this entry will record**: filing integrity work in
 the working tree changes `src/core/claim.js`, which is one of the 26 files the page loads, so the
@@ -661,7 +665,7 @@ variable `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, bui
 the pinned commit, runs the three journeys, runs the negative control and requires it to fail in the
 one shape described above, and uploads both logs and any `.evals` report as an artifact.
 
-The `probe` job, in order, runs the 65 mutations and the note phase tests before any browser is
+The `probe` job, in order, runs the 68 mutations and the note phase tests before any browser is
 opened, fails when `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, fails unless
 the host is serving this checkout at this commit on all 26 files the page loads, hands that commit
 to the probe, starts Chrome with the WebMCP flag, runs `evals/browser_probe.mjs` and fails when the

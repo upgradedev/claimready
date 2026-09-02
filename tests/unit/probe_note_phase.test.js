@@ -75,11 +75,15 @@ async function drivableNow() {
  * independent are in evals/probe_assertions.mjs and tests/unit/probe_assertions.test.js, and that
  * file is where they are compared.
  */
-function shellDraft(revision, witness = null) {
+function shellDraft(revision, witness = null, drivable = 'true') {
   const lines = [
     `Claim draft on policy MTR-2026-0417, revision ${revision}, status draft.`,
     'Nothing required is missing.',
-    'vehicle_drivable = true (arrived through a WebMCP tool call)',
+    // The drivable answer is a parameter because the shell now has to stand in for the two
+    // accepted patches as well, and those are the calls that move this line.
+    drivable === 'empty'
+      ? 'vehicle_drivable = empty, required'
+      : `vehicle_drivable = ${drivable} (arrived through a WebMCP tool call)`,
   ];
   if (witness !== null) {
     lines.push(`witness_name = ${JSON.stringify(witness)} (arrived through a WebMCP tool call)`);
@@ -123,6 +127,28 @@ function shellTranscript() {
     bootTools: [...EXPECTED_BOOT_TOOLS],
     toolsWhenStuck: [...EXPECTED_STUCK_TOOLS],
     toolsAfterRecovery: [...EXPECTED_RECOVERED_TOOLS],
+    // The two accepted patches and the read between them, on the same terms as everything else in
+    // this shell: coherent scenery, not a measurement. The judgement compares a draft either side
+    // of each of the three, so each pair here is one the page could have produced.
+    bootPatch: {
+      answer: 'Applied. The claim is now at revision 1.',
+      revisionBefore: 0,
+      revisionAfter: 1,
+      stateBefore: shellDraft(0, null, 'empty'),
+      stateAfter: shellDraft(1, null, 'false'),
+    },
+    assistance: {
+      answer: 'The car cannot be driven, so this policy covers roadside collection.',
+      stateBefore: shellDraft(1, null, 'false'),
+      stateAfter: shellDraft(1, null, 'false'),
+    },
+    recoveryPatch: {
+      answer: 'Applied. The claim is now at revision 4.',
+      revisionBefore: 3,
+      revisionAfter: 4,
+      stateBefore: shellDraft(3, null, 'false'),
+      stateAfter: shellDraft(4, null, 'true'),
+    },
     stalePatch: {
       answer: 'PATCH_REJECTED_STALE. expected revision 0, current revision 3.',
       revisionBefore: 3,
