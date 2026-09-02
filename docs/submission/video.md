@@ -21,88 +21,71 @@ and the path to save to.
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
-| Freeze commit | **not yet declared, and this cell is deliberately empty of a SHA.** Filing integrity work in the working tree changes `src/core/claim.js`, one of the 26 files the page loads, so `e942ee3` is not what a take will show. The release step writes the published SHA here, in backticks, as the first thing in this cell. Until it does, the readiness row `FRZ` refuses. Four superseded declarations are named below, with their reasons |
+| Freeze commit | `357410e`, declared 2026-09-02 after the release was served and verified over all 26 files the page loads. It supersedes `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
 
-## The freeze, and why it is open again
+## The freeze
 
-**There is no freeze commit right now, and the record row above is blank on purpose.** The last
-declaration was `e942ee3`. It is superseded, because filing integrity work sitting in the working
-tree changes `src/core/claim.js`, and that is one of the 26 files the page loads. The reason for
-breaking the freeze is the first of the three this file allows, a judge-facing statement that was
-false, and it is written out in the workspace state file. No take was invalidated, because none has
-been shot.
-
-**What the host serves today is still `e942ee3`, and that is a fact about the host rather than a
-declaration about the recording.**
+**Freeze commit: `357410e`.** Every file the page loads is at that commit. Verified after GitHub
+Pages served it:
 
 ```sh
-python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha e942ee3
+python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha 357410e
 ```
 
-Run on 2026-09-02 from a clone at `e942ee3` it printed `the deployed page is e942ee3, on every one
-of those files` and exited 0, over all 26 of them, the three insurer and demo JSON fixtures among
-them. Run from the working tree as it stands on 2026-09-02 it refuses, and this is what it printed, not a
-paraphrase: `build failed: the deployed page is not what is on disk.
-<the live URL>/src/core/claim.js does not match src/core/claim.js in this checkout`, with
-`deployed 7c4ac0dc6ff425dd 69668 bytes` beside `on disk 92b348cbfaafd6a1 73590 bytes`, exit 1. That
-refusal is the gate saying what the paragraph above says.
+It printed `the deployed page is 357410e, on every one of those files` and exited 0, over all 26 of
+them, the three insurer and demo JSON fixtures among them.
 
-**No native evidence describes the runtime this entry will record.** The newest run is
-[run 33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240), workflow
-`WebMCP evals`, conclusion success, `headSha` `12f7935`, which is documentation only and whose
-runtime is `e942ee3`. It reported `Passed steps: 16/16 across 3 case(s)`, the negative control
-`7/8` with the verdict `PROVEN`, and our own probe
-`probe: PASS. 81 checks against the deployed page, none failed`. The run before it,
-[run 33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520), reported the
-same three numbers with `headSha` `e942ee3`. Both are true about the bytes the host serves today
-and about nothing later than them. The workflow has to be dispatched against `main` again once the
-release is served, and that run is what the record row above quotes beside the new SHA.
+**Native evidence against that same commit**, dispatched after the release rather than quoted from
+an older run: [run 33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770),
+workflow `WebMCP evals`, conclusion success, `headSha` `357410e`, on
+`Google Chrome 154.0.8025.0 dev`. It reported `Passed steps: 16/16 across 3 case(s)`, the negative
+control `Passed steps: 7/8 across 1 case(s)` with the verdict `PROVEN`, and our own probe
+`probe: PASS. 81 checks against the deployed page, none failed`.
 
-**The probe reports 81 checks where the runs of 2026-09-01 reported 71, and the page is not why.**
-Its judgement grew: the evidence note phase and the declarative write phase were each found to pass
-a forged transcript describing a page behaving wrongly, so both now compare a full claim state
-rather than one field. Ten checks were added to the oracle, not to the product. 81 is the current
-number and 71 cannot be reproduced by the probe as it is now.
+**What may change after this line, and what may not.** Commits after `357410e` may touch
+documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/` or
+`fixtures/`. Those are the 26 files the page serves and the takes are shot against them. The command
+above is how anyone checks the promise was kept: run it with `357410e` after any later commit and it
+still has to exit 0.
 
-**What the next freeze promises.** Once the record row names a SHA, commits after it may touch
-documentation, evidence and this runbook, and they may NOT touch `index.html`, `src/`, `assets/`
-or `fixtures/`, because those are the 26 files the page serves and the takes are shot against them.
-The command above, run with that SHA, is how anyone checks the promise was kept.
+**Unfreezing again needs a stated reason and only three of them count**: a judge-facing statement
+that is false, a mandatory deliverable that is broken, or a rule violation that risks
+disqualification. Not making something better. To unfreeze, write the defect here, say which takes
+it invalidates, then re-freeze at the new commit and record the new SHA beside the old ones rather
+than replacing them.
 
-### Four superseded declarations, each named with its reason rather than deleted
+### Four superseded declarations, each named with its reason
 
-**`e942ee3`, declared 2026-09-02, superseded the same day and it is what the host still serves.**
-The private filing receipt attested object identity rather than the state that was filed:
-`fileClaim` returned a mutable claim, recorded that object in a private WeakSet, and `wasFiledHere`
-stayed true afterwards no matter what the object then held. The store hands every caller that same
-live object, so a value changed after filing was sealed and hashed into a packet that went on
-saying the filing happened through a control on the page. `fileClaim` now deep freezes the graph it
-files before the receipt is written. `tests/unit/filing_receipt_state.test.js` carries the values
-measured before the fix, and `tests/unit/app_boot_filed_state.test.js` files through the real page
-afterwards. Nothing had to be re-cut, because no take had been shot.
+**`e942ee3`, declared and superseded on 2026-09-02.** The filing receipt attested object identity
+rather than the state that passed the gate, so values changed after filing were sealed into the
+packet while it went on saying the filing happened through a control on the page. That is a
+judge-facing statement that was false, which is the first of the three reasons this file allows.
 
-**`c93b138`, declared 2026-09-02, superseded the same day.** Most of this runbook was written
-against it and everything about beats, framing and takes still stands. It stopped being what a take
-would show when the correctness work package landed on the runtime.
+**`c93b138`, declared and superseded on 2026-09-02.** Most of this runbook was written against it.
+The correctness work package landed on the runtime under it.
 
-**`39690d4`, never declared here, superseded before it could be.** It was `origin/main`, so a default
-dispatch of `.github/workflows/video.yml` would have written it into `manifest.json` as
-`deployed_sha`. The same work sat on top of it.
+**`39690d4`, never declared here.** It was `origin/main`, so a default dispatch of
+`.github/workflows/video.yml` would have written it into `manifest.json` as `deployed_sha`.
 
 **`9b64fb2`, declared 2026-09-01**, and the unfreeze that ended it is recorded below.
 
-### The native evidence that is kept for history, and is not about this freeze
+**No take was invalidated by any of them, because none has been shot.**
 
-[run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732) ran with
-`headSha` `c93b138` and reported 16 of 16, the negative control at 7 of 8 `PROVEN`, and
-`probe: PASS. 71 checks`. That run is true about `c93b138` and is kept for that reason. It is not
-evidence about what will be recorded, and nothing quotes it as such.
+### Native runs kept as history, and not quoted as current
 
-**The record row is what the gate reads, and it now reads only that row.** `FRZ` used to take the
-first line anywhere in this file that said freeze commit and carried a backticked hex string, which
-meant a paragraph explaining a SUPERSEDED freeze was enough to turn it green. It went green over
-this very file. The row is now the deliverable record row alone, and the SHA has to be the first
-thing in its cell, so the history above votes on nothing.
+[Run 33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935`
+and [run 33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at
+`e942ee3` both reported the same three numbers. They are true about the runtime `e942ee3` and about
+nothing later than it. [Run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732)
+at `c93b138` reported `probe: PASS. 71 checks`, and the probe's judgement has grown since: the note
+phase and the declarative phase were each found passing a forged transcript, so both compare a whole
+claim state now. Ten checks were added to the oracle, not to the product.
+
+**The record row is what the gate reads, and it reads only that row.** `FRZ` used to take the first
+line anywhere in this file that said freeze commit and carried a backticked hex string, which meant
+a paragraph explaining a SUPERSEDED freeze was enough to turn it green. It went green over this very
+file. The row is now the deliverable record row alone, and the SHA has to be the first thing in its
+cell, so the history above votes on nothing.
 `tests/unit/readiness_freeze_row.test.js` feeds both of those shapes in and requires a refusal.
 
 ### The unfreeze that produced the superseded `c93b138`, recorded as this file requires

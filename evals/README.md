@@ -56,8 +56,8 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240), workflow `WebMCP evals`, conclusion success, run 2026-09-02. It is the newest run, and [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) before it reported the same three numbers with `headSha` `e942ee3` |
-| Commit under test | `headSha` `12f7935`, a documentation only commit whose runtime is `e942ee3`, **and `e942ee3` is what the host served on 2026-09-02**. Checked, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha e942ee3`, run from a clone at that commit, fetches all 26 files the page loads and printed `the deployed page is e942ee3, on every one of those files`, exit 0. **The gap is open again.** Filing integrity work in the working tree changes `src/core/claim.js`, one of those 26 files, so this run says nothing about the runtime this entry will record and the workflow has to be dispatched against `main` after the release |
+| Run | [33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770), workflow `WebMCP evals`, conclusion success, run 2026-09-02, dispatched against `main` after the release was served so the run and the deployment name one runtime |
+| Commit under test | `357410e`, **and that is the commit the host serves and the commit the recording is frozen at**. Checked, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 357410e` fetches all 26 files the page loads and printed `the deployed page is 357410e, on every one of those files`, exit 0. The workflow runs on a daily schedule and on dispatch rather than on push, so the gap opens again on the next commit that touches one of those files |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step. That string was read from the log of 33588857520; the dev channel moves, so re-read it from the run you are quoting |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179`, which is pinned in the workflow and so is the same in both runs |
@@ -72,12 +72,12 @@ the one quoted here for a reason worth stating: each of the others was driven ag
 later commits superseded, and two of those commits changed what the browser loads. A green run
 against bytes the host no longer serves is not evidence about the live page, so this file is
 re-run rather than left pointing at the old number. Read it for yourself with
-`gh run view 33600367240 --repo upgradedev/claimready --log`, and confirm the commit with
-`gh run view 33600367240 --repo upgradedev/claimready --json headSha`, which prints
-`12f7935e3e6e9362471c8f62cdb51b332db42d5d`.
+`gh run view 33616908770 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33616908770 --repo upgradedev/claimready --json headSha`, which prints
+`357410e3e0664c13f223ce4dfa28310fbb10e97a`.
 
 **The negative control HAS now run in a browser, twice.** This paragraph used to say it had not, at
-any commit. In runs 33334936720, 33458929502, 33560224732, 33588857520 and 33600367240 its own job reported `Passed steps: 7/8 across 1
+any commit. In runs 33334936720, 33458929502, 33560224732, 33588857520, 33600367240 and 33616908770 its own job reported `Passed steps: 7/8 across 1
 case(s).` and named the step that had to fail: `step 8 (get_assistance_options): tool
 "get_assistance_options" is not available.` The workflow asserts both the summary and that sentence,
 so a browser that quietly kept the tool would have turned the job green and failed the assertion
