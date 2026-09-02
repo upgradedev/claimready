@@ -21,31 +21,30 @@ and the path to save to.
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
-| Freeze commit | `357410e`, declared 2026-09-02 after the release was served and verified over all 26 files the page loads. It supersedes `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
+| Freeze commit | `9450d70`, declared 2026-09-02 after the release was served and verified over all 26 files the page loads. It supersedes `357410e`, `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
 
 ## The freeze
 
-**Freeze commit: `357410e`.** Every file the page loads is at that commit. Verified after GitHub
+**Freeze commit: `9450d70`.** Every file the page loads is at that commit. Verified after GitHub
 Pages served it:
 
 ```sh
-python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha 357410e
+python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha 9450d70
 ```
 
-It printed `the deployed page is 357410e, on every one of those files` and exited 0, over all 26 of
+It printed `the deployed page is 9450d70, on every one of those files` and exited 0, over all 26 of
 them, the three insurer and demo JSON fixtures among them.
 
-**Native evidence against that same runtime**, dispatched after the release rather than quoted from
-an older run: [run 33623166901](https://github.com/upgradedev/claimready/actions/runs/33623166901),
-workflow `WebMCP evals`, conclusion success, on `Google Chrome 154.0.8025.0 dev`. It reported
-`Passed steps: 16/16 across 3 case(s)`, the negative control `Passed steps: 7/8 across 1 case(s)`
-with the verdict `PROVEN`, and our own probe
+**Native evidence against that exact commit**, dispatched after the release rather than quoted from
+an older run: [run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683),
+workflow `WebMCP evals`, conclusion success, `headSha` `9450d70`, on
+`Google Chrome 154.0.8025.0 dev`. It reported `Passed steps: 16/16 across 3 case(s)`, the negative
+control `Passed steps: 7/8 across 1 case(s)` with the verdict `PROVEN`, and our own probe
 `probe: PASS. 110 checks against the deployed page, none failed`.
 
-**That run's head is `6a855f7`, not `357410e`, and the freeze still holds.** The commits between
-them changed `evals/`, `scripts/` and `tests/` and nothing else. None of the 26 files the page loads
-moved, which the verify command above confirms against `357410e` after each of them, so the takes
-stand and nothing needs re-cutting.
+**The run and the freeze name one commit**, which is the state this file has been chasing all day
+and the only state a take may be shot in. Every earlier run in this file names an earlier runtime
+and is kept for that reason rather than quoted as current.
 
 **Read 110 as the size of the judgement rather than a score for the page.** It was 53, then 71, then
 81, then 110, and the page did not improve between them. Each rise is a class of forged transcript
