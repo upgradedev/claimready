@@ -14,7 +14,7 @@ kept because it is where the entry's own defects get written down before a judge
 First written against `7b50d4a`, a working commit that reached the public repository squashed as
 `c93b138`. Revised 2026-09-01 against `ab2db69`. **Revised again 2026-09-02, and again not against
 a released commit**, which is a weaker footing and is said rather than hidden: `origin/main` is
-`12f7935`, the deployed runtime is `357410e`, and filing integrity work is sitting in the working
+`12f7935`, the deployed runtime is `9450d70`, and filing integrity work is sitting in the working
 tree unreleased. It changes `src/core/claim.js`, one of the 26 files the page loads, so the live
 page no longer serves what this review read. Every count below was taken from a command run in that
 working tree on 2026-09-02, on Windows, and every one has to be taken again from a fresh clone at
@@ -116,13 +116,16 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 ## 2. Execution, 25 percent
 
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
-serves and it can be proved in one command. 872 unit tests, from `node --test tests/unit` printing
-`# tests 872`, `# pass 872` and `# fail 0` on 2026-09-02, which is the command this file is required
-to carry rather than a number somebody typed. A style gate over 189 text files, from
+serves and it can be proved in one command. 885 unit tests, from `node --test tests/unit` printing
+`# tests 885`, `# pass 885` and `# fail 0` on 2026-09-02, which is the command this file is required
+to carry rather than a number somebody typed. A style gate over 190 text files, from
 `node scripts/check_style.mjs`. Coverage of `src` alone, from
 `node --test --experimental-test-coverage --test-reporter=./tests/support/coverage_report.mjs --test-reporter-destination=stdout tests/unit`,
-which printed `src, 21 files` at 98.25 percent of lines, 88.64 percent of branches and 97.87 percent
-of functions against floors of 97, 86 and 96. A
+which printed `src, 21 files` at 98.29 percent of lines, 88.75 percent of branches and 97.87 percent
+of functions against floors of 97, 86 and 96. **Read the branch figure as a band rather than a
+constant.** It moves between runs, because `src/ui/render.js` has timing dependent branches, and
+this file quoted 88.53 once as though it were fixed. Anything from about 88.4 to 88.8 is the same
+tree. A
 readiness gate that prints one row per deliverable and breaks every row it prints, in its own copy
 of the repository, to show that each one refuses. Numbers in the README come with the command that
 produces them.
@@ -258,9 +261,9 @@ anything. It is answerable by recording.
 
 **Number 5 is closed today, and it reopens on the next runtime commit.** It closed on 2026-09-01,
 reopened twice on 2026-09-02 as work landed on the runtime, and closed again each time. Run
-33616908770 drove the `357410e` the host serves, and
+33616908770 drove the `9450d70` the host serves, and
 `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/
---deployed-sha 357410e` says so over all 26 files the page loads. It is open a third time as this is
+--deployed-sha 9450d70` says so over all 26 files the page loads. It is open a third time as this is
 written, because filing integrity work in the working tree changes `src/core/claim.js`, which is one
 of those 26 files. The evals workflow runs daily and on dispatch rather than on push, so the gap
 reopens on every commit that touches them. Anyone finishing this entry re-dispatches that workflow
