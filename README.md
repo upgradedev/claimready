@@ -832,9 +832,10 @@ scripts/              the style gate, the readiness gate, the intake measurement
 evals/                the three journeys, the negative control that must fail, and the offline replay
 docs/architecture.md  the layer map and the dependency rule
 docs/submission/      the description and the video runbook, which are the deliverable records
-docs/review/          our own adversarial review of this entry against the four criteria. Every
-                      score in it is ours and is labelled ours. It is a working document and it
-                      is not a deliverable
+docs/review/          our own review of this entry against the four judging criteria, written
+                      against us: what a judge marks down, what the entry cannot answer, and
+                      which of our own framing rows are red. It carries no scores. It is a
+                      working document and it is not a deliverable
 docs/handler-verification.md
                       how somebody outside this project checks a packet's digest, with two routes
                       that use none of our code

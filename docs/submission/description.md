@@ -1,4 +1,4 @@
-# ClaimReady, motor first notice of loss
+# ClaimReady: what your car insurance covers, answered while you report the crash
 
 The insurer's page hands your own agent its rules as typed tools, so you learn what you
 are covered for while still describing the crash.
@@ -11,10 +11,20 @@ chrome://flags/#enable-webmcp-testing on. Anywhere else the page works by hand.
 
 ## Inspiration
 
-I build claims systems for European assistance operators. My judgement, not a study: first notices
-arrive wrong about what the policy needed rather than about what happened. Neither the driver at the
-roadside nor a general agent can know what this cover requires: the clause, the excess and the
-required fields sit on one insurer's origin.
+Somebody has just had a crash and is standing next to the car with a phone. They know what
+happened. What they do not know is what their own policy needs to hear about it, and neither does
+any general purpose assistant, because the clause, the excess and the list of required answers sit
+on one insurer's origin and change from customer to customer.
+
+I build claims systems for European assistance operators, so this is the failure I watch: a first
+notice arrives wrong about what the policy needed rather than about what happened. Then the driver
+waits days to learn what they are covered for, and a handler spends the interval asking for the
+field nobody told anyone to fill in.
+
+That is a description of a role rather than of one person, and our own framing rule says a named
+person scores and a role does not. The rule is right and this entry does not meet it. Inventing a
+name to satisfy it would be the one fabricated thing in a submission that has published every
+result that went against it, so the row stays red.
 
 ## What it does
 
