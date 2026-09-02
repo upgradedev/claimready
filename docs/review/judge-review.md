@@ -249,10 +249,10 @@ seconds of video to land.
 Four of those five are answered somewhere in the repository. The first is not answerable by writing
 anything. It is answerable by recording.
 
-Number 5 was closed on 2026-09-01 and has reopened, exactly as this sentence predicted. Run 33560224732 drove `c93b138`, which is
-what the host serves, and `python video/build_video.py --verify-deployed --url
-https://upgradedev.github.io/claimready/ --deployed-sha c93b138` says so over all 26 files the page
-loads. The evals workflow runs daily and on dispatch rather than on push, so the next commit that
+Number 5 closed, reopened when the correctness work landed on the runtime, and closed again the
+same way. Run 33588857520 drove `e942ee3`, which is what the host serves, and
+`python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/
+--deployed-sha e942ee3` says so over all 26 files the page loads. The evals workflow runs daily and on dispatch rather than on push, so the next commit that
 touches a file the page loads reopens the gap. Anyone finishing this entry re-dispatches that
 workflow against `main` after the last such commit, and before the video is uploaded.
 
