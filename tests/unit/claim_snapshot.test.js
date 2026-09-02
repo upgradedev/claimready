@@ -39,6 +39,8 @@ import {
   createClaim,
   fileClaim,
   hydrateClaim,
+  lockField,
+  unlockField,
 } from '../../src/core/claim.js';
 import { buildFilingPacket, PACKET_CODES } from '../../src/core/packet.js';
 import { loadPolicyPack } from '../../src/core/policy.js';
@@ -167,6 +169,58 @@ test('and none of them can be moved on by a patch, which is the door that writes
     assert.deepEqual(refused.applied, [], `${name} reported a written field`);
     assert.equal(snapshot(refused.claim), before, `${name} moved the claim`);
   }
+});
+
+test('and none of them can be pinned or unpinned either, the other two doors that write', () => {
+  // THE FIFTH AND SIXTH DOORS, and the last two that said yes. Pinning writes no value, so nothing
+  // wrong escaped through them. They moved the counter, and the counter is the one thing a later
+  // writer trusts to prove it read what it is writing to. Measured before the check, on a settled
+  // draft holding one value written by hand:
+  //
+  //   severity "catastrophic"   applyPatch  refused PATCH_REJECTED_VALUE, revision stayed 2
+  //                             lockField   ok=true, revision 2 -> 3, still "catastrophic"
+  //                             unlockField ok=true, revision 2 -> 3, still "catastrophic"
+  //
+  // Every claim below is pinned on description first, through the real door, so both calls ask for
+  // a change that would have landed rather than for one that changes nothing anyway.
+  for (const [name, mutate] of Object.entries(BAD_SNAPSHOTS)) {
+    const claim = lockField(settledDraft(), 'description').claim;
+    mutate(claim);
+    const before = snapshot(claim);
+
+    const patched = applyPatch(claim, { field: 'location', value: 'Somewhere else entirely' });
+    assert.equal(patched.ok, false, `${name} was patched`);
+
+    for (const [door, result] of [
+      ['lockField', lockField(claim, 'location')],
+      ['unlockField', unlockField(claim, 'description')],
+    ]) {
+      assert.equal(result.ok, false, `${name} was accepted by ${door}`);
+      assert.equal(result.code, 'PATCH_REJECTED_VALUE', `${name} got the wrong code from ${door}`);
+      assert.equal(result.claim, claim, `${door} handed back a different claim for ${name}`);
+      assert.equal(result.revision, patched.revision, `${door} moved the revision on ${name}`);
+      assert.equal(snapshot(claim), before, `${name} was changed by ${door}`);
+
+      // THE SAME REFUSAL, WORD FOR WORD. Three doors reading one check must not describe it three
+      // ways, or a reader fixing the claim gets three accounts of one problem.
+      assert.equal(result.error, patched.error, `${door} says something else about ${name}`);
+    }
+  }
+});
+
+test('pinning still works on a claim this page could have written', () => {
+  // A check that refuses everything is not a fix. The ordinary pin is what the filmed journey does
+  // on vehicle_drivable, so it is asserted here beside the refusals.
+  const claim = settledDraft();
+
+  const pinned = lockField(claim, 'vehicle_drivable');
+  assert.equal(pinned.ok, true, pinned.error);
+  assert.equal(pinned.revision, claim.revision + 1);
+  assert.deepEqual(pinned.claim.locked, ['vehicle_drivable']);
+
+  const released = unlockField(pinned.claim, 'vehicle_drivable');
+  assert.equal(released.ok, true, released.error);
+  assert.deepEqual(released.claim.locked, []);
 });
 
 /* --------------------------------------------- 2. none of them can be sealed into a packet */

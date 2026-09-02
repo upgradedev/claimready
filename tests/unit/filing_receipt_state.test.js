@@ -48,6 +48,7 @@ import {
   fileClaim,
   hydrateClaim,
   lockField,
+  noteContextChange,
   wasFiledHere,
 } from '../../src/core/claim.js';
 import { buildFilingPacket, PACKET_CODES } from '../../src/core/packet.js';
@@ -280,4 +281,125 @@ test('every object reachable from a filed claim is frozen, whatever is added to 
   walk(filed, 'claim');
 
   assert.deepEqual(unfrozen, [], `these parts of the filed claim can still be rewritten: ${unfrozen.join(', ')}`);
+});
+
+/* --------------------------------------- a context change keeps the receipt, and only that one */
+
+const REASON = 'the insurer rule pack changed to Kestrel Assurance';
+
+/** Walk everything reachable and report what can still be written to. */
+function stillWritable(root) {
+  const unfrozen = [];
+  const seen = new Set();
+  const walk = (value, where) => {
+    if (value === null || typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+    if (!Object.isFrozen(value)) unfrozen.push(where);
+    for (const key of Reflect.ownKeys(value)) walk(value[key], `${where}.${String(key)}`);
+  };
+  walk(root, 'claim');
+  return unfrozen;
+}
+
+test('a context change on a filed claim keeps the receipt, so the packet still builds', () => {
+  // WHAT WAS WRONG. `noteContextChange` hands back a copy, and a copy was never filed here, so the
+  // receipt stayed on the object the store had just replaced. Measured before the fix, filing
+  // through the store and then dispatching one context change:
+  //
+  //   wasFiledHere after filing       : true    packet ok   : true
+  //   wasFiledHere after the change   : false   packet code : PACKET_REFUSED_NOT_FILED_HERE
+  //
+  // The claim went on reading status "filed" while the page refused to describe the filing it had
+  // performed a moment earlier. The page dispatches this action when the rule pack changes and
+  // when a human action closes a requirement, so it is one click away from that state.
+  const store = createStore({ claim: settledDraft() });
+  store.dispatch({
+    type: 'file', at: AT, pack: northwind, completedHumanActions: DONE, homePackId: HOME,
+  });
+
+  const filed = store.getState().claim;
+  assert.equal(wasFiledHere(filed), true);
+  const first = build(filed);
+  assert.equal(first.ok, true, first.reason);
+
+  const noted = store.dispatch({ type: 'context', reason: REASON });
+  assert.equal(noted.ok, true, noted.error);
+
+  const after = store.getState().claim;
+  assert.notEqual(after, filed, 'a context change hands back a copy, which is why this test exists');
+  assert.equal(after.status, 'filed');
+  assert.equal(wasFiledHere(after), true);
+
+  const second = build(after);
+  assert.equal(second.ok, true, second.reason);
+
+  // The counter moved and the reference carries it, so these are two documents about one filing
+  // rather than one document twice. That is the context change doing its job.
+  assert.equal(after.revision, filed.revision + 1);
+  // This claim carries no reference of its own, so the packet builds one from the policy number.
+  assert.equal(first.packet.reference, `CR-${filed.policy_id}-R${filed.revision}`);
+  assert.equal(second.packet.reference, `CR-${after.policy_id}-R${after.revision}`);
+  assert.notEqual(second.packet.reference, first.packet.reference);
+});
+
+test('the copy a context change hands back is sealed the way the filing was', () => {
+  // The receipt attests a state rather than an address, and it only says that while the thing it
+  // is attached to cannot move. So the copy is frozen before it enters the set, by the same
+  // function the file gate uses. This names no field, so a container added to the claim in a year
+  // is covered the day it appears.
+  const filed = fileTheDraft();
+  const after = noteContextChange(filed, REASON).claim;
+
+  assert.equal(wasFiledHere(after), true);
+  const writable = stillWritable(after);
+  assert.deepEqual(writable, [],
+    `these parts of the claim after a context change can still be rewritten: ${writable.join(', ')}`);
+
+  // And the filed claim it was copied from is untouched, counter included.
+  assert.equal(after.revision, filed.revision + 1);
+  assert.equal(filed.description, ACCOUNT);
+});
+
+test('a context change gives a receipt to nothing that did not already have one', () => {
+  // The forgeries from tests/unit/filing_receipt.test.js, run through the context change instead of
+  // straight at the packet. A copy, a hand written status and a claim read back from storage are
+  // the three ways somebody assembles a filed looking claim, and none of them may pick up a
+  // receipt by taking a detour through this function.
+  const filed = fileTheDraft();
+
+  const forgeries = {
+    'a copy of the filed claim': { ...filed },
+    'a status written by hand': { ...settledDraft(), status: 'filed', filed_at: AT, revision: 9 },
+    'a claim read back from storage': hydrateClaim(JSON.parse(JSON.stringify(filed))),
+  };
+
+  for (const [name, forged] of Object.entries(forgeries)) {
+    assert.equal(wasFiledHere(forged), false, `${name} carried a receipt before the context change`);
+
+    const noted = noteContextChange(forged, REASON);
+    assert.equal(noted.ok, true, `${name}: ${noted.error}`);
+    assert.equal(wasFiledHere(noted.claim), false, `${name} was handed a receipt by a context change`);
+    assert.equal(build(noted.claim).code, PACKET_CODES.notFiledHere, `${name} sealed a packet`);
+  }
+});
+
+test('a context change on a draft is what it always was, a copy with the counter moved', () => {
+  // The draft path must not have paid for any of this. A draft carries no receipt, so nothing is
+  // sealed, and the copy stays writable because the page goes on editing it.
+  const draft = settledDraft();
+  const noted = noteContextChange(draft, REASON);
+
+  assert.equal(noted.ok, true, noted.error);
+  assert.equal(noted.revision, draft.revision + 1);
+  assert.equal(wasFiledHere(noted.claim), false);
+  assert.equal(Object.isFrozen(noted.claim), false, 'a draft was frozen by a context change');
+  assert.deepEqual(
+    { ...noted.claim, revision: null },
+    { ...draft, revision: null },
+    'a context change writes no value, no provenance, no pin and no status',
+  );
+
+  // And it is still patchable afterwards, which is the whole point of a draft.
+  const patched = applyPatch(noted.claim, { field: 'location', value: 'Somewhere else entirely' });
+  assert.equal(patched.ok, true, patched.error);
 });

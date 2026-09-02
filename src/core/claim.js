@@ -1214,6 +1214,29 @@ function lockGuard(claim, field) {
   if (!claim || typeof claim !== 'object') {
     throw new TypeError('lockField needs a claim object.');
   }
+
+  // THE DOORS THAT PIN ASK WHAT THE DOOR THAT WRITES ASKS.
+  //
+  // `applyPatch` refuses a claim holding a value this page could not have written. These two used
+  // to accept the same claim and advance the revision on it. Measured before this check, on a
+  // settled draft written to by hand:
+  //
+  //   severity "catastrophic"   checkClaimSnapshot ok=false
+  //                             applyPatch  refused PATCH_REJECTED_VALUE, revision stayed 2
+  //                             lockField   ok=true, revision 2 -> 3, still "catastrophic"
+  //                             unlockField ok=true, revision 2 -> 3, still "catastrophic"
+  //
+  // So the door that writes refused and the doors that pin waved it through, and the counter they
+  // moved is the one thing a later writer trusts to prove it read what it is writing to. Same code
+  // and same sentence as the patch refusal, because it is the same refusal.
+  //
+  // IT RUNS BEFORE THE FILED CHECK, for the reason it runs first in `applyPatch`. A claim nobody
+  // can read is refused for that, whatever else is true about it.
+  const snapshot = checkClaimSnapshot(claim);
+  if (!snapshot.ok) {
+    return { code: PATCH_CODES.value, error: `${snapshot.reason} Nothing was changed.` };
+  }
+
   if (claim.status === 'filed') {
     return {
       code: PATCH_CODES.protected,
@@ -1295,13 +1318,17 @@ export function unlockField(claim, field) {
  * counter stood still through either one, so a patch written against the answers from before the
  * switch was accepted at the same number afterwards.
  *
- * It moves the counter and nothing else. No field is written, no provenance is stamped, nothing
- * is validated, and the reason is not stored on the claim: it is handed back so the caller can
- * say it out loud. The claim is data about the incident and the pack that is loaded is not.
+ * The counter is the only thing on the claim that moves. No field is written, no provenance is
+ * stamped, nothing is validated, and the reason is not stored on the claim: it is handed back so
+ * the caller can say it out loud. The claim is data about the incident and the pack that is
+ * loaded is not.
  *
  * A FILED CLAIM IS ALLOWED THROUGH, on purpose. A patch on a filed claim is refused as protected
  * before the stale check ever runs, so refusing here would buy nothing, and the read tools still
- * report the revision, which should go on describing the context they are reading.
+ * report the revision, which should go on describing the context they are reading. One thing
+ * travels with a filed claim besides its values: the filing receipt. The copy is sealed and
+ * receipted the way the filing was, and only when the claim handed in already carried one. The
+ * body says what that closes.
  *
  * @param {object} claim
  * @param {string} reason what changed, in the caller's words. Required, so a counter never moves
@@ -1326,6 +1353,28 @@ export function noteContextChange(claim, reason) {
 
   const next = copyClaim(claim);
   next.revision = revision + 1;
+
+  // A CONTEXT CHANGE ON A FILED CLAIM KEEPS THE FILING RECEIPT.
+  //
+  // This function hands back a copy, and a copy was never filed here, so a filed claim used to
+  // lose its receipt the moment the rule pack changed under it. Measured before this line, filing
+  // through the store and then dispatching one context change:
+  //
+  //   wasFiledHere after filing       : true    packet ok   : true
+  //   wasFiledHere after the change   : false   packet code : PACKET_REFUSED_NOT_FILED_HERE
+  //
+  // The claim went on saying `status: "filed"` while the page refused to describe the filing it
+  // had just performed.
+  //
+  // NOTHING IS WEAKENED BY IT. The copy carries the receipt only when the claim handed in carried
+  // one, so a hand built or restored claim wearing a filed status still gets nothing, which is the
+  // whole point of the set. It is sealed first, by the same function the file gate uses, so the
+  // receipt attests what this copy holds rather than which object it is.
+  //
+  // The sealing reaches no draft anybody still holds: a receipted claim is already frozen top to
+  // bottom, so the note objects `copyClaim` shares are frozen ones.
+  if (wasFiledHere(claim)) sealAndReceipt(next);
+
   return { claim: next, ok: true, error: null, code: null, revision: next.revision };
 }
 
@@ -1441,6 +1490,27 @@ function sealFiledState(value, seen) {
 }
 
 /**
+ * Seal a claim and then receipt it. The one place a receipt is ever written.
+ *
+ * WHY IT IS A FUNCTION AND NOT TWO LINES INSIDE fileClaim. Two states carry the receipt now: the
+ * claim the file gate returns, and the copy `noteContextChange` returns when the claim handed to
+ * it already had one. Both have to be frozen before they enter the set, or the receipt attests an
+ * address again instead of a state, which is the defect `sealFiledState` above exists to close.
+ * One function is one order, one place to read, and one line carrying `FILED_BY_THIS_MODULE.add`,
+ * so a grep over this file still finds every writer of the receipt.
+ *
+ * THE ORDER IS THE POINT. Freeze, then add, so nothing mutable is ever a member of the set.
+ *
+ * @param {object} claim frozen in place and handed back
+ * @returns {object} the same object, sealed and receipted
+ */
+function sealAndReceipt(claim) {
+  sealFiledState(claim, new Set());
+  FILED_BY_THIS_MODULE.add(claim);
+  return claim;
+}
+
+/**
  * Mark the claim filed. There is no tool for it on this page's surface.
  *
  * Filing is a change like any other, so it advances the revision: an agent
@@ -1521,10 +1591,9 @@ export function fileClaim(claim, options = {}) {
   // caller still holds and may still edit. See sealFiledState for why one level is the whole note.
   next.evidence_notes = next.evidence_notes.map((note) => ({ ...note }));
   // FROZEN BEFORE IT IS RECEIPTED, in that order, so nothing mutable is ever a member of the set.
-  sealFiledState(next, new Set());
-  // The receipt, written on the one line where a filing actually happens and nowhere else. See
-  // FILED_BY_THIS_MODULE above for what it is worth and, more importantly, what it is not.
-  FILED_BY_THIS_MODULE.add(next);
+  // See FILED_BY_THIS_MODULE above for what the receipt is worth and, more importantly, what it
+  // is not, and sealAndReceipt for why both writers of it go through one function.
+  sealAndReceipt(next);
   return { claim: next, ok: true, error: null, code: null, revision: next.revision };
 }
 
