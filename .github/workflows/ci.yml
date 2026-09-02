@@ -16,8 +16,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+# READ ONLY, AND `pull-requests` IS HERE SO THE SECRET SCAN CAN RUN AT ALL.
+# On a pull_request event gitleaks-action takes its ScanPullRequest path, which lists the commits on
+# the pull request before it scans them. With `contents: read` alone that call answered 403,
+# "Resource not accessible by integration", and the job died before gitleaks scanned one line:
+# https://github.com/upgradedev/claimready/actions/runs/33669052892. The push event run of the same
+# commit passed, because that path never asks. So the scan was not finding nothing, it was not
+# running, which is the shape of failure this repository refuses to leave in place.
+# This grants read and nothing else. The action can post a comment with `pull-requests: write`, and
+# it is deliberately not given that.
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.ref }}
