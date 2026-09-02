@@ -42,9 +42,11 @@ import {
   isFilingInstant,
   PATCHABLE_FIELDS,
   validateClaim,
-  wasFiledHere,
+  verifyFilingContext,
+  FILING_CONTEXT_MISMATCHES,
 } from './claim.js';
 import { PACK_CONTRACT } from './policy.js';
+import { canonicalise } from './canonical.js';
 
 /** Why a packet was refused. A caller branches on the code, never on the sentence. */
 export const PACKET_CODES = {
@@ -60,6 +62,18 @@ export const PACKET_CODES = {
   // Every refusal above asks whether this filing COULD have happened. This one asks whether it
   // DID, and it is the last question because it is the only one left once the others have passed.
   notFiledHere: 'PACKET_REFUSED_NOT_FILED_HERE',
+  // A filing did happen, and this is not what it happened under. The pack, whose policy it is and
+  // which steps a person had carried out all arrive on this call rather than off the claim, so
+  // they are the three facts a caller can still substitute after the fact.
+  notTheFilingContext: 'PACKET_REFUSED_NOT_THE_FILING_CONTEXT',
+  // The ledger names a tool this page does not publish. A sealed row saying `file_claim` succeeded
+  // is a document describing a tool that deliberately does not exist.
+  unknownTool: 'PACKET_REFUSED_UNKNOWN_TOOL',
+  // A ledger row that names no tool at all. It is a separate thing to be told and it keeps a code
+  // of its own: `unknownTool` says the row named something this page never published, and this one
+  // says the row named nothing, so there is no call for a handler to look up. Reusing the other
+  // code would put a quoted name in a sentence that has no name to quote.
+  namelessCall: 'PACKET_REFUSED_NAMELESS_CALL',
   // The document was assembled and does not match the shape this build describes. On the ordinary
   // path it cannot happen, because every input was checked on the way in. It is what a change to
   // the build block trips over, and it is the code the verifier reports on a file off a disk.
@@ -446,45 +460,15 @@ const PACKET_REFUSALS = {
 /**
  * Canonical JSON: sorted keys at every level, two space indent, LF, no undefined.
  *
- * The digest is only worth something if two runs over one snapshot produce one string, so key
- * order cannot be left to insertion order and a float cannot be left to its default formatting.
- * Numbers here are integers and fixed decimals from the rule packs, and they are written as they
- * arrive.
- *
- * THE LEVEL IS BUILT ON A NULL PROTOTYPE, AND THAT IS NOT TIDINESS. It used to be a plain `{}`,
- * which meant `out[key] = ...` for a key named `__proto__` ran the Object.prototype setter instead
- * of creating an own property, so JSON.stringify never saw it and the key left the document.
- * Measured before the change, on two objects parsed from different JSON:
- *
- *   own __proto__ on a: true
- *   same canonical: true
- *   same digest: true
- *
- * Two different documents, one digest. That is the single property this function exists to give,
- * and a handler comparing two packets would have been told they were the same packet.
- *
- * `Object.create(null)` has no setter to run, so the key lands as data. Nothing downstream ever
- * sees the object: this function returns a string, and the packet handed to a caller is the
- * original content. `tests/unit/canonicalise.test.js` holds the counterexamples, and every one of
- * them builds its fixture with JSON.parse, because a source literal `{ __proto__: 'x' }` trips the
- * same setter and would report the defect as fixed while it was still there.
- *
- * @param {*} value
- * @returns {string}
+ * IT LIVES IN src/core/canonical.js NOW AND IS RE-EXPORTED HERE. Two modules need the one canonical
+ * writing: this one hashes it, and src/core/claim.js binds the canonical writing of a rule pack into
+ * the filing receipt. claim.js cannot import this module, because the refusal table above is built at
+ * top level out of keys imported from filing.js, so a cycle through here reads a binding that is
+ * still evaluating. The function moved to a leaf with no imports and nothing else changed. Every
+ * caller that reads `canonicalise` from this module goes on reading it from this module, and
+ * tests/unit/canonicalise.test.js still enters through here.
  */
-export function canonicalise(value) {
-  const walk = (node) => {
-    if (node === null || typeof node !== 'object') return node;
-    if (Array.isArray(node)) return node.map(walk);
-    const out = Object.create(null);
-    for (const key of Object.keys(node).sort()) {
-      if (node[key] === undefined) continue;
-      out[key] = walk(node[key]);
-    }
-    return out;
-  };
-  return `${JSON.stringify(walk(value), null, 2)}\n`;
-}
+export { canonicalise };
 
 /**
  * The SHA-256 of a canonical string, as `sha256:<hex>`.
@@ -525,6 +509,97 @@ export const PACKET_ROUTES = Object.freeze([...new Set(Object.values(ROUTE_BY_SO
 
 /** The one sentence `filed.through` may hold, named so the schema checks it instead of trusting it. */
 export const FILED_THROUGH = 'a control on the page. Filing is not exposed as a WebMCP tool.';
+
+/**
+ * Every tool this page publishes, so a ledger row naming anything else is refused rather than sealed.
+ *
+ * WHY THE LIST IS HERE AND NOT IMPORTED FROM src/webmcp. "src/webmcp never imports src/core/packet.js"
+ * is what keeps the packet off the tool surface, and tests/unit/packet_is_not_a_tool.test.js greps for
+ * it. An edge the other way would not break that rule, but it would put the module that must not be a
+ * tool in the same import graph as the module that publishes tools, and the next reader would have to
+ * work out which direction was the load bearing one. So this module states the list and
+ * tests/unit/filing_receipt.test.js reads the tool files and fails when the two disagree, which is the
+ * same arrangement `ROUTE_BY_SOURCE` above has with PROVENANCE_SOURCES in src/core/claim.js.
+ *
+ * FILING IS NOT ON IT, AND THAT IS THE POINT. There is no `file_claim`, no packet tool, no dispatch,
+ * no pin and no unlock, because none of those is a tool on this page.
+ *
+ * THE SURFACE HAS TWO HALVES AND THIS LIST HELD ONLY ONE OF THEM. WebMCP has an imperative half,
+ * one descriptor per file under src/webmcp/tools, and a declarative half, a `toolname` attribute on
+ * a form in index.html. This list named the nine imperative tools and stopped, so the tenth name on
+ * the surface, `record_supporting_details`, read here as a tool the page does not publish. An agent
+ * calling the form and a person then pressing File this claim produced no packet at all: the row
+ * the page writes to the ledger for that call was refused as an invented name, on the one journey a
+ * caller driving both halves of the API is most likely to take. Measured through the booted page
+ * before this line was added, on a claim filed after one agent submission of the declarative form:
+ *
+ *   file-result  : "Filed via the page at 2026-09-02T16:17:58.172Z. Filing is not exposed as a WebMCP tool."
+ *   packet hidden: true
+ *   field-error  : "The ledger names \"record_supporting_details\", which this page does not publish as a tool."
+ *
+ * The name was always on the published surface. What was wrong was this list, which claims to be
+ * that surface, so adding it corrects a short list rather than widening a check.
+ *
+ * BOTH HALVES ARE READ BACK BY THE CROSS CHECK, which is the only reason this stated list can be
+ * trusted. tests/unit/filing_receipt.test.js reads the tool descriptors under src/webmcp/tools AND
+ * every `toolname=` attribute in index.html, the command docs/architecture.md names for the second
+ * half, and fails when the union disagrees with what is written here. It also fails if the
+ * declarative half reads as empty, because a list assembled from one source is how this defect
+ * arrived. docs/architecture.md says the same thing about counting files in that directory: it does
+ * not count the whole published surface.
+ */
+export const PUBLISHED_TOOL_NAMES = Object.freeze([
+  'apply_claim_patch',
+  'check_coverage',
+  'describe_claim',
+  'get_assistance_options',
+  'get_repair_estimate',
+  'get_requirements',
+  'read_claim_state',
+  'read_evidence_notes',
+  // The declarative half. Nothing registers it: the browser builds it from the four attributes on
+  // the form in index.html, and src/ui/app.js writes it to the ledger under FORM_TOOL_NAME when an
+  // agent submits it. It is not imported from src/webmcp for the reason stated above.
+  'record_supporting_details',
+  'validate_claim',
+]);
+
+/**
+ * The tool a ledger row names, or null when it names nothing.
+ *
+ * TWO SHAPES REACH THIS, AND THE FALL THROUGH IS LOAD BEARING. src/ui/app.js writes a row as
+ * `{ at, name, args, text, error, refusals }`, and the packet's own output and every fixture in the
+ * tests write `{ at, tool, refused, code }`. Both are read here so that a control built out of a
+ * real page row and a control built out of a packet row exercise the same line.
+ *
+ * NULL IS THE ANSWER FOR EVERYTHING THAT IS NOT A NAME, not just for a missing key. A number, an
+ * object, an empty string and a string of spaces all name no tool, and the whole point of this
+ * function is that the caller cannot be handed a value it then has to guess about. The value is
+ * returned untrimmed, because trimming here would quietly accept " read_claim_state " as a name
+ * this page publishes, and it does not publish that.
+ */
+function nameOnRow(entry) {
+  const raw = entry.tool ?? entry.name;
+  return typeof raw === 'string' && raw.trim() !== '' ? raw : null;
+}
+
+/**
+ * The refusal code on a ledger row, or null if the row records no refusal.
+ *
+ * THE PAGE AND THE PACKET WROTE REFUSALS IN DIFFERENT WORDS AND ONLY ONE OF THEM WAS READ. A row
+ * off src/ui/app.js carries `refusals`, the list the page collects while a call is on the stack,
+ * and `error` for a call that threw. It carries no `refused` and no `code` at all, so a real page
+ * row that the page had refused sealed as `refused: false, code: null`: a document stating under a
+ * digest that a call the page turned down went through. Measured on the booted page, an agent
+ * submission of the declarative form with no baseRevision was refused with PATCH_REJECTED_STALE and
+ * its row carries that code inside `refusals` and nowhere else.
+ */
+function refusalCodeOnRow(entry) {
+  if (typeof entry.code === 'string' && entry.code.trim() !== '') return entry.code;
+  const refusals = Array.isArray(entry.refusals) ? entry.refusals : [];
+  const first = refusals.find((one) => one && typeof one.code === 'string' && one.code.trim() !== '');
+  return first ? first.code : null;
+}
 
 /** The route an answer arrived on, in the two words the page uses everywhere else. */
 function routeOf(claim, field) {
@@ -622,7 +697,7 @@ export function buildFilingPacket(input) {
     );
   }
 
-  // AND LAST, DID THIS FILING ACTUALLY HAPPEN HERE.
+  // AND LAST, DID THIS FILING ACTUALLY HAPPEN HERE, AND IS THIS WHAT IT HAPPENED UNDER.
   //
   // Everything above asks whether a filing COULD have happened: whose rules, which policy, whose
   // insurer, what the intake still wanted. None of them looks at whether one DID, and `status` is
@@ -635,20 +710,117 @@ export function buildFilingPacket(input) {
   //   filed at    : 2026-09-01T09:15:00.000Z
   //   through     : a control on the page. Filing is not exposed as a WebMCP tool.
   //
-  // `content.filed.through` is the sentence this check makes true. `wasFiledHere` reads a WeakSet
-  // that only `fileClaim` writes to, and src/core/claim.js states what that receipt is worth and
-  // what it is not: it is a browser local demonstration, so it shows this code path ran in this
-  // session and shows nothing whatever to a reader holding the exported file.
+  // AND THE HALF THAT STAYED OPEN AFTER THAT. The receipt attested the claim and nothing else, so
+  // the pack, the home pack id and the completed human actions on THIS call were still believed.
+  // A pack loaded from the shipped Northwind file with the insurer, the clause and the excess
+  // edited and the id left alone is separately valid, and every identity check in this repository
+  // compares ids, so it walked straight through. Measured against a claim filed under Northwind
+  // Mutual, clause OD-4.1, excess 250:
+  //
+  //   COUNTERFEIT PACKET ok: true code: null
+  //   sealed coverage: {"covered":true,"clause":"ALT-9.9","deductible":999, ...}
+  //   INJECTED ok: true human_actions_completed: ["date_of_loss","roadside_collection"]
+  //
+  // `content.filed.through` is the sentence the first half makes true, and the policy block, the
+  // coverage block and `human_actions_completed` are the sentences the second half makes true.
+  // `verifyFilingContext` reads a WeakMap that only `fileClaim` writes to, and src/core/claim.js
+  // states what that receipt is worth and what it is not: it is a browser local demonstration, so
+  // it shows this code path ran in this session and shows nothing whatever to a reader holding the
+  // exported file.
   //
   // IT IS ASKED LAST ON PURPOSE. A claim missing its policy number is better told that than told
   // it was never filed, so the specific diagnosis goes first and this catches what is left, which
   // is precisely the claim that would otherwise have been sealed.
-  if (!wasFiledHere(claim)) {
+  //
+  // THE NO RECEIPT CASE KEEPS ITS OWN CODE AND ITS OWN SENTENCE, because it is a different thing
+  // to be told. One says no filing happened. The other says a filing happened and this is not what
+  // it happened under, which is the more alarming of the two and should not be read as the first.
+  const attested = verifyFilingContext(claim, {
+    pack,
+    homePackId: settings.homePackId,
+    completedHumanActions: done,
+  });
+  if (!attested.ok && attested.mismatch === FILING_CONTEXT_MISMATCHES.noReceipt) {
     return refuse(
       PACKET_CODES.notFiledHere,
       'This claim was not filed through the control on this page. It carries a filed status, and a '
       + 'status is something anybody can write, so the packet has nothing to describe. A copy of a '
       + 'filed claim reads the same way, because a copy was assembled rather than filed.',
+    );
+  }
+  if (!attested.ok) {
+    return refuse(
+      PACKET_CODES.notTheFilingContext,
+      `${attested.reason} The packet describes one filing as it happened, so it is built from what `
+      + 'that filing was decided under and not from what a later caller offers.',
+    );
+  }
+
+  // THE LEDGER IS THE ONE INPUT THAT CANNOT BE BOUND, SO IT IS CHECKED INSTEAD.
+  //
+  // It goes on collecting after the filing, which is right: a page that stopped recording tool
+  // calls at the moment of filing would be hiding the calls a handler most wants to see. So there
+  // is nothing to compare it against, and it was believed row for row. Measured on the same run as
+  // the substitutions above:
+  //
+  //   LEDGER ok: true tool_calls: [{"at":"...","tool":"file_claim","refused":false,"code":null}]
+  //
+  // `file_claim` is not a tool. Filing is a control on the page and deliberately has no tool, which
+  // is a claim this project makes in its README, in the packet's own `filed.through` sentence and
+  // in tests/unit/packet_is_not_a_tool.test.js. A sealed row saying it ran and was not refused
+  // contradicts all three, under a digest.
+  //
+  // The row is refused rather than dropped. Dropping it would seal a document that is true and
+  // quietly shorter than the ledger the caller handed in, and a handler comparing the two would
+  // have no way to find out which rows went missing.
+  //
+  // AND A ROW THAT NAMES NOTHING IS REFUSED TOO, WHICH THE NAME CHECK ON ITS OWN COULD NOT DO. The
+  // filter above only ever inspected values that were already strings, so everything else fell out
+  // of it and was sealed. Measured before this block, on a real filed claim:
+  //
+  //   {"at":"...","refused":false,"code":null}             ok: true  sealed {"tool":null,...}
+  //   {"at":"...","tool":null,"refused":false,"code":null} ok: true  sealed {"tool":null,...}
+  //
+  // `{"tool":null}` under a digest tells a handler an agent made a call and gives them nothing to
+  // look it up by, which is worse than the missing row it stands in for, because the digest makes
+  // it look checked. So a row either names a tool this page publishes or the packet refuses.
+  //
+  // NOTHING THAT WAS REFUSED BECOMES ACCEPTED BY THIS. Two shapes that used to be caught late are
+  // now caught here and named properly instead: `tool: 42` reached PACKET_REFUSED_MALFORMED off the
+  // schema at the bottom of the build, and `tool: ""` reached PACKET_REFUSED_UNKNOWN_TOOL with an
+  // empty pair of quotes in the sentence.
+  const ledger = Array.isArray(settings.ledger) ? settings.ledger : [];
+  const rows = ledger.filter((entry) => entry && typeof entry === 'object');
+
+  const nameless = rows.filter((entry) => nameOnRow(entry) === null);
+  if (nameless.length > 0) {
+    return refuse(
+      PACKET_CODES.namelessCall,
+      `${nameless.length} of the ${rows.length} rows on the ledger name no tool at all. A packet `
+      + 'lists the calls an agent made against this page, and a call with no name is not one a '
+      + 'handler can look up or this page can stand behind. The row is refused rather than dropped, '
+      // THE WORD HERE IS "record" AND NOT "document", AND THAT IS THE READINESS GATE, NOT TASTE.
+      // checkCorePurity in scripts/readiness.mjs matches its banned word list against the source
+      // with comments stripped and STRING LITERALS LEFT IN, so an ordinary English "document"
+      // inside a refusal sentence reads to it as src/core reaching for the browser. It failed that
+      // way once, on this exact line: PUR intact FAIL, "packet.js uses document", which also broke
+      // the gate's own selftest. The gate was not loosened to accept the sentence, a day out from a
+      // deadline, so the sentence gives way instead. Every refusal string in src/core has to avoid
+      // document, window, navigator, fetch and the timer names as plain English words.
+      + 'for the same reason the row below it is: a shorter ledger than the one handed in is a '
+      + 'record a handler cannot tell has lost anything.',
+    );
+  }
+
+  const invented = rows
+    .map((entry) => nameOnRow(entry))
+    .filter((name) => !PUBLISHED_TOOL_NAMES.includes(name));
+  if (invented.length > 0) {
+    return refuse(
+      PACKET_CODES.unknownTool,
+      `The ledger names ${[...new Set(invented)].map((name) => `"${name}"`).join(', ')}, which this `
+      + 'page does not publish as a tool. A packet lists the calls an agent made against this page, '
+      + 'so a call to something that was never on the surface is not a call this page can describe.',
     );
   }
 
@@ -685,15 +857,19 @@ export function buildFilingPacket(input) {
   const offered = Array.isArray(done) ? done : [...(done || [])];
   const actions = [...new Set(offered.filter((id) => known.has(id)))].sort();
 
-  const ledger = Array.isArray(settings.ledger) ? settings.ledger : [];
-  const calls = ledger
-    .filter((entry) => entry && typeof entry === 'object')
-    .map((entry) => ({
-      at: entry.at ?? null,
-      tool: entry.tool ?? entry.name ?? null,
-      refused: Boolean(entry.refused || entry.code),
-      code: entry.code ?? null,
-    }))
+  // THE SAME TWO READERS THE REFUSALS ABOVE USED, so the row that was checked is the row that is
+  // sealed. `error` counts as a refusal here because the alternative is sealing `refused: false` on
+  // a call the page recorded as having thrown, and a handler reading that is told it succeeded.
+  const calls = rows
+    .map((entry) => {
+      const code = refusalCodeOnRow(entry);
+      return {
+        at: entry.at ?? null,
+        tool: nameOnRow(entry),
+        refused: Boolean(entry.refused) || Boolean(entry.error) || code !== null,
+        code,
+      };
+    })
     .reverse();
 
   // COVERAGE IS RECOMPUTED HERE AND IS NEVER TAKEN FROM A CALLER.

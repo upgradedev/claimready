@@ -14,8 +14,9 @@ kept because it is where the entry's own defects get written down before a judge
 First written against `7b50d4a`, a working commit that reached the public repository squashed as
 `c93b138`. Revised 2026-09-01 against `ab2db69`. **Revised again 2026-09-02, and again not against
 a released commit**, which is a weaker footing and is said rather than hidden: `origin/main` is
-`12f7935`, the deployed runtime is `9450d70`, and filing integrity work is sitting in the working
-tree unreleased. It changes `src/core/claim.js`, one of the 26 files the page loads, so the live
+`b5a43e8`, the deployed runtime is `9450d70`, and filing integrity work is sitting in the working
+tree unreleased. That line named `12f7935` until 2026-09-02 and two commits had landed on `main`
+since. It changes `src/core/claim.js`, one of the 26 files the page loads, so the live
 page no longer serves what this review read. Every count below was taken from a command run in that
 working tree on 2026-09-02, on Windows, and every one has to be taken again from a fresh clone at
 the released commit. Reviewed one day before the deadline, with the video still unrecorded and no
@@ -116,16 +117,68 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 ## 2. Execution, 25 percent
 
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
-serves and it can be proved in one command. 885 unit tests, from `node --test tests/unit` printing
-`# tests 885`, `# pass 885` and `# fail 0` on 2026-09-02, which is the command this file is required
-to carry rather than a number somebody typed. A style gate over 190 text files, from
-`node scripts/check_style.mjs`. Coverage of `src` alone, from
+serves and it can be proved in one command. 934 unit tests, from `node --test tests/unit` printing
+`# tests 934`, `# pass 934` and `# fail 0` on 2026-09-02, which is the command this file is required
+to carry rather than a number somebody typed. It read 885 until the filing receipt work added 38,
+and 923 until the freeze list check and the work beside it added 11 more. Read it as a reading with
+a date on it, not as a fixed property of the repository.
+A style gate over 193 text files, from `node scripts/check_style.mjs` on 2026-09-02. Coverage of
+`src` alone, from
 `node --test --experimental-test-coverage --test-reporter=./tests/support/coverage_report.mjs --test-reporter-destination=stdout tests/unit`,
-which printed `src, 21 files` at 98.29 percent of lines, 88.75 percent of branches and 97.87 percent
-of functions against floors of 97, 86 and 96. **Read the branch figure as a band rather than a
-constant.** It moves between runs, because `src/ui/render.js` has timing dependent branches, and
-this file quoted 88.53 once as though it were fixed. Anything from about 88.4 to 88.8 is the same
-tree. A
+which printed `src, 22 files` at 98.23 percent of lines and 97.95 percent of functions, steady on
+every run, and a branch figure that is not steady and is therefore given as a range rather than a
+number: **between 88.83 and 89.08 over 15 consecutive runs**. The gate's floors are 97 for lines,
+86 for branches and 96 for functions, and the floors are the part that is a promise. Measured in
+this working tree on 2026-09-02, on Windows. The paragraph below carries every one of those 15
+readings and says what moves them.
+
+**Read the branch figure as a band with its floor beside it, never as a constant.** The floor is
+**86**, and the floor is the only part of it the gate enforces and the only part that is a promise.
+The reading above the floor moves, and this file has now quoted four different constants as though
+one of them were the answer: 88.53, then 88.75, then 89.08, then whatever the next run prints. Two
+things move it, and the second of them was deleted from this file on 2026-09-02 and is put back
+here, because deleting it is what let a fluctuating measurement be published as a constant again.
+
+**It moves with the tree, and that is the larger of the two.** The file count went from 21 to 22
+when `src/core/canonical.js` landed, and the branch figure went with it.
+
+**It also moves from one run to the next on one machine, with nothing changed at all.** Until
+2026-09-02 this file said the opposite: it said the movement was not run to run noise, on the
+strength of three consecutive runs each printing 89.08. Three runs is not enough to say that, and
+running the command more than three times refuses it. Fifteen consecutive runs of the coverage
+command named above, on 2026-09-02, on this Windows machine, with every file under `src` locked by
+`find src -type f -name '*.js' | sort | xargs sha256sum` before the series and checked again with
+`sha256sum -c` after it, printed **89.04, 89.08, 89.08, 89.08, 89.04, 89.08, 89.04, 89.04, 89.08,
+89.04, 89.08, 88.83, 89.04, 89.01 and 89.04**. Byte identical product, one machine, one afternoon:
+a floor of 88.83, a ceiling of 89.08, **a range of 0.25**, and no modal value that deserves to be
+quoted as the answer. Lines and functions did not move once across those 15 runs, at 98.23 and
+97.95 every time, which is what makes this a property of a few branches rather than of the
+instrument as a whole.
+
+**The cause is timing, and it can be pointed at rather than left unnamed.** `src/ui/render.js`
+schedules work with `setTimeout` in three places, from
+`grep -cE 'setTimeout|setInterval|requestAnimationFrame' src/ui/render.js`, and it is one of exactly
+two files whose own branch column differs between two runs of the locked series. `diff` over the two
+saved per file reports returns one hunk, `16,17c16,17`, and no other row of the table differs at
+all: `src/ui/render.js` reads 89.91 in one run and 89.63 in the other, and `src/ui/app.js` reads
+77.83 and 78.18. So the whole swing in the total comes from two files that branch on when a timer
+fires, and an earlier version of this paragraph had that cause written down before it was replaced.
+
+**What that does to the 0.04 this file used to puzzle over.** At `b5a43e8` Linux CI printed 88.68
+and this machine printed 88.72, and this file called the 0.04 gap unexplained while ruling out run
+to run noise as its explanation. The ruling out was the error. This machine's own run to run range
+is 0.25, six times the gap, so those two readings are not distinguishable from noise on one machine
+and there is nothing left to explain. Showing that the figure really does differ between machines
+needs a cross machine spread larger than the single machine spread, and nobody has measured one.
+
+**One further reading is reported separately, because its bytes were not locked.** A sixteenth run,
+taken before the hash lock was in place and while the working tree was still being written to,
+printed 88.76, with `src/core/coverage.js` at 75.58 rather than the 76.47 it held on all five runs
+whose per file table was kept. It is written down rather than dropped, and it is kept out of the
+range above, because nothing proves `src` held the same bytes at that moment.
+
+So quote the floor, then a range with the number of runs, the date and the machine, and expect the
+next reader to get a different reading. A
 readiness gate that prints one row per deliverable and breaks every row it prints, in its own copy
 of the repository, to show that each one refuses. Numbers in the README come with the command that
 produces them.
@@ -151,12 +204,15 @@ What a judge marks down.
   Status row claimed the browser evidence stood against the served bytes when it no longer did. A
   README command carried a broken line continuation and exited 2 for anyone who pasted it. Both were
   caught by a person, days out. A judge cannot see how many were not caught. The newest of them is
-  the reason the freeze is broken on 2026-09-02: the private filing receipt attested the identity of
-  the object that was filed rather than the state that was filed, so a value changed after filing was
-  sealed and hashed into a packet that went on saying the filing happened through a control on the
-  page. It is closed, with the measured before values kept in
-  `tests/unit/filing_receipt_state.test.js`. A previous refutation pass had named that exact gap and
-  written it down instead of fixing it, which is the part a judge would mark.
+  the reason the freeze was broken twice on 2026-09-02. The first time, the private filing receipt
+  attested the identity of the object that was filed rather than the state that was filed, so a value
+  changed after filing was sealed and hashed into a packet that went on saying the filing happened
+  through a control on the page. The second time, the same receipt was found to attest nothing about
+  the context the claim was filed in, so a separately validated pack carrying the same id sealed its
+  own insurer, clause and excess under the digest. Both are closed, with the measured before values
+  kept in `tests/unit/filing_receipt_state.test.js` and `tests/unit/filing_receipt.test.js`. A
+  previous refutation pass had named the first gap and written it down instead of fixing it, which is
+  the part a judge would mark, and the second was found by reading again rather than by any gate.
 - **The impact study went against us and we published it anyway.** That is the right thing to have
   done and it does not score points. It scores points for honesty and it removes the number that
   would have scored points for impact.
@@ -261,9 +317,10 @@ anything. It is answerable by recording.
 
 **Number 5 is closed today, and it reopens on the next runtime commit.** It closed on 2026-09-01,
 reopened twice on 2026-09-02 as work landed on the runtime, and closed again each time. Run
-33616908770 drove the `9450d70` the host serves, and
+33627149683 drove the `9450d70` the host serves, and
 `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/
---deployed-sha 9450d70` says so over all 26 files the page loads. It is open a third time as this is
+--deployed-sha 9450d70` says so over all 26 files the page loads. This sentence named 33616908770,
+whose `headSha` is `357410e`, so it paired a run with a commit it did not drive. It is open a third time as this is
 written, because filing integrity work in the working tree changes `src/core/claim.js`, which is one
 of those 26 files. The evals workflow runs daily and on dispatch rather than on push, so the gap
 reopens on every commit that touches them. Anyone finishing this entry re-dispatches that workflow

@@ -46,9 +46,11 @@ import {
   applyPatch,
   createClaim,
   fileClaim,
+  FILING_CONTEXT_MISMATCHES,
   hydrateClaim,
   lockField,
   noteContextChange,
+  verifyFilingContext,
   wasFiledHere,
 } from '../../src/core/claim.js';
 import { buildFilingPacket, PACKET_CODES } from '../../src/core/packet.js';
@@ -402,4 +404,131 @@ test('a context change on a draft is what it always was, a copy with the counter
   // And it is still patchable afterwards, which is the whole point of a draft.
   const patched = applyPatch(noted.claim, { field: 'location', value: 'Somewhere else entirely' });
   assert.equal(patched.ok, true, patched.error);
+});
+
+/* ------------------------------- the filing context survives the store, and only the real one does */
+
+/**
+ * A pack the loader validated, carrying Northwind's id and somebody else's rules.
+ *
+ * The same forgery tests/unit/filing_receipt.test.js uses, driven here through the store instead of
+ * through a direct call, because the store is the door the page goes in by and the receipt has to
+ * mean the same thing on both.
+ */
+function counterfeitNorthwind() {
+  const raw = JSON.parse(readFileSync(
+    new URL('../../fixtures/insurers/northwind.json', import.meta.url), 'utf8',
+  ));
+  raw.insurer = 'Counterfeit Northwind';
+  for (const cover of raw.coverages) {
+    if (cover.code === 'own_damage') {
+      cover.clause = 'ALT-9.9';
+      cover.deductible = 999;
+    }
+  }
+  return loadPolicyPack(raw);
+}
+
+/** File through the store, the way the page's File button does, and hand back the state's claim. */
+function fileThroughTheStore() {
+  const store = createStore({ claim: settledDraft() });
+  const result = store.dispatch({
+    type: 'file', at: AT, pack: northwind, completedHumanActions: DONE, homePackId: HOME,
+  });
+  assert.equal(result.ok, true, result.error);
+  return store;
+}
+
+test('a claim filed through the store is not sealed against a same id counterfeit pack', () => {
+  // Measured before the fix, on a claim filed under Northwind Mutual, clause OD-4.1, excess 250:
+  //
+  //   COUNTERFEIT PACKET ok: true code: null
+  //   sealed coverage: {"covered":true,"clause":"ALT-9.9","deductible":999, ...}
+  //
+  // The store is the layer the page files through, so the binding has to arrive here rather than
+  // only on the direct call the domain tests drive.
+  const store = fileThroughTheStore();
+  const filed = store.getState().claim;
+
+  const real = build(filed);
+  assert.equal(real.ok, true, real.reason);
+  assert.equal(real.packet.coverage.clause, 'OD-4.1');
+  assert.equal(real.packet.coverage.deductible, 250);
+
+  const substituted = buildFilingPacket({
+    claim: filed,
+    pack: counterfeitNorthwind(),
+    homePackId: HOME,
+    completedHumanActions: DONE,
+    ledger: [],
+  });
+  assert.equal(substituted.ok, false, 'the store path sealed a counterfeit pack');
+  assert.equal(substituted.code, PACKET_CODES.notTheFilingContext);
+  assert.equal(substituted.canonical, null);
+});
+
+test('a context change through the store carries the filing context, and does not mint a new one', () => {
+  // THE ONE PLACE THE RECORD COULD HAVE BEEN LOST, AND THE ONE PLACE IT COULD HAVE BEEN INVENTED.
+  // `noteContextChange` hands back a copy, and the receipt travels with it. It has no filing
+  // context of its own to state, so it carries the record the original was holding rather than
+  // building one, and the page dispatches this action every time the rule pack changes.
+  const store = fileThroughTheStore();
+  const filed = store.getState().claim;
+
+  const noted = store.dispatch({ type: 'context', reason: 'the insurer rule pack changed' });
+  assert.equal(noted.ok, true, noted.error);
+  const after = store.getState().claim;
+  assert.notEqual(after, filed, 'a context change hands back a copy, which is why this test exists');
+
+  // The real context still seals, so the record travelled.
+  const still = build(after);
+  assert.equal(still.ok, true, still.reason);
+  assert.equal(still.packet.coverage.clause, 'OD-4.1');
+
+  // And it is the SAME record rather than one minted from whatever this call was handed, so every
+  // substitution is refused on the copy exactly as it is on the original.
+  assert.equal(buildFilingPacket({
+    claim: after, pack: counterfeitNorthwind(), homePackId: HOME, completedHumanActions: DONE, ledger: [],
+  }).code, PACKET_CODES.notTheFilingContext);
+  assert.equal(buildFilingPacket({
+    claim: after, pack: northwind, homePackId: HOME, completedHumanActions: [...DONE, 'date_of_loss'], ledger: [],
+  }).code, PACKET_CODES.notTheFilingContext);
+  assert.equal(verifyFilingContext(after, {
+    pack: northwind, homePackId: HOME, completedHumanActions: DONE,
+  }).ok, true);
+});
+
+test('a claim the store refused to file carries no filing context to substitute into', () => {
+  // A refusal changes nothing, so there is nothing in the map, and the packet says no filing
+  // happened rather than saying the context is wrong.
+  const store = createStore({ claim: settledDraft() });
+  const refused = store.dispatch({
+    type: 'file', at: AT, pack: northwind, completedHumanActions: [], homePackId: HOME,
+  });
+
+  assert.equal(refused.ok, false);
+  assert.equal(verifyFilingContext(store.getState().claim, {
+    pack: northwind, homePackId: HOME, completedHumanActions: DONE,
+  }).mismatch, FILING_CONTEXT_MISMATCHES.noReceipt);
+});
+
+test('a fabricated file_claim row does not reach a packet built from a store filing', () => {
+  // `file_claim` is not a tool on this page and never has been. Measured before the fix:
+  //
+  //   LEDGER ok: true tool_calls: [{"at":"...","tool":"file_claim","refused":false,"code":null}]
+  const store = fileThroughTheStore();
+
+  const fabricated = buildFilingPacket({
+    claim: store.getState().claim,
+    pack: northwind,
+    homePackId: HOME,
+    completedHumanActions: DONE,
+    ledger: [
+      { at: AT, tool: 'read_claim_state', refused: false, code: null },
+      { at: AT, tool: 'file_claim', refused: false, code: null },
+    ],
+  });
+  assert.equal(fabricated.ok, false, 'a call to a tool that does not exist was sealed');
+  assert.equal(fabricated.code, PACKET_CODES.unknownTool);
+  assert.match(fabricated.reason, /"file_claim"/);
 });

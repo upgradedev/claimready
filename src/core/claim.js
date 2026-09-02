@@ -48,7 +48,8 @@
  * filing.js before adding anything to the top level of this module that reads it.
  */
 
-import { canFile, FILE_CODES } from './filing.js';
+import { canFile, FILE_CODES, packIdentity } from './filing.js';
+import { canonicalise } from './canonical.js';
 
 /** Incident categories a claim may declare. Also the enum for the tool schema. */
 export const INCIDENT_TYPES = ['collision', 'theft', 'glass', 'weather', 'fire', 'vandalism'];
@@ -196,6 +197,29 @@ export const PROTECTED_FIELDS = [...PROTECTED_STORED_FIELDS, ...DERIVED_NAMES];
  * list, one name for it, so no reader has to work out which is authoritative.
  */
 export const READ_ONLY_FIELDS = PROTECTED_FIELDS;
+
+/**
+ * EVERY KEY A CLAIM CARRIES, AND THERE IS NO OTHER.
+ *
+ * Read off `emptyClaim` rather than written out a second time. That function is the only thing in
+ * this module that decides what a claim is made of, so a field added there is covered by the
+ * snapshot check on the same commit. A hand written union of PROTECTED_STORED_FIELDS and
+ * PATCHABLE_FIELDS is the same list today and one edit away from not being.
+ *
+ * It is the closed half of the contract. Before it existed a claim could carry any own key at all
+ * and every door accepted it, so something the page never wrote travelled beside the answers a
+ * handler reads.
+ */
+const CLAIM_KEYS = Object.keys(emptyClaim());
+
+/**
+ * The four scalars an evidence note is made of, and nothing else.
+ *
+ * `normaliseNote` writes exactly these four and puts no cap on any of them, so this list is what a
+ * note shaped by this page looks like. A length limit here would refuse notes this page itself
+ * produces, which is why there is none.
+ */
+const NOTE_KEYS = ['id', 'author', 'received_at', 'text'];
 
 /** Who a patch may claim to be. 'policy' and 'derived' are set by core alone. */
 export const ACTORS = ['human', 'agent'];
@@ -446,8 +470,44 @@ function copyClaim(claim) {
   };
 }
 
+/**
+ * THE REVISION THIS CLAIM IS AT, READ WITHOUT RUNNING ANYBODY ELSE'S CODE.
+ *
+ * WHY A DESCRIPTOR AND NOT `claim.revision`. Every door on this module reports the revision on its
+ * REFUSAL path, and a refusal is the one moment the claim has NOT been through the gate. An
+ * accessor standing where the counter belongs is somebody else's code, and asking for the property
+ * runs it. Measured before this changed, on a settled draft carrying a getter on `revision` that
+ * throws:
+ *
+ *   checkClaimSnapshot  refused, and read no property at all
+ *   applyPatch          THREW Error: boom
+ *   lockField           THREW Error: boom
+ *   unlockField         THREW Error: boom
+ *   noteContextChange   THREW Error: boom
+ *   fileClaim           THREW Error: boom
+ *
+ * So the check written to keep foreign code from running answered safely, and all five doors that
+ * ask it ran the getter anyway, on the line that builds the refusal. With a counting getter instead
+ * of a throwing one the count stood at 0 after `checkClaimSnapshot` and at 2 after one `lockField`
+ * refusal, which is the read happening twice on a claim the check had already refused.
+ *
+ * HOISTING THE GATE WOULD NOT HAVE CLOSED IT, and that was the earlier attempt: the gate was moved
+ * to the top of each door and the reads stayed outside it. `applyPatch` refuses an unknown actor
+ * before it asks anything about the claim, deliberately, and that refusal reports a revision too,
+ * so there is no position for the gate that sits above every read. Reading the descriptor closes it
+ * in one place instead, and a door added later inherits the closure without anybody remembering.
+ *
+ * ONLY AN OWN STORED WHOLE NUMBER COUNTS. On a claim that gets past a gate that is what `revision`
+ * always is, because the shape gate refuses an accessor, a hidden key and a name off the contract,
+ * so this answers exactly what `claim.revision` answered on every accepted claim. Everywhere else
+ * it answers 0, which is the fallback every refusal in this module has always used for a number
+ * nobody can quote.
+ */
 function currentRevision(claim) {
-  return Number.isInteger(claim.revision) ? claim.revision : 0;
+  if (!claim || typeof claim !== 'object') return 0;
+  const descriptor = Object.getOwnPropertyDescriptor(claim, 'revision');
+  if (!descriptor || !('value' in descriptor)) return 0;
+  return Number.isInteger(descriptor.value) ? descriptor.value : 0;
 }
 
 function lockedList(claim) {
@@ -476,9 +536,42 @@ function normaliseNote(note, index) {
   };
 }
 
+/**
+ * THE NOTES AS A LIST WITH SOMETHING AT EVERY POSITION, BECAUSE A GAP IS NOT A NOTE.
+ *
+ * `Array.prototype.map` copies a hole across as a hole. So a stored claim whose note list had a gap
+ * in it came back through `hydrateClaim` still sparse, and the shape check let it, and then every
+ * walker downstream that goes through a callback stepped over the gap in silence. Measured before
+ * this line changed, hydrating a stored claim whose `evidence_notes` was `new Array(2)`:
+ *
+ *   hydrateClaim notes: length 2, and `0 in notes` was false
+ *
+ * An indexed loop visits every position from 0 to length, so a gap reaches `normaliseNote` as
+ * undefined and comes back as the empty note a null entry has always come back as. That is a
+ * repair, and it is the same repair this function has always made for every entry that is not an
+ * object: the refusal for a gap belongs at `arrayShapeProblems`, where the claim's own shape is
+ * decided, and not on the reader that hands a stored list back.
+ *
+ * AND IT IS AN INDEXED LOOP RATHER THAN `Array.from`, WHICH WAS WRITTEN HERE FIRST AND REVERTED.
+ * `Array.from` reads `Symbol.iterator` off the value and runs it. `map` never did. So the version
+ * that closed the gap opened a path for somebody else's code to run inside a reader, and the two
+ * measured outcomes were both worse than the hole it was closing. On a list of two real notes
+ * carrying an own `Symbol.iterator`:
+ *
+ *   throwing iterator   `readEvidenceNotes` and `hydrateClaim` threw, where `map` returned n1, n2
+ *   yielding iterator   both handed back one substituted note, where `map` returned n1, n2
+ *
+ * `readEvidenceNotes` is the body of the published `read_evidence_notes` tool, so the second one is
+ * a silent substitution on a reader an agent calls, which `ownKeyProblems` below names as the same
+ * defect as silent loss. Nothing reaching here through the app can carry an iterator, because
+ * `src/core/store.js` round trips through JSON, so this is not a live hole. It is a repair that
+ * cost more than it bought, and an index reads every position without asking the value anything.
+ */
 function normaliseNotes(value) {
   if (!Array.isArray(value)) return [];
-  return value.map(normaliseNote);
+  const notes = [];
+  for (let at = 0; at < value.length; at += 1) notes.push(normaliseNote(value[at], at));
+  return notes;
 }
 
 /** The single validation path. `applyPatch` and `createClaim` both go through it. */
@@ -771,17 +864,265 @@ function optionalString(held, field) {
 export const UNUSABLE_STATE_INTRO =
   'This claim holds values this page could not have written, so no decision can be taken on it.';
 
-/** Every problem is one sentence, and the verdict is those sentences with the opener in front. */
-function snapshotVerdict(problems) {
+/**
+ * Every problem is one sentence, and the verdict is those sentences with the opener in front.
+ *
+ * `readable` is the second thing a caller needs and could not ask for. It says the shape gate
+ * passed, so reading a property off this object returns a stored value rather than running
+ * somebody else's code. `canFile` reads it before it computes which required field is empty on a
+ * claim it has just refused. See the measurement at `ownKeyProblems`.
+ *
+ * @param {string[]} problems
+ * @param {boolean} readable
+ */
+function snapshotVerdict(problems, readable = false) {
   return {
     ok: problems.length === 0,
     problems,
     reason: problems.length === 0 ? null : `${UNUSABLE_STATE_INTRO} ${problems.join(' ')}`,
+    readable,
   };
 }
 
 /** The two strings that say which policy this is and what this page calls the claim. */
 const IDENTITY_STRINGS = ['policy_id', 'reference'];
+
+/**
+ * A SHORT NAME FOR ANY VALUE, SAFE TO BUILD A SENTENCE OUT OF.
+ *
+ * WHY NOT JSON.stringify, WHICH IS WHAT EVERY REFUSAL BELOW USED TO USE. It throws on the two
+ * things a refusal is most likely to be about, so the check written to refuse an unusable claim
+ * crashed on one instead. Measured before this existed, on a settled draft written to by hand:
+ *
+ *   cyclic status              checkClaimSnapshot THREW TypeError: Converting circular structure to JSON
+ *   cyclic in locked           checkClaimSnapshot THREW TypeError: Converting circular structure to JSON
+ *   cyclic provenance source   checkClaimSnapshot THREW TypeError: Converting circular structure to JSON
+ *   bigint revision            checkClaimSnapshot THREW TypeError: Do not know how to serialize a BigInt
+ *
+ * A crash is not a refusal. Every caller of this check branches on a code and reads a sentence, and
+ * a thrown TypeError gives it neither, so a claim nobody can answer for got further than one this
+ * page merely disagreed with. A symbol was worse than a crash: `JSON.stringify` hands back
+ * undefined for one, so the refusal said "status is undefined", which is a wrong sentence.
+ *
+ * NOTHING HERE RECURSES. It names the kind of a value and never walks into it, which is half of why
+ * a claim pointing back at itself is answered rather than followed.
+ *
+ * @param {*} value
+ * @returns {string}
+ */
+function describeValue(value) {
+  if (value === null) return 'null';
+  const kind = typeof value;
+  if (kind === 'undefined') return 'nothing';
+  if (kind === 'string') {
+    return JSON.stringify(value.length > 60 ? `${value.slice(0, 60)}...` : value);
+  }
+  if (kind === 'number' || kind === 'boolean') return String(value);
+  if (kind === 'bigint') return `${value}n`;
+  if (kind === 'symbol') return 'a symbol';
+  if (kind === 'function') return 'a function';
+  if (Array.isArray(value)) return 'a list';
+  // `Symbol.toStringTag` can be a getter, which is somebody else's code, so even naming the kind of
+  // an object is guarded. This function promises never to throw and that promise has to hold here.
+  try {
+    const name = Object.prototype.toString.call(value).slice(8, -1);
+    return name === 'Object' ? 'an object' : `a ${name}`;
+  } catch {
+    return 'a value of a kind this page cannot name';
+  }
+}
+
+/**
+ * A plain object, meaning `{}` or `Object.create(null)` and nothing wearing another prototype.
+ *
+ * A Map, a Set, a Date, a typed array and a class instance are all refused by this, deliberately
+ * rather than repaired. They serialise to nothing a handler could read, they compare by identity,
+ * and there is no honest way to turn one into the field it is standing in for.
+ *
+ * THE ONE THING IT CANNOT SEE is a Proxy whose target is a plain object, because plain JavaScript
+ * offers no way to tell one from the object it wraps. Written down rather than attempted.
+ */
+function isPlainObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/** A plain array, not a subclass of one and not something merely array like. */
+function isPlainArray(value) {
+  return Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype;
+}
+
+/**
+ * INSPECT THE OWN KEYS OF AN OBJECT WITHOUT READING ONE OF THEM.
+ *
+ * WHY DESCRIPTORS AND NOT PROPERTIES. An accessor is somebody else's code sitting where a stored
+ * answer belongs, and asking for the property runs it. Measured before this existed, with a getter
+ * on `driver` that throws:
+ *
+ *   checkClaimSnapshot THREW Error: boom
+ *   applyPatch         THREW Error: boom
+ *   lockField          THREW Error: boom
+ *   noteContextChange  THREW Error: boom
+ *
+ * A gate a caller can make throw is not a gate. So this runs first, the verdict returns before any
+ * value is read, and everything after it is reading plain stored data.
+ *
+ * A HIDDEN KEY IS REFUSED TOO, and it is not a nicety. `copyClaim` builds every new claim with a
+ * spread, and a spread drops a non-enumerable property, so the value would vanish on the next
+ * accepted change with nothing said. Silent loss and silent repair are the same defect.
+ *
+ * @param {object} value already known to be a plain object
+ * @param {string} subject how to name it in a sentence
+ * @param {(string[]|null)} allowed the names it may carry, or null to check only the shape
+ * @returns {string[]}
+ */
+function ownKeyProblems(value, subject, allowed) {
+  const problems = [];
+
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    problems.push(`${subject} carries a symbol key, and every field this page writes has a name.`);
+  }
+
+  for (const key of Object.getOwnPropertyNames(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !('value' in descriptor)) {
+      problems.push(
+        `${subject} answers "${key}" from a getter or a setter, and a claim holds stored values.`,
+      );
+      continue;
+    }
+    if (!descriptor.enumerable) {
+      problems.push(`${subject} hides "${key}", and every copy this page makes would drop it.`);
+      continue;
+    }
+    if (allowed !== null && !allowed.includes(key)) {
+      problems.push(`${subject} carries "${key}", and that is not a field this page writes.`);
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * THE OWN KEYS OF A LIST: ITS ENTRIES AND ITS LENGTH, WITH NOTHING BOLTED ON AND NO GAP IN IT.
+ *
+ * A GAP HAS NO OWN NAME, SO THE LOOP BELOW CANNOT SEE ONE. A hole in an array is the ABSENCE of a
+ * property, which is why `Object.getOwnPropertyNames` does not report it and why `forEach`, `map`,
+ * `filter` and `some` all step over it. Every walk this file had over a list was one of those two
+ * kinds, so a sparse list was a shape nothing here looked at. Measured before this counted, on a
+ * settled draft with `evidence_notes = new Array(2)`:
+ *
+ *   checkClaimSnapshot on the draft        ok = true, accepted
+ *   lockField                              ok = true, revision 0 -> 1
+ *   checkClaimSnapshot on what came back   ok = false, evidence_notes[0] is nothing
+ *
+ * The gate said yes to a claim and no to what the next door made out of it, which is the one answer
+ * a gate must never give. The door did nothing wrong: `copyClaim` spreads, a spread reads a gap as
+ * undefined, and undefined is a note this page would never have written. Downstream that claim
+ * files and seals, and `buildFilingPacket` then answers PACKET_REFUSED_UNUSABLE_STATE, so the claim
+ * is closed to patches and its packet can never be built.
+ *
+ * COUNTED RATHER THAN WALKED TO `length`. The number of own index keys is compared with the length,
+ * which costs what is actually there rather than what the length says, so a list whose length is a
+ * billion and whose entries are none is answered instead of walked. The position is then found by
+ * stepping up from 0, which stops at the first gap and so costs the same again. That matters
+ * because `checkClaimSnapshot` promises to answer on any input, and a walk to a length somebody
+ * else chose is a promise broken by hanging rather than by throwing.
+ *
+ * AN INDEX COUNTS AS A POSITION WHETHER IT HOLDS A VALUE OR AN ACCESSOR. An accessor at a position
+ * is a position that exists, and it gets its own sentence just above. Leaving it out of the count
+ * would report a gap at an index the list does not have.
+ */
+function arrayShapeProblems(value, subject) {
+  const problems = [];
+
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    problems.push(`${subject} carries a symbol key, and it is a plain list of values.`);
+  }
+
+  let positions = 0;
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (key === 'length') continue;
+    const isIndex = String(Number(key)) === key;
+    if (isIndex) positions += 1;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !('value' in descriptor)) {
+      problems.push(
+        `${subject} answers "${key}" from a getter or a setter, and it is a plain list of values.`,
+      );
+      continue;
+    }
+    if (!isIndex) {
+      problems.push(`${subject} carries "${key}", and a list holds only its own entries.`);
+    }
+  }
+
+  // Every own index key of an array is below its length, so a count short of the length is a gap
+  // and nothing else. The step up from 0 stops at the first one, and every position before it is an
+  // own key, so this loop is bounded by the count above rather than by the length.
+  const length = value.length;
+  if (positions !== length) {
+    let gap = 0;
+    while (gap < length && Object.prototype.hasOwnProperty.call(value, gap)) gap += 1;
+    if (gap < length) {
+      problems.push(
+        `${subject}[${gap}] is a gap rather than an entry, and a list this page wrote holds one at `
+        + `every position from 0 to ${length - 1}.`,
+      );
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * ONE EVIDENCE NOTE, HELD TO THE SHAPE `normaliseNote` WRITES.
+ *
+ * A note is third party content and the only thing this page does with it is hand it back, which is
+ * exactly why its shape has to be closed here. Measured before this existed, on a settled draft:
+ *
+ *   evidence_notes = null    snapshot OK (accepted)   lockField THREW TypeError: claim.evidence_notes is not iterable
+ *   Map as notes             snapshot OK (accepted)   lockField OK (accepted)
+ *   TypedArray as notes      snapshot OK (accepted)   lockField OK (accepted)
+ *
+ * The first line is the one that shows what the hole was worth. The check said the claim was fine
+ * and the next writer crashed on it, so the refusal a caller could have read never arrived.
+ *
+ * A missing key is refused the same as a wrong one. `normaliseNote` writes all four every time,
+ * `received_at` as null when there is none, so a note short of one was not written by this page.
+ *
+ * @param {*} note
+ * @param {number} index
+ * @returns {string[]}
+ */
+function noteProblems(note, index) {
+  const subject = `evidence_notes[${index}]`;
+
+  if (!isPlainObject(note)) {
+    return [`${subject} is ${describeValue(note)}, and a note is an object of four scalars.`];
+  }
+
+  // The shape comes first for the reason it does on the claim itself: the reads below are only
+  // honest once the keys are known to be plain stored values.
+  const problems = ownKeyProblems(note, subject, NOTE_KEYS);
+  if (problems.length > 0) return problems;
+
+  for (const key of NOTE_KEYS) {
+    const held = note[key];
+    if (key === 'received_at') {
+      if (held !== null && typeof held !== 'string') {
+        problems.push(`${subject}.received_at is ${describeValue(held)}, and it is text or null.`);
+      }
+      continue;
+    }
+    if (typeof held !== 'string') {
+      problems.push(`${subject}.${key} is ${describeValue(held)}, and it is text.`);
+    }
+  }
+
+  return problems;
+}
 
 /**
  * IS THIS WHOLE CLAIM ONE THIS PAGE COULD HAVE WRITTEN.
@@ -818,8 +1159,30 @@ const IDENTITY_STRINGS = ['policy_id', 'reference'];
  * so a claim still carrying them was never written by a patch. Everything downstream compares and
  * seals these values exactly as they are.
  *
+ * THE CONTRACT IS CLOSED, AND IT USED NOT TO BE. For a long time this asked about a fixed list of
+ * names and never about the object carrying them, so the answer was "every value I recognise is
+ * fine" and never "this is a claim". An unknown own key, a symbol key, a getter standing in for a
+ * stored answer, another prototype, a Map where the pins belong: all accepted. Now an own key that
+ * is not on CLAIM_KEYS is refused, `locked`, `provenance` and `evidence_notes` have to be present
+ * and plain, and every note has to be the four scalars `normaliseNote` writes.
+ *
+ * REFUSED, NOT REPAIRED AND NOT FROZEN. A Map, a Set, a Date, a typed array or a class instance is
+ * not something to make safe, it is something this page never wrote. There is no honest reading of
+ * a Map as the list of fields a person pinned, so it gets a sentence instead of a conversion.
+ *
+ * IT NEVER THROWS, ON ANY INPUT, and that is a promise two callers depend on: `canFile` and
+ * `buildFilingPacket` both turn the verdict into a refusal a person reads beside a button. A claim
+ * that points back at itself is answered rather than followed, because nothing here recurses: the
+ * contract is two levels deep, a claim of scalars plus three containers of scalars, so there is no
+ * graph to walk and no cycle detector to look for. The other half of that promise is
+ * `describeValue`, which replaced the `JSON.stringify` calls that used to build these sentences and
+ * used to throw on the values most likely to be in one.
+ *
  * @param {*} claim
- * @returns {{ok: boolean, problems: string[], reason: (string|null)}}
+ * @returns {{ok: boolean, problems: string[], reason: (string|null), readable: boolean}}
+ *          `readable` says the shape gate passed, so a caller may read properties off this object
+ *          without running foreign code. It is true on every accepted claim and on a refused one
+ *          whose problem is a held value rather than its shape.
  */
 export function checkClaimSnapshot(claim) {
   if (!claim || typeof claim !== 'object' || Array.isArray(claim)) {
@@ -828,7 +1191,96 @@ export function checkClaimSnapshot(claim) {
     ]);
   }
 
+  // THE SHAPE GATE, AND IT RETURNS BEFORE A SINGLE VALUE IS READ.
+  //
+  // WHAT WAS OPEN. This check looked at the values on a fixed list of names and never at the object
+  // carrying them, so a claim could wear any prototype, carry any extra own key, answer a field
+  // from a getter or hold a symbol, and be called usable. Measured before this block, on a settled
+  // draft written to by hand:
+  //
+  //   unknown own key     snapshot OK (accepted)   lockField OK (accepted)
+  //   exotic prototype    snapshot OK (accepted)   lockField OK (accepted)
+  //   symbol key          snapshot OK (accepted)   lockField OK (accepted)
+  //   accessor property   snapshot OK (accepted)   lockField OK (accepted)
+  //
+  // So something this page never wrote rode along beside the claimant's answers, through the file
+  // gate and into a packet sealed under a digest.
+  //
+  // WHY IT RETURNS RATHER THAN ACCUMULATING. Every check below reads a property off this object,
+  // and a read is only honest once the reads are known to be plain stored values. A getter that
+  // throws made this whole function throw, and the measurement is at `ownKeyProblems`.
+  const shape = [];
+  if (!isPlainObject(claim)) {
+    shape.push('A claim is a plain object, and this one wears a prototype this page never gives one.');
+  }
+  shape.push(...ownKeyProblems(claim, 'This claim', CLAIM_KEYS));
+  if (shape.length > 0) return snapshotVerdict(shape);
+
   const problems = [];
+
+  // THE THREE CONTAINERS ARE REQUIRED TO BE THERE AND REQUIRED TO BE PLAIN.
+  //
+  // `locked`, `provenance` and `evidence_notes` were all merely tolerated when absent, and two of
+  // them are spread by `copyClaim` on every accepted change. Measured before this, on a settled
+  // draft, the same result for a missing key and for a null one:
+  //
+  //   locked = null            snapshot OK   lockField THREW TypeError: claim.locked is not iterable
+  //   evidence_notes deleted   snapshot OK   applyPatch THREW TypeError: claim.evidence_notes is not iterable
+  //   provenance = null        snapshot OK   lockField OK, revision 0 -> 1, badges silently gone
+  //
+  // Two doors crashed where a refusal belonged, and the third waved it through and quietly wrote a
+  // new claim with no provenance on it at all. `emptyClaim` writes all three every time, so absent
+  // is not a gap here the way an unanswered field is a gap: it is a claim nothing here built.
+  //
+  // A Map, a Set, a Date or a typed array is refused rather than made immutable or converted. There
+  // is no honest reading of a Map as the list of fields a person pinned.
+  const locked = claim.locked;
+  const lockedIsPlain = isPlainArray(locked);
+  if (!lockedIsPlain) {
+    problems.push(
+      `locked is ${describeValue(locked)}, and it is the list of field names a person pinned.`,
+    );
+  } else {
+    problems.push(...arrayShapeProblems(locked, 'locked'));
+  }
+
+  const badges = claim.provenance;
+  const badgesArePlain = isPlainObject(badges);
+  if (!badgesArePlain) {
+    problems.push(
+      `provenance is ${describeValue(badges)}, and it is an object of field names.`,
+    );
+  } else {
+    problems.push(...ownKeyProblems(badges, 'provenance', null));
+  }
+
+  const notes = claim.evidence_notes;
+  if (!isPlainArray(notes)) {
+    problems.push(
+      `evidence_notes is ${describeValue(notes)}, and it is the list of notes attached to this claim.`,
+    );
+  } else {
+    // THE LIST'S OWN SHAPE IS SETTLED BEFORE A SINGLE NOTE IS READ, for the reason the claim's
+    // shape gate above returns before a single field is: the walk below is only honest once the
+    // positions it walks are known to be there. A gap has no own name and `forEach` steps over one,
+    // so the walk used to skip it in silence while `arrayShapeProblems` could not see it either,
+    // and a sparse note list was accepted by a check whose own output the next door failed.
+    //
+    // IT IS ALSO WHAT KEEPS THE PROMISE ABOVE THAT THIS FUNCTION ANSWERS ON ANY INPUT. A list whose
+    // length is a billion and whose entries are none is refused from its own keys here, so nothing
+    // below ever walks to a length somebody else chose.
+    const listShape = arrayShapeProblems(notes, 'evidence_notes');
+    if (listShape.length > 0) {
+      problems.push(...listShape);
+    } else {
+      // By index rather than through `forEach`, so this walk is not one that can skip a position.
+      // Nothing sparse reaches it while the check above stands, and it is written this way so that
+      // it does not become the hole again if anything ever hands it a list that is.
+      for (let index = 0; index < notes.length; index += 1) {
+        problems.push(...noteProblems(notes[index], index));
+      }
+    }
+  }
 
   for (const field of PATCHABLE_FIELDS) {
     const held = claim[field];
@@ -837,6 +1289,7 @@ export function checkClaimSnapshot(claim) {
     if (!checked.ok) {
       problems.push(`${field}: ${checked.error}`);
     } else if (checked.value !== held) {
+      // Safe to serialise: both of these came back from a field validator, so both are scalars.
       problems.push(
         `${field} holds ${JSON.stringify(held)}, and this page writes that answer as `
         + `${JSON.stringify(checked.value)}.`,
@@ -856,7 +1309,7 @@ export function checkClaimSnapshot(claim) {
   // it is written into the packet reference. A missing one sealed the reference CR-MTR-2026-0417-Rundefined.
   if (!Number.isInteger(claim.revision) || claim.revision < 0) {
     problems.push(
-      `revision is ${JSON.stringify(claim.revision ?? null)}, and it must be a whole number of `
+      `revision is ${describeValue(claim.revision)}, and it must be a whole number of `
       + 'zero or more.',
     );
   }
@@ -867,59 +1320,55 @@ export function checkClaimSnapshot(claim) {
   const status = claim.status;
   if (status !== 'draft' && status !== 'filed') {
     problems.push(
-      `status is ${JSON.stringify(status ?? null)}, and a claim is either "draft" or "filed".`,
+      `status is ${describeValue(status)}, and a claim is either "draft" or "filed".`,
     );
   } else if (status === 'filed' && !isFilingInstant(claim.filed_at)) {
     problems.push(
-      `this claim is marked filed and its filing time is ${JSON.stringify(claim.filed_at ?? null)}, `
+      `this claim is marked filed and its filing time is ${describeValue(claim.filed_at)}, `
       + `and ${FILING_INSTANT_REASON}.`,
     );
   } else if (status === 'draft' && claim.filed_at !== null && claim.filed_at !== undefined) {
     problems.push(
-      `this claim is marked draft and carries a filing time, ${JSON.stringify(claim.filed_at)}.`,
+      `this claim is marked draft and carries a filing time, ${describeValue(claim.filed_at)}.`,
     );
   }
 
-  const locked = claim.locked;
-  if (locked !== null && locked !== undefined) {
-    if (!Array.isArray(locked)) {
-      problems.push(`locked must be a list of field names, and it is ${typeof locked}.`);
-    } else {
-      const seen = [];
-      for (const field of locked) {
-        if (!PATCHABLE_FIELDS.includes(field)) {
-          problems.push(`${JSON.stringify(field)} is pinned, and it is not a field a person can pin.`);
-        } else if (seen.includes(field)) {
-          problems.push(`${JSON.stringify(field)} is pinned twice.`);
-        } else {
-          seen.push(field);
-        }
+  // Which fields a person pinned. The container itself was checked at the top of the function, so
+  // this is only about what is inside it.
+  if (lockedIsPlain) {
+    const seen = [];
+    for (const field of locked) {
+      if (!PATCHABLE_FIELDS.includes(field)) {
+        problems.push(`${describeValue(field)} is pinned, and it is not a field a person can pin.`);
+      } else if (seen.includes(field)) {
+        problems.push(`${describeValue(field)} is pinned twice.`);
+      } else {
+        seen.push(field);
       }
     }
   }
 
   // A badge is a claim about who put a value there, so it is held to the standard the value is.
-  const badges = claim.provenance;
-  if (badges !== null && badges !== undefined) {
-    if (typeof badges !== 'object' || Array.isArray(badges)) {
-      problems.push(`provenance must be an object of field names, and it is ${typeof badges}.`);
-    } else {
-      for (const [field, source] of Object.entries(badges)) {
-        if (!PATCHABLE_FIELDS.includes(field)) {
-          problems.push(`provenance names ${JSON.stringify(field)}, which is not a field on this claim.`);
-        } else if (!PROVENANCE_SOURCES.includes(source)) {
-          problems.push(
-            `provenance says ${field} came from ${JSON.stringify(source)}, and this page writes `
-            + `only ${PROVENANCE_SOURCES.join(', ')}.`,
-          );
-        } else if (claim[field] === null || claim[field] === undefined) {
-          problems.push(`provenance says who answered ${field}, and ${field} holds nothing.`);
-        }
+  if (badgesArePlain) {
+    for (const [field, source] of Object.entries(badges)) {
+      if (!PATCHABLE_FIELDS.includes(field)) {
+        // The key is always a string here, so serialising it cannot throw.
+        problems.push(`provenance names ${JSON.stringify(field)}, which is not a field on this claim.`);
+      } else if (!PROVENANCE_SOURCES.includes(source)) {
+        problems.push(
+          `provenance says ${field} came from ${describeValue(source)}, and this page writes `
+          + `only ${PROVENANCE_SOURCES.join(', ')}.`,
+        );
+      } else if (claim[field] === null || claim[field] === undefined) {
+        problems.push(`provenance says who answered ${field}, and ${field} holds nothing.`);
       }
     }
   }
 
-  return snapshotVerdict(problems);
+  // Readable, because the shape gate above let this object through: every own key is a plain
+  // enumerable data property whose name is on the contract, so a caller may read it safely even
+  // though the values under those names may be ones this page would never have written.
+  return snapshotVerdict(problems, true);
 }
 
 /* ------------------------------------------------------------------- patch */
@@ -1341,6 +1790,33 @@ export function noteContextChange(claim, reason) {
   }
   const revision = currentRevision(claim);
 
+  // THE SIXTH DOOR ASKS WHAT THE OTHER FIVE ASK.
+  //
+  // `applyPatch` asks `checkClaimSnapshot` directly, `lockField` and `unlockField` ask it through
+  // `lockGuard`, and `fileClaim` asks it through `canFile`. This one asked nothing, and it moves
+  // the counter, which is the single thing a later writer trusts to prove it read what it is
+  // writing to. Measured before this check, on a settled draft written to by hand:
+  //
+  //   noteContextChange on a claim holding severity "catastrophic":
+  //     ok=true code=null revision 0 -> 1 still holds "catastrophic"
+  //
+  // So the doors that write refused it and the door that says the context moved advanced the number
+  // on it anyway, which is worse than standing still: an agent quoting the new number is told it is
+  // current. Same code and same sentence as the patch refusal, because it is the same refusal.
+  //
+  // IT RUNS BEFORE THE REASON CHECK, for the reason it runs first in `lockGuard`. A claim nobody
+  // can read is refused for that, whatever else is true about the call.
+  const snapshot = checkClaimSnapshot(claim);
+  if (!snapshot.ok) {
+    return {
+      claim,
+      ok: false,
+      error: `${snapshot.reason} Nothing was changed.`,
+      code: PATCH_CODES.value,
+      revision,
+    };
+  }
+
   if (typeof reason !== 'string' || reason.trim().length === 0) {
     return {
       claim,
@@ -1368,12 +1844,19 @@ export function noteContextChange(claim, reason) {
   //
   // NOTHING IS WEAKENED BY IT. The copy carries the receipt only when the claim handed in carried
   // one, so a hand built or restored claim wearing a filed status still gets nothing, which is the
-  // whole point of the set. It is sealed first, by the same function the file gate uses, so the
+  // whole point of the map. It is sealed first, by the same function the file gate uses, so the
   // receipt attests what this copy holds rather than which object it is.
+  //
+  // THE RECORD IS CARRIED ACROSS, NEVER MINTED HERE. Nothing about the filing changed: the same
+  // filing, at the same revision, under the same rules, with the same steps a person had carried
+  // out. This function knows none of those facts and has no business restating any of them, so it
+  // hands the copy the record the original was already holding. Minting a fresh one here would put
+  // a filing context in the map that no file gate ever decided.
   //
   // The sealing reaches no draft anybody still holds: a receipted claim is already frozen top to
   // bottom, so the note objects `copyClaim` shares are frozen ones.
-  if (wasFiledHere(claim)) sealAndReceipt(next);
+  const carried = FILING_RECORDS.get(claim);
+  if (carried) sealAndReceipt(next, carried);
 
   return { claim: next, ok: true, error: null, code: null, revision: next.revision };
 }
@@ -1391,22 +1874,50 @@ export function provenanceOf(claim, field) {
 }
 
 /**
- * THE FILING RECEIPT. Every claim object this function has actually filed, and nothing else.
+ * THE FILING RECEIPT. What every claim this function actually filed was filed under, and nothing
+ * else.
  *
- * WHAT IT CLOSES. The handler packet's own `filed.through` field says the claim was filed through a
+ * WHAT IT CLOSES, IN TWO STAGES, BECAUSE IT ONLY EVER CLOSED HALF.
+ *
+ * The first half. The handler packet's own `filed.through` field says the claim was filed through a
  * control on the page. Nothing checked that. `status` is an ordinary string on an ordinary object,
  * so a caller that wrote `{ ...draft, status: 'filed', filed_at: '2026-09-01T09:15:00.000Z' }` got a
- * document that said a filing had happened, with a digest over it, and no filing had happened.
+ * document that said a filing had happened, with a digest over it, and no filing had happened. A
+ * WeakSet of the objects this function returned closed that.
  *
- * WHY A WeakSet AND NOT A FIELD. This is the same mechanism src/core/policy.js uses for a validated
+ * The second half, and this is why the set became a map. A set attests the CLAIM and says nothing
+ * about what the claim was filed UNDER. `buildFilingPacket` is handed the rule pack, the home pack
+ * id and the completed human actions separately, so a caller supplied whatever it liked, and if
+ * that pack was separately valid the packet sealed its insurer, its clause and its excess under the
+ * digest. Measured on the shipped fixture, filing under Northwind Mutual, clause OD-4.1, excess 250,
+ * then handing the packet a pack loaded from the same file with three values edited and the id left
+ * alone:
+ *
+ *   COUNTERFEIT PACKET ok: true code: null
+ *   sealed coverage: {"covered":true,"clause":"ALT-9.9","deductible":999,"currency":"EUR", ...}
+ *
+ * Same id is what made it sharp. The borrowed rules refusal compares ids, so an id preserving
+ * forgery walked straight past it, while a Kestrel substitution was already refused. Two more
+ * substitutions rode in on the same call, and both were measured on the same run:
+ *
+ *   INJECTED ok: true human_actions_completed: ["date_of_loss","roadside_collection"]
+ *   LEDGER ok: true tool_calls: [{"at":"...","tool":"file_claim","refused":false,"code":null}]
+ *
+ * So the record below holds the filing EVENT rather than the filed object's address: the revision
+ * the filing landed on, the instant it was filed at, the pack itself, the canonical writing of that
+ * pack, the pack's id, the home pack id, and the completed human actions as the gate was given them.
+ * `verifyFilingContext` compares a context handed in later against it.
+ *
+ * WHY A WeakMap AND NOT A FIELD. This is the same mechanism src/core/policy.js uses for a validated
  * rule pack, and the reasoning is the same one written out at `isUsablePack` in src/core/filing.js.
  * A public marker such as `filed_here: true` proves only that somebody wrote it, because the forgery
- * above would carry it too. Membership of a set held privately in this module is not a property: it
- * cannot be typed out, spread, cloned, serialised or restored from storage. `wasFiledHere` below is
- * the reading half and there is no exported writing half, so no tool, no page and no test can put a
- * claim in here without going through the file gate.
+ * above would carry it too. Membership of a map held privately in this module is not a property: it
+ * cannot be typed out, spread, cloned, serialised or restored from storage. `wasFiledHere` and
+ * `verifyFilingContext` below are the reading halves and there is no exported writing half, so no
+ * tool, no page and no test can put a claim in here without going through the file gate. Neither
+ * reader hands the record back, because a record handed back is the exact set of values to replay.
  *
- * A COPY IS NOT THE CLAIM. `{ ...filed }` produces a different object and is not a member, and that
+ * A COPY IS NOT THE CLAIM. `{ ...filed }` produces a different object and is not a key, and that
  * is the intended reading rather than a rough edge. A copied filed claim was assembled by somebody
  * rather than filed here, so the packet refuses to describe it as a filing.
  *
@@ -1415,28 +1926,191 @@ export function provenanceOf(claim, field) {
  * module, and nothing more. It proves nothing at all to anybody outside that session: a reader
  * holding an exported packet has no way to check it, because the whole record lives in memory and
  * disappears with the tab. It is not a signature, it is not an insurer receipt, and it is not
- * evidence a handler could rely on. It stops this page describing a filing it did not perform.
+ * evidence a handler could rely on. It stops this page describing a filing it did not perform, and
+ * it now also stops this page describing that filing under rules it was not decided under.
  * `docs/handler-verification.md` says the same to a handler.
  */
-const FILED_BY_THIS_MODULE = new WeakSet();
+const FILING_RECORDS = new WeakMap();
+
+/**
+ * The ways a context handed in later can fail to be the context the filing happened under.
+ *
+ * A caller branches on the name rather than on the sentence, the same way it does everywhere else
+ * in this repository. src/core/packet.js translates these into its own refusal codes, because the
+ * reader of a packet refusal is not the reader of a filing refusal.
+ */
+export const FILING_CONTEXT_MISMATCHES = Object.freeze({
+  noReceipt: 'no-receipt',
+  packContent: 'pack-content',
+  packIdentity: 'pack-identity',
+  homePack: 'home-pack',
+  actions: 'actions',
+  filedAt: 'filed-at',
+  revision: 'revision',
+});
+
+/**
+ * The completed human actions, written the one way, so two readings of one list are one list.
+ *
+ * Trimmed, de-duplicated and sorted, because none of those three is a fact about the filing: a
+ * caller that hands the same two ids in the other order at packet time has not changed anything and
+ * must not be refused for it. Anything that is not a usable id is dropped rather than kept, so a
+ * null sitting in the array cannot become a difference between two normalisations of one list.
+ *
+ * @param {(string[]|Set<string>|undefined)} completedHumanActions
+ * @returns {readonly string[]} frozen, because it goes into a record nothing may edit afterwards
+ */
+function normaliseCompletedActions(completedHumanActions) {
+  const offered = completedHumanActions instanceof Set
+    ? [...completedHumanActions]
+    : (Array.isArray(completedHumanActions) ? completedHumanActions : []);
+  const usable = offered
+    .filter((id) => typeof id === 'string' && id.trim().length > 0)
+    .map((id) => id.trim());
+  return Object.freeze([...new Set(usable)].sort());
+}
 
 /**
  * Did this exact claim object come out of `fileClaim` here.
  *
- * The reading half of the receipt above. Read the limit written there before you rely on this: it
- * is a statement about one object in one browser session, not about the world.
+ * The first reading half of the receipt above. Read the limit written there before you rely on this:
+ * it is a statement about one object in one browser session, not about the world. It answers whether
+ * a filing happened and says nothing about what it happened under, which is what the second reader
+ * is for.
  *
  * @param {*} claim
  * @returns {boolean}
  */
 export function wasFiledHere(claim) {
-  return Boolean(claim) && typeof claim === 'object' && FILED_BY_THIS_MODULE.has(claim);
+  return Boolean(claim) && typeof claim === 'object' && FILING_RECORDS.has(claim);
+}
+
+/**
+ * Is the context handed in here the context this claim was actually filed under.
+ *
+ * THE SECOND READING HALF, AND THE ONE THE PACKET NEEDS. `wasFiledHere` attests the claim.
+ * `buildFilingPacket` is handed the pack, the home pack id and the completed human actions on its
+ * own call, and before this existed it believed all three. The measurement is in the block above.
+ *
+ * IT RETURNS A VERDICT AND NEVER THE RECORD. Handing the record back would hand a caller the exact
+ * values to replay, which is the opposite of what a receipt is for.
+ *
+ * THE PACK IS ASKED TWICE, AND BOTH QUESTIONS CAN FIRE. The canonical writing is compared first,
+ * because it names the real failure: these are not the rules the filing was decided under, and it
+ * is the question that catches the id preserving forgery, whose whole trick is that every identity
+ * check in this repository compares ids. Object identity is compared second, and it is not the same
+ * question: a JSON round trip of the validated pack canonicalises identically and is still an object
+ * this build has never read, which is the case src/core/policy.js refuses one boundary further out.
+ * Asking both means neither substitution has a way through, and the name says which one happened.
+ *
+ * WHAT IS BOUND AND NOT COMPARED FORWARD. The revision is compared only for going BACKWARDS. A
+ * context change on a filed claim hands back a copy with the counter moved on, which is a legitimate
+ * thing this page does and is not a substitution. A counter BELOW the filing it carries is a claim
+ * that could not have got here, so that direction refuses.
+ *
+ * THE LAST TWO CHECKS CANNOT BE REACHED FROM OUTSIDE THIS MODULE TODAY, AND THEY ARE KEPT ANYWAY.
+ * Only two functions ever write to the map, a receipted claim is frozen, and both of them carry
+ * `filed_at` across and move the counter forward, so no caller can produce a claim whose filing time
+ * or revision disagrees with the record it holds. They are the two facts a THIRD writer would get
+ * wrong, and the repository's rule is that a gate ships with a proof that it fails, so both were
+ * broken once at the point that writes the record and both refused:
+ *
+ *   bound at 2020-01-01T00:00:00.000Z  -> verdict: false filed-at   packet: PACKET_REFUSED_NOT_THE_FILING_CONTEXT
+ *   bound revision 9 on a filing at 4  -> verdict: false revision   packet: PACKET_REFUSED_NOT_THE_FILING_CONTEXT
+ *
+ * That is why the unit suite does not cover these two branches. It is not that they are untested,
+ * it is that nothing outside this file can reach them while there are only two writers.
+ *
+ * @param {*} claim the claim a packet is about to be built from
+ * @param {{pack?: *, homePackId?: (string|null),
+ *          completedHumanActions?: (string[]|Set<string>)}} [context] what the caller says the
+ *        filing was decided under
+ * @returns {{ok: boolean, mismatch: (string|null), reason: string}}
+ */
+export function verifyFilingContext(claim, context) {
+  const record = Boolean(claim) && typeof claim === 'object' ? FILING_RECORDS.get(claim) : undefined;
+  if (!record) {
+    return {
+      ok: false,
+      mismatch: FILING_CONTEXT_MISMATCHES.noReceipt,
+      reason: 'This claim was not filed through the control on this page.',
+    };
+  }
+
+  const settings = context && typeof context === 'object' ? context : {};
+  const identity = packIdentity(settings.pack ?? null, { homePackId: settings.homePackId ?? null });
+
+  if (!identity.usable || canonicalise(settings.pack) !== record.packCanonical) {
+    return {
+      ok: false,
+      mismatch: FILING_CONTEXT_MISMATCHES.packContent,
+      reason: 'These are not the rules this claim was filed under. It was filed under the pack '
+        + `"${record.packId}" as this page had read it, and the rules offered here say something `
+        + 'different, whatever id they carry.',
+    };
+  }
+
+  if (settings.pack !== record.pack) {
+    return {
+      ok: false,
+      mismatch: FILING_CONTEXT_MISMATCHES.packIdentity,
+      reason: 'These rules hold what the filing was decided under and are not the object this page '
+        + 'validated and filed against. A copy of a pack was assembled by somebody rather than read '
+        + 'by this build, so it is not the pack the filing happened under.',
+    };
+  }
+
+  if (identity.homePackId !== record.homePackId) {
+    return {
+      ok: false,
+      mismatch: FILING_CONTEXT_MISMATCHES.homePack,
+      reason: `This claim was filed as a policy with "${record.homePackId}", and the context here `
+        + `says ${JSON.stringify(identity.homePackId)}. Whose policy this is was settled when it `
+        + 'was filed, and it is not something a later caller restates.',
+    };
+  }
+
+  const offered = normaliseCompletedActions(settings.completedHumanActions);
+  const filedWith = record.actions;
+  if (offered.length !== filedWith.length || offered.some((id, index) => id !== filedWith[index])) {
+    return {
+      ok: false,
+      mismatch: FILING_CONTEXT_MISMATCHES.actions,
+      reason: 'The steps a person is reported to have carried out are not the steps this claim was '
+        + 'filed with. A human action either had happened when the claim was filed or it had not, '
+        + 'so it cannot be added to a filing or taken off one afterwards.',
+    };
+  }
+
+  if (claim.filed_at !== record.at) {
+    return {
+      ok: false,
+      mismatch: FILING_CONTEXT_MISMATCHES.filedAt,
+      reason: 'The filing time on this claim is not the time it was filed at.',
+    };
+  }
+
+  if (currentRevision(claim) < record.revision) {
+    return {
+      ok: false,
+      mismatch: FILING_CONTEXT_MISMATCHES.revision,
+      reason: `This claim reads as revision ${currentRevision(claim)} and the filing it carries `
+        + `happened at revision ${record.revision}. A counter below the filing on it is a claim `
+        + 'that could not have got here.',
+    };
+  }
+
+  return {
+    ok: true,
+    mismatch: null,
+    reason: 'The context offered is the context this claim was filed under.',
+  };
 }
 
 /**
  * Freeze the filed graph, so the receipt above attests a state rather than an address.
  *
- * WHAT WAS WRONG, MEASURED. The WeakSet holds the object `fileClaim` returned, and that object was
+ * WHAT WAS WRONG, MEASURED. The receipt keys on the object `fileClaim` returned, and that object was
  * an ordinary mutable one. So `wasFiledHere` answered "is this the object my gate handed back" and
  * never "does it still hold what the gate passed". src/core/store.js hands every caller that same
  * live object and src/ui/app.js passes it to `buildFilingPacket` as `claimNow()`, so a value
@@ -1470,7 +2144,7 @@ export function wasFiledHere(claim) {
  * note from four scalars, so one level of copy is the whole note.
  *
  * WHAT IT DOES NOT DO. It does not make the receipt mean anything outside this browser session.
- * Read the limit written at FILED_BY_THIS_MODULE above. This makes the local statement a true one,
+ * Read the limit written at FILING_RECORDS above. This makes the local statement a true one,
  * and the local statement is still all there is.
  *
  * @param {*} value
@@ -1492,21 +2166,27 @@ function sealFiledState(value, seen) {
 /**
  * Seal a claim and then receipt it. The one place a receipt is ever written.
  *
- * WHY IT IS A FUNCTION AND NOT TWO LINES INSIDE fileClaim. Two states carry the receipt now: the
- * claim the file gate returns, and the copy `noteContextChange` returns when the claim handed to
- * it already had one. Both have to be frozen before they enter the set, or the receipt attests an
+ * WHY IT IS A FUNCTION AND NOT TWO LINES INSIDE fileClaim. Two states carry the receipt: the claim
+ * the file gate returns, and the copy `noteContextChange` returns when the claim handed to it
+ * already had one. Both have to be frozen before they enter the map, or the receipt attests an
  * address again instead of a state, which is the defect `sealFiledState` above exists to close.
- * One function is one order, one place to read, and one line carrying `FILED_BY_THIS_MODULE.add`,
- * so a grep over this file still finds every writer of the receipt.
+ * One function is one order, one place to read, and one line carrying `FILING_RECORDS.set`, so a
+ * grep over this file still finds every writer of the receipt.
  *
- * THE ORDER IS THE POINT. Freeze, then add, so nothing mutable is ever a member of the set.
+ * THE RECORD IS CARRIED, NEVER MINTED HERE. `noteContextChange` has no filing context to state and
+ * must not invent one, so it hands over the record the claim it copied already held. `fileClaim` is
+ * the only caller that builds one, out of what the gate it just passed was given.
+ *
+ * THE ORDER IS THE POINT. Freeze the claim, freeze the record, then set, so nothing mutable is ever
+ * in the map on either side of the entry.
  *
  * @param {object} claim frozen in place and handed back
+ * @param {object} record what this filing was decided under. See FILING_RECORDS above
  * @returns {object} the same object, sealed and receipted
  */
-function sealAndReceipt(claim) {
+function sealAndReceipt(claim, record) {
   sealFiledState(claim, new Set());
-  FILED_BY_THIS_MODULE.add(claim);
+  FILING_RECORDS.set(claim, Object.freeze(record));
   return claim;
 }
 
@@ -1590,10 +2270,28 @@ export function fileClaim(claim, options = {}) {
   // our own copies before sealing, so freezing the filing never reaches back into a draft the
   // caller still holds and may still edit. See sealFiledState for why one level is the whole note.
   next.evidence_notes = next.evidence_notes.map((note) => ({ ...note }));
-  // FROZEN BEFORE IT IS RECEIPTED, in that order, so nothing mutable is ever a member of the set.
-  // See FILED_BY_THIS_MODULE above for what the receipt is worth and, more importantly, what it
-  // is not, and sealAndReceipt for why both writers of it go through one function.
-  sealAndReceipt(next);
+  // WHAT THIS FILING WAS DECIDED UNDER, WRITTEN DOWN WHILE IT IS STILL KNOWN.
+  //
+  // This is the only place in the repository that mints a filing record, and it does it from the
+  // arguments the gate three lines up has just accepted rather than from anything a later caller
+  // supplies. `packIdentity` is the same function the gate and the packet read the pack's id and
+  // the home pack id through, so there is no second normalisation of either to drift from it, and
+  // the canonical writing of the pack is taken here rather than read off a field on the pack: a
+  // field on the object is a statement by whoever built the object.
+  //
+  // FROZEN BEFORE IT IS RECEIPTED, in that order, so nothing mutable is ever a key in the map.
+  // See FILING_RECORDS above for what the receipt is worth and, more importantly, what it is not,
+  // and sealAndReceipt for why both writers of it go through one function.
+  const identity = packIdentity(options.pack ?? null, { homePackId: options.homePackId ?? null });
+  sealAndReceipt(next, {
+    revision: next.revision,
+    at: options.at,
+    pack: options.pack,
+    packId: identity.packId,
+    packCanonical: canonicalise(options.pack),
+    homePackId: identity.homePackId,
+    actions: normaliseCompletedActions(options.completedHumanActions),
+  });
   return { claim: next, ok: true, error: null, code: null, revision: next.revision };
 }
 

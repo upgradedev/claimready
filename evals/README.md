@@ -56,13 +56,13 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770), workflow `WebMCP evals`, conclusion success, run 2026-09-02, dispatched against `main` after the release was served so the run and the deployment name one runtime |
-| Commit under test | `9450d70`, **and that is the commit the host serves and the commit the recording is frozen at**. Checked, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 9450d70` fetches all 26 files the page loads and printed `the deployed page is 9450d70, on every one of those files`, exit 0. The workflow runs on a daily schedule and on dispatch rather than on push, so the gap opens again on the next commit that touches one of those files |
+| Run | [33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683), workflow `WebMCP evals`, conclusion success, run 2026-09-02, dispatched against `main` after the release was served so the run and the deployment name one runtime. This row named [33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) until 2026-09-02 and gave it the commit below, which it did not drive: its `headSha` is `357410e` |
+| Commit under test | `9450d70`, **and that is the commit the host serves. It is no longer the commit the recording is frozen at**: it held the freeze for part of 2026-09-02 and the freeze was lifted the same day, so the record row in [docs/submission/video.md](../docs/submission/video.md) names no commit and `FRZ` is red. Checked, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 9450d70` fetches all 26 files the page loads and printed `the deployed page is 9450d70, on every one of those files`, exit 0. The workflow runs on a daily schedule and on dispatch rather than on push, so the gap opens again on the next commit that touches one of those files |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step. That string was read from the log of 33588857520; the dev channel moves, so re-read it from the run you are quoting |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179`, which is pinned in the workflow and so is the same in both runs |
 | Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
-| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 81 checks against the deployed page, none failed`. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle, not to the product. **That run's 81 is now history too.** Later on 2026-09-02 the two accepted patches and the read between them were found to have no reading of the draft either side of them, so a collateral write by any of the three was recorded by nothing. Closing that took the matrix to 110, and [run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683) then ran the judgement at that size against the deployed page and printed `probe: PASS. 110 checks against the deployed page, none failed`. The page did not change between the two runs. The judgement did, and 29 checks that did not exist before now pass against the same bytes |
+| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 110 checks against the deployed page, none failed`. The run before it, 33616908770 at `357410e`, printed 81. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle, not to the product. **That run's 81 is now history too.** Later on 2026-09-02 the two accepted patches and the read between them were found to have no reading of the draft either side of them, so a collateral write by any of the three was recorded by nothing. Closing that took the matrix to 110, which is what this run printed. The page did not change between it and the run before it. The judgement did, and 29 checks that did not exist before pass against the same bytes. The judgement has since grown again, to 178, and no browser run has been made at that size |
 
 Earlier runs were green as well:
 [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
@@ -72,12 +72,16 @@ the one quoted here for a reason worth stating: each of the others was driven ag
 later commits superseded, and two of those commits changed what the browser loads. A green run
 against bytes the host no longer serves is not evidence about the live page, so this file is
 re-run rather than left pointing at the old number. Read it for yourself with
-`gh run view 33616908770 --repo upgradedev/claimready --log`, and confirm the commit with
-`gh run view 33616908770 --repo upgradedev/claimready --json headSha`, which prints
-`9450d703e0664c13f223ce4dfa28310fbb10e97a`.
+`gh run view 33627149683 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33627149683 --repo upgradedev/claimready --json headSha`, which prints
+`9450d70795a5dd81a1aa2217bf9ede9f7b5fba02`. This paragraph named 33616908770 and printed
+`9450d703e0664c13f223ce4dfa28310fbb10e97a`, which is nobody's commit: it is the short `9450d70`
+spliced onto the tail of 33616908770's real head, `357410e3e0664c13f223ce4dfa28310fbb10e97a`. Two
+SHAs read as one is the failure to watch for, because the string still looks like a commit.
 
-**The negative control HAS now run in a browser, twice.** This paragraph used to say it had not, at
-any commit. In runs 33334936720, 33458929502, 33560224732, 33588857520, 33600367240 and 33616908770 its own job reported `Passed steps: 7/8 across 1
+**The negative control HAS now run in a browser, seven times.** This paragraph used to say it had
+not, at any commit, and then said twice while listing six runs. In runs 33334936720, 33458929502,
+33560224732, 33588857520, 33600367240, 33616908770 and 33627149683 its own job reported `Passed steps: 7/8 across 1
 case(s).` and named the step that had to fail: `step 8 (get_assistance_options): tool
 "get_assistance_options" is not available.` The workflow asserts both the summary and that sentence,
 so a browser that quietly kept the tool would have turned the job green and failed the assertion
@@ -158,7 +162,7 @@ day**, which was smaller than the one in the file now:
 | Chrome 151 stable, `--enable-features=WebMCP` | `probe: PASS. 24 checks against the deployed page, none failed.` |
 | the same Chrome, same page, **flag left off** | `probe: FAIL`, exit 1, naming eight of them, starting with the API that is not there |
 
-`tests/unit/probe_assertions.test.js` breaks the transcript with 68 mutations, at least one per
+`tests/unit/probe_assertions.test.js` breaks the transcript with 83 mutations, at least one per
 assertion, and requires a failure each time. A gate nobody has watched fail is not a gate.
 
 **The note phase has now been watched against a live browser, so the probe is off manual dispatch.**
@@ -176,18 +180,32 @@ and closing them took the matrix from 71 checks to 81 and changed the shape of t
 probe collects. Later the same day the three calls in the journey that had no reading of the draft
 either side of them were bracketed as well: the accepted patch that takes the car off the road, the
 read of the assistance options after it, and the accepted patch that puts the car back on. That took
-the matrix from 81 to 110 and changed the transcript shape again. So no number recorded against any
-run above can be reproduced by re-running the probe as it is now. **Where the 110 comes from,
+the matrix from 81 to 110 and changed the transcript shape again. Later again on 2026-09-02 three
+more places were found where a sentence stood in for a fact: an accepted patch's answer was judged
+by not being a refusal, the assistance read's answer by being non-empty, and an intake requirement
+by looking like one. Three forged transcripts were built first and each was judged `ok=true, 110
+checks, 0 failures`: a patch answering `Applied. The claim is filed and roadside assistance was
+dispatched automatically.`, an assistance read answering `Roadside assistance is booked. No action
+from the claimant is needed.`, and the real roadside rule replaced throughout by
+`- settlement_authorisation, send location: The claim is authorised for settlement`. Closing those
+took the matrix from 110 to 178. So no number recorded against any
+run above can be reproduced by re-running the probe as it is now. **Where the 178 comes from,
 because a count needs its command.** `tests/unit/probe_assertions.test.js` holds a floor at
-`verdict.checks >= 110` over the healthy transcript, and the judgement runs exactly that many: raise
+`verdict.checks >= 178` over the healthy transcript, and the judgement runs exactly that many: raise
 the floor above it and the assertion message prints the count it actually ran. Measured that way on
-2026-09-02, on Windows, it printed `expected a real matrix, ran 110 checks`. The earlier lines are
-kept because they are true about the runs they name, and 110 is the number to quote now.
-**No browser run has been made at 110.** The probe has been run twice on a runner since 81, in
-[33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) and [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240), both against the `e942ee3`
-the host serves. **Neither describes the runtime this entry will record**: filing integrity work in
-the working tree changes `src/core/claim.js`, which is one of the 26 files the page loads, so the
-workflow has to be dispatched against `main` once more after the release is served.
+2026-09-02, on Windows, it printed `expected a real matrix, ran 178 checks`. The earlier lines are
+kept because they are true about the runs they name, and 178 is the number to quote now.
+**No browser run has been made at 178.** The probe has run on a runner four times since 71: at 81 in
+[33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at `e942ee3`,
+[33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935` and
+[33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) at `357410e`, then
+at 110 in [33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683) at
+`9450d70`. Every one of those four commits comes from `gh run view <id> --json headSha` rather than
+from memory. An earlier version of this sentence gave the first two runs one shared commit, and it
+was not either of their own. **None of the four describes the runtime this entry will record**:
+filing integrity work in the working tree changes `src/core/claim.js`, which is one of the 26 files
+the page loads, so the workflow has to be dispatched against `main` once more after the release is
+served.
 
 **What stops a green run here from going stale, now that it runs unattended.** This workflow runs
 daily and on dispatch rather than on push, so `main` moves under it. Before the browser is opened,
@@ -267,8 +285,9 @@ called a tool and got an answer, so the browser exposed one of the two names and
 `registerTools` ran against it. That was the correct failure to be afraid of, and it did not happen.
 
 The lifecycle half needed four steps rather than one, and got them. These four lines are from run
-33334936720, the run of record above, with each tool's own output truncated at the first newline
-because that is where the runner's log breaks it:
+33334936720, which held the Run row above until 2026-09-01 and is history now rather than the run of
+record, with each tool's own output truncated at the first newline because that is where the
+runner's log breaks it:
 
 ```
 Step 2/7: Calling tool "apply_claim_patch"       PASS: Applied. The claim is now at revision 1.
@@ -665,7 +684,7 @@ variable `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, bui
 the pinned commit, runs the three journeys, runs the negative control and requires it to fail in the
 one shape described above, and uploads both logs and any `.evals` report as an artifact.
 
-The `probe` job, in order, runs the 68 mutations and the note phase tests before any browser is
+The `probe` job, in order, runs the 83 mutations and the note phase tests before any browser is
 opened, fails when `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, fails unless
 the host is serving this checkout at this commit on all 26 files the page loads, hands that commit
 to the probe, starts Chrome with the WebMCP flag, runs `evals/browser_probe.mjs` and fails when the

@@ -109,7 +109,7 @@ And one field deserves saying out loud, because it is the field that reads like 
 `content.filed.through` says the claim was filed through a control on the page. Inside the running
 page that sentence is checked rather than asserted: `src/core/packet.js` refuses to build anything
 at all unless the claim object it was handed is the object `fileClaim` in `src/core/claim.js`
-returned, and that record is a set held privately in the module with no way to write to it from
+returned, and that record is a map held privately in the module with no way to write to it from
 outside. A status typed by hand, and a copy of a filed claim, both get a refusal instead of a
 document.
 
@@ -119,6 +119,13 @@ about a state: the page hands the same live object to whatever draws the packet,
 changed after the filing would have been sealed and hashed under a sentence saying the filing had
 already happened. So the packet carries what passed the file gate, and nothing that arrived after
 it.
+
+The record also holds what that filing was decided under, and that half is newer. The rule pack,
+whose policy it is and the steps a person had carried out do not live on the claim: they arrive on
+the call that builds the packet, so they used to be believed. A pack carrying the right id and the
+wrong rules is refused now, and so is a list of steps that is not the list the claim was filed with.
+The insurer, the clause and the excess in the document below are the ones the filing was decided
+under, rather than the ones the last caller offered.
 
 That check lives entirely inside one browser tab and it dies with the tab. It cannot travel in the
 file. So to you, holding the packet, `filed.through` is a sentence the page wrote, exactly like
