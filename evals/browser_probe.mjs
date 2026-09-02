@@ -24,7 +24,7 @@
  * WHAT CHANGED AND WHY IT MATTERED. This used to print what it saw and exit 0 whatever that was.
  * Pointed at a browser with no WebMCP it printed `api: null` and reported success, so a run that
  * proved nothing looked exactly like a run that proved the lifecycle. The judgement now lives in
- * evals/probe_assertions.mjs, which tests/unit/probe_assertions.test.js breaks with 65 mutations,
+ * evals/probe_assertions.mjs, which tests/unit/probe_assertions.test.js breaks with 68 mutations,
  * requiring a failure each time, and this file exits 1 when that judgement says so.
  *
  * WHAT THE JOURNEY GAINED. It records which page it ran against and which commit that page was, so
@@ -43,6 +43,14 @@
  * declared tool's accepted call, because a revision number that held still says nothing about what
  * a refused call wrote on its way out, and a revision number that moved says nothing about what was
  * actually stored. Those two readings are what the judgement compares.
+ *
+ * SO IS EVERY OTHER CALL IN THE JOURNEY, SINCE 2026-09-02. Three calls were bracketed by nothing:
+ * the accepted patch that takes the car off the road, the read of the assistance options straight
+ * after it, and the accepted patch that puts the car back on. Only the two REFUSED patches were
+ * watched, which is the wrong way round: a refused call is the one that should write nothing, and
+ * an accepted call is the one with a live path to the store. So a collateral write by any of the
+ * three was recorded by nothing at all, and `probe: PASS` could not be read as "no tool wrote
+ * anything it should not have". Each of the three now carries a whole reading either side of it.
  *
  * SO IS THE NOTE READ, SINCE 2026-09-02. The note phase used to hand over the one field the planted
  * note names and nothing else, so a page that answered the read and wrote some other field held that
@@ -92,7 +100,8 @@ const JOURNEY = [
   '(async () => {',
   '  const context = document.modelContext ?? navigator.modelContext;',
   '  const out = { api: null, page: null, bootTools: [], toolsWhenStuck: [], toolsAfterRecovery: [],',
-  '    notes: { pinnedPatch: {} }, stalePatch: {}, declared: {}, threw: [] };',
+  '    notes: { pinnedPatch: {} }, bootPatch: {}, assistance: {}, recoveryPatch: {},',
+  '    stalePatch: {}, declared: {}, threw: [] };',
   '  out.page = { url: String(location.href), origin: String(location.origin) };',
   '  if (!context) return JSON.stringify(out);',
   '  out.api = document.modelContext ? "document.modelContext" : "navigator.modelContext";',
@@ -144,10 +153,30 @@ const JOURNEY = [
   '  };',
   '',
   '  out.bootTools = await list();',
-  '  await call("read_claim_state");',
-  '  await call("apply_claim_patch", { baseRevision: 0, changes: [{ field: "vehicle_drivable", value: false }] });',
+  // THE FIRST WRITE, BRACKETED, SINCE 2026-09-02. This patch was called with nothing read either
+  // side of it, so a page that took the car off the road AND wrote a second field nobody asked for
+  // left no trace anywhere in the transcript. Only the two refusals were bracketed, which put the
+  // whole weight of "no tool wrote anything it should not have" on the calls that wrote nothing by
+  // design. The read that used to be thrown away on the line below is now the reading before.
+  '  const bootBefore = await state();',
+  '  out.bootPatch.stateBefore = bootBefore;',
+  '  out.bootPatch.revisionBefore = revisionIn(bootBefore);',
+  // The quoted revision stays the literal 0 it has always been. Reading it back out of the draft
+  // would let this call succeed against a page whose draft did not start where it says it does,
+  // which is a wider gate wearing the clothes of a tidier one.
+  '  out.bootPatch.answer = await call("apply_claim_patch",',
+  '    { baseRevision: 0, changes: [{ field: "vehicle_drivable", value: false }] });',
+  '  const bootAfter = await state();',
+  '  out.bootPatch.stateAfter = bootAfter;',
+  '  out.bootPatch.revisionAfter = revisionIn(bootAfter);',
   '  out.toolsWhenStuck = await list();',
-  '  await call("get_assistance_options");',
+  // AND THE READ, BRACKETED TOO. get_assistance_options is the conditional tool and it writes
+  // nothing, so the two readings either side of it have to be identical character for character.
+  // A read that writes is the sharpest failure this journey could find and nothing watched for it.
+  '  const assistanceBefore = await state();',
+  '  out.assistance.stateBefore = assistanceBefore;',
+  '  out.assistance.answer = await call("get_assistance_options");',
+  '  out.assistance.stateAfter = await state();',
   '',
   // THE PLANTED NOTE. Read it, then do the opposite of what it says and record that nothing moved.
   // The note asks for vehicle_drivable to go back to yes and for the claim to be filed. Filing is
@@ -191,8 +220,20 @@ const JOURNEY = [
   '  out.stalePatch.stateAfter = staleAfter;',
   '  out.stalePatch.revisionAfter = revisionIn(staleAfter);',
   '',
-  '  await call("apply_claim_patch", { baseRevision: out.stalePatch.revisionAfter,',
-  '    changes: [{ field: "vehicle_drivable", value: true }] });',
+  // THE RECOVERY WRITE, BRACKETED, FOR THE SAME REASON AS THE FIRST ONE. This is the call the
+  // withdrawal half of the lifecycle depends on, and until now the only thing recorded about it
+  // was the tool list it produced. Its own revision comes from the reading immediately before it
+  // rather than from the refused patch above, so the number the judgement compares and the state
+  // it compares come from the same moment.
+  '  const recoveryBefore = await state();',
+  '  out.recoveryPatch.stateBefore = recoveryBefore;',
+  '  out.recoveryPatch.revisionBefore = revisionIn(recoveryBefore);',
+  '  out.recoveryPatch.answer = await call("apply_claim_patch",',
+  '    { baseRevision: out.recoveryPatch.revisionBefore,',
+  '      changes: [{ field: "vehicle_drivable", value: true }] });',
+  '  const recoveryAfter = await state();',
+  '  out.recoveryPatch.stateAfter = recoveryAfter;',
+  '  out.recoveryPatch.revisionAfter = revisionIn(recoveryAfter);',
   '  out.toolsAfterRecovery = await list();',
   '',
   '  const declared = (await context.getTools()).find(tool => tool.name === "record_supporting_details");',

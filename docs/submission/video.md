@@ -40,7 +40,12 @@ an older run: [run 33616908770](https://github.com/upgradedev/claimready/actions
 workflow `WebMCP evals`, conclusion success, `headSha` `357410e`, on
 `Google Chrome 154.0.8025.0 dev`. It reported `Passed steps: 16/16 across 3 case(s)`, the negative
 control `Passed steps: 7/8 across 1 case(s)` with the verdict `PROVEN`, and our own probe
-`probe: PASS. 81 checks against the deployed page, none failed`.
+`probe: PASS. 81 checks against the deployed page, none failed`. **That 81 is what the run printed
+and it is no longer the size of the gate.** Later on 2026-09-02 three calls in the probe's journey
+were found to have no reading of the draft either side of them, closing that took the matrix to 110,
+and the change is in `evals/` and `tests/` only. None of the 26 files the page loads moved, so the
+takes still stand against `357410e` and nothing needs re-cutting. The run that prints 110 has still
+to be dispatched.
 
 **What may change after this line, and what may not.** Commits after `357410e` may touch
 documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/` or

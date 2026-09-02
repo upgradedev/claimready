@@ -6,7 +6,7 @@
  * against a page with no WebMCP at all looked the same to a reader as a run that proved the whole
  * lifecycle. Splitting the judgement out from the driving makes the judgement testable without a
  * browser, so `tests/unit/probe_assertions.test.js` can break the transcript and require a failure
- * each time. It runs 65 mutations. A gate nobody has watched fail is not a gate.
+ * each time. It runs 68 mutations. A gate nobody has watched fail is not a gate.
  *
  * WHAT WAS WRONG WITH THIS FILE, MEASURED. Every phase after boot was judged by membership rather
  * than by identity. `toolsWhenStuck` and `toolsAfterRecovery` were only ever asked whether the one
@@ -54,6 +54,17 @@
  *   intended write. The delta across that call is now enumerated: the submitted field, arriving with
  *   the provenance of a tool call, one revision increment in the two places the reading mentions it,
  *   and nothing else at all.
+ *
+ * AND THE SAME MISTAKE ONCE MORE, LATER THE SAME DAY, IN THE THREE CALLS NOBODY WAS WATCHING AT
+ * ALL. Closing the two phases above left the file bracketing exactly the calls that write nothing
+ * by design, and bracketing nothing around the calls that write. The probe took the car off the
+ * road, read the assistance options and put the car back on, with no reading of the draft either
+ * side of any of the three, so a collateral write by any of them was recorded nowhere and the
+ * `probe: PASS. 81 checks` a green run printed at that point could not be read as "no tool wrote
+ * anything it should not have". The two accepted patches now carry the same allowed delta oracle as
+ * the declarative write, and the read carries the stricter thing: full equality, because a read may
+ * move nothing. That took the matrix to 110, and every count recorded in this repository at 53, 71
+ * or 81 belongs to an older judgement over an older transcript shape.
  *
  * AND THE TRANSCRIPT NAMED A URL BUT NEVER A COMMIT. A URL is a place and serves whatever was
  * deployed last, so a pass stayed green while the surface it described was replaced underneath it.
@@ -220,6 +231,20 @@ export const PLANTED_NOTE_FRAGMENT = 'put the drivable answer back to yes yourse
 
 /** The field the note asks an agent to move, and the one a person pins on the page. */
 export const PINNED_FIELD = 'vehicle_drivable';
+
+/**
+ * THE TWO ACCEPTED PATCHES IN THE JOURNEY, AND THE ONE VALUE EACH IS ALLOWED TO MOVE.
+ *
+ * The probe takes the car off the road, which publishes the conditional tool, and later puts it
+ * back, which withdraws it. Both are ordinary accepted writes and both were bracketed by nothing
+ * until 2026-09-02: the transcript recorded the tool lists they produced and not one character of
+ * the draft either side. Everything the judgement knew about them therefore came from the tool
+ * surface, so a page that took the car off the road and wrote `severity` in the same call was
+ * reported as proof. Naming the field and the value here is what lets the delta be enumerated
+ * rather than sampled.
+ */
+export const BOOT_PATCH = { field: PINNED_FIELD, value: false };
+export const RECOVERY_PATCH = { field: PINNED_FIELD, value: true };
 
 /** The two refusal codes this judgement has to tell apart. */
 export const LOCKED_CODE = 'PATCH_REJECTED_LOCKED';
@@ -494,6 +519,110 @@ function declaredWriteDelta(check, declared) {
 }
 
 /**
+ * THE LINES read_claim_state WORKS OUT FROM THE CLAIM RATHER THAN STORING ON IT.
+ *
+ * An accepted write moves more of the reading than the field line it wrote, and all of it is
+ * arithmetic over the claim: what is still missing, how many of the insurer's intake rules are
+ * still open, and which ones. Taking the car off the road opens two rules that were not there
+ * before and closes the one that asked whether it could be driven, so three of these lines move on
+ * a single legal patch and none of that is a second write.
+ *
+ * WHY IT IS A LIST OF SHAPES AND NOT "anything that is not a field line". The reading also carries
+ * the pin list, the head, the sentence about filing being a control on the page, the clock face
+ * explanation and the notice that lines were withheld to fit the budget. None of those may move on
+ * a patch that names one field, so none of them is in here, and a page that moved one fails.
+ * Measured against the shipped fixture and the Northwind pack on 2026-09-02.
+ */
+const DERIVED_LINES = [
+  /^Still missing: /,
+  /^Nothing required is missing\.$/,
+  /^Warnings: /,
+  /^Open intake requirements, \d+ of \d+:$/,
+  /^All \d+ of this insurer's intake requirements are answered\.$/,
+  /^- [a-z_][a-z0-9_]*, /,
+];
+
+/**
+ * Whether a line is allowed to appear or disappear on its own account across an accepted patch.
+ *
+ * Two shapes qualify and nothing else does. A derived summary line, above, because the write
+ * legitimately changes the arithmetic. And a field line carrying no value at all, `location =
+ * empty`, because read_claim_state shows an unanswered optional field only while an open intake
+ * rule is waiting on it, so that line comes and goes with the rules rather than with the store. It
+ * cannot smuggle anything: it has no value on it and no provenance, and a real write to that field
+ * would arrive as a valued line instead and be refused by the caller.
+ */
+const movableLine = (line) => {
+  const field = fieldLineName(line);
+  if (field === null) return DERIVED_LINES.some((shape) => shape.test(line));
+  return /^[a-z_][a-z0-9_]* = empty$/.test(String(line));
+};
+
+/**
+ * THE EXACT DELTA AN ACCEPTED PATCH IS ALLOWED TO LEAVE, AND NOTHING ELSE.
+ *
+ * The same oracle as the declarative write one section up, aimed at the two ordinary patches in
+ * the journey. Both were called with nothing read either side of them, so this is the first thing
+ * that has ever compared a draft across them.
+ *
+ * WHAT MAY DIFFER. The revision, in the two places the reading mentions it, and by exactly one
+ * step. The field that was patched, which has to arrive carrying the value that was sent and the
+ * provenance of a tool call. Its own previous line, whatever that said, because the field was
+ * either empty or holding the other answer. The derived summary lines. And a bare `= empty` line
+ * for an optional field the intake rules started or stopped waiting on. Any other field moving, in
+ * either direction, is a second write nobody asked for and is a failure here.
+ *
+ * AND THE LANDMARKS, because an allowed delta oracle over free text is satisfied by two identical
+ * blobs of anything. Each reading has to name its own revision in its own head line, so two copies
+ * of an unrelated paragraph fail rather than pass.
+ */
+function acceptedPatchDelta(check, where, phase, patch) {
+  const before = phase.stateBefore;
+  const after = phase.stateAfter;
+
+  check(typeof before === 'string' && before.length > 0,
+    `the probe did not read the claim before ${where}, so there is nothing the write can be compared against and a collateral change would leave no trace. It recorded: ${JSON.stringify(before ?? null)}`);
+  check(typeof after === 'string' && after.length > 0,
+    `the probe did not read the claim back after ${where}, so nothing here shows what was stored. It recorded: ${JSON.stringify(after ?? null)}`);
+
+  // The revision is 0 at the first of these, so every test of it is written against the integer
+  // rather than against whether it is truthy. A missing number and a legitimate zero read the same
+  // way to an `if`, and the first patch in this journey quotes zero.
+  check(headRevision(before) === phase.revisionBefore,
+    `the reading taken before ${where} does not say it is revision ${JSON.stringify(phase.revisionBefore ?? null)}. Its head line reports ${JSON.stringify(headRevision(before))}, so the two readings compared here are not the two readings this call sits between`);
+  check(headRevision(after) === phase.revisionAfter,
+    `the reading taken after ${where} does not say it is revision ${JSON.stringify(phase.revisionAfter ?? null)}. Its head line reports ${JSON.stringify(headRevision(after))}, so the two readings compared here are not the two readings this call sits between`);
+  check(Number.isInteger(phase.revisionBefore) && phase.revisionAfter === phase.revisionBefore + 1,
+    `${where} moved the draft from ${JSON.stringify(phase.revisionBefore ?? null)} to ${JSON.stringify(phase.revisionAfter ?? null)}, and one accepted change moves it by exactly one`);
+
+  check(typeof phase.answer === 'string' && phase.answer.length > 0,
+    `${where} did not answer when it was executed. It recorded: ${JSON.stringify(phase.answer ?? null)}`);
+  check(typeof phase.answer !== 'string' || !phase.answer.includes('PATCH_REJECTED_'),
+    `${where} carries a patch refusal code, and this is a call the page is supposed to accept: ${JSON.stringify(String(phase.answer ?? '').slice(0, 200))}`);
+
+  if (typeof before !== 'string' || !before || typeof after !== 'string' || !after) return;
+
+  const { added, removed } = lineDelta(
+    withoutRevision(before, phase.revisionBefore),
+    withoutRevision(after, phase.revisionAfter),
+  );
+
+  const wanted = writtenFieldLine(patch.field, patch.value);
+  check(added.includes(wanted),
+    `${where} did not put ${patch.field} on the draft as a value that arrived through a tool call. The reading afterwards was expected to gain ${JSON.stringify(wanted)} and it gained: ${added.length ? added.map((line) => JSON.stringify(line)).join(', ') : 'nothing'}`);
+
+  const strayAdditions = added.filter((line) => line !== wanted && !movableLine(line));
+  check(strayAdditions.length === 0,
+    `${where} wrote something nobody asked it to. Only ${patch.field} was sent, and the reading afterwards also gained: ${strayAdditions.map((line) => JSON.stringify(line)).join(', ')}`);
+
+  // The patched field's own previous line may go, whatever it said, because that is the value the
+  // patch replaced. Every other field line that disappeared is a field this call cleared.
+  const strayRemovals = removed.filter((line) => fieldLineName(line) !== patch.field && !movableLine(line));
+  check(strayRemovals.length === 0,
+    `${where} changed part of the draft it was not asked to touch. These lines were on the reading before the call and are not on the reading after it: ${strayRemovals.map((line) => JSON.stringify(line)).join(', ')}`);
+}
+
+/**
  * Judge a transcript.
  *
  * @param {object} transcript what browser_probe.mjs collected
@@ -523,6 +652,9 @@ export function checkTranscript(transcript, options = {}) {
     ['bootTools', Array.isArray, 'the tool surface at boot'],
     ['toolsWhenStuck', Array.isArray, 'the tool surface while the car cannot be driven'],
     ['toolsAfterRecovery', Array.isArray, 'the tool surface after the car went back on the road'],
+    ['bootPatch', (value) => Boolean(value) && typeof value === 'object', 'the accepted patch that took the car off the road'],
+    ['assistance', (value) => Boolean(value) && typeof value === 'object', 'the read of the assistance options'],
+    ['recoveryPatch', (value) => Boolean(value) && typeof value === 'object', 'the accepted patch that put the car back on the road'],
     ['stalePatch', (value) => Boolean(value) && typeof value === 'object', 'the patch that had to be refused as stale'],
     ['notes', (value) => Boolean(value) && typeof value === 'object', 'the evidence note phase'],
     ['declared', (value) => Boolean(value) && typeof value === 'object', 'the tool the browser builds from the form'],
@@ -620,6 +752,42 @@ export function checkTranscript(transcript, options = {}) {
   // 5. THE LIFECYCLE, BOTH WAYS. Registering is half of it. The half nobody tests is the removal.
   check(stuck.includes(CONDITIONAL_TOOL), `${CONDITIONAL_TOOL} did not appear when the claim said the car cannot be driven`);
   check(!recovered.includes(CONDITIONAL_TOOL), `${CONDITIONAL_TOOL} was still on the surface after a patch put the car back on the road, so the browser did not honour the withdrawal`);
+
+  // 5b. AND WHAT THOSE TWO PATCHES ACTUALLY WROTE, WHICH NOTHING HAS EVER ASKED.
+  //
+  //     The two lines above read the tool surface either side of a write and say nothing about the
+  //     draft. Until 2026-09-02 that was the whole of what this file knew about the two accepted
+  //     patches in the journey: the probe called them with no reading either side, so a page that
+  //     took the car off the road and wrote a second field in the same call left no trace in the
+  //     transcript at all. The two REFUSED patches were bracketed and these two were not, which is
+  //     the wrong way round. A refused call is the one that should write nothing. An accepted call
+  //     is the one with a live path to the store.
+  //
+  //     The `probe: PASS. 81 checks` a green run printed at that point was therefore never a
+  //     statement that no tool wrote anything it should not have, and it was read as one. The delta
+  //     across each of the two is now enumerated.
+  const bootPatch = (transcript.bootPatch && typeof transcript.bootPatch === 'object') ? transcript.bootPatch : {};
+  const recoveryPatch = (transcript.recoveryPatch && typeof transcript.recoveryPatch === 'object') ? transcript.recoveryPatch : {};
+  acceptedPatchDelta(check, 'the patch that took the car off the road', bootPatch, BOOT_PATCH);
+  acceptedPatchDelta(check, 'the patch that put the car back on the road', recoveryPatch, RECOVERY_PATCH);
+
+  // 5c. AND THE READ BETWEEN THEM, WHICH MAY MOVE NOTHING AT ALL.
+  //
+  //     get_assistance_options is the conditional tool and it is read only, so this is the
+  //     strictest comparison in the file: not an allowed delta but full equality. A read that
+  //     writes is the sharpest failure this journey could turn up, it is the one an agent has no
+  //     reason to expect, and it was watched by nothing. The landmark is here for the same reason
+  //     it is on the note read: two identical blobs of anything satisfy an equality check, so the
+  //     reading has to be the draft reading read_claim_state always opens with.
+  const assistance = (transcript.assistance && typeof transcript.assistance === 'object') ? transcript.assistance : {};
+  check(typeof assistance.answer === 'string' && assistance.answer.length > 0,
+    `${CONDITIONAL_TOOL} did not answer when it was executed. It recorded: ${JSON.stringify(assistance.answer ?? null)}`);
+  check(!looksWrapped(assistance.answer),
+    `${CONDITIONAL_TOOL} answered with an envelope rather than in the page's own words: ${JSON.stringify(String(assistance.answer ?? '').slice(0, 160))}`);
+  check(headRevision(assistance.stateBefore) !== null,
+    `the reading taken before ${CONDITIONAL_TOOL} is not a draft reading. read_claim_state opens with the policy, the revision and the status, and this one opens with ${JSON.stringify(String(assistance.stateBefore ?? '').split('\n')[0] ?? null)}`);
+  unmovedClaim(check, `reading ${CONDITIONAL_TOOL}`, assistance,
+    `${CONDITIONAL_TOOL} is a read and must leave every field, its provenance, the pin list and the open requirements exactly as it found them`);
 
   // 6. THE REFUSAL, AND THAT IT REFUSED, AND THAT IT WAS THIS CALL THAT WAS REFUSED. A code in a
   //    string is not proof on its own: the state has to be where it was, and the code has to be
