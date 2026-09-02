@@ -641,7 +641,17 @@ test('a coverage that applies to an incident no claim can declare is refused', (
     /applies to "Collision"/,
   );
   // Every incident the claim layer knows is still accepted, read from the claim layer's own list.
-  assert.doesNotThrow(withCoverage(OWN_DAMAGE, (c) => { c.incident_types = [...INCIDENT_TYPES]; }));
+  //
+  // THE OTHER SECTIONS ARE EMPTIED FIRST, AND THAT IS NOT A SOFTENING. northwind's glass and theft
+  // sections name glass and theft, so handing own_damage the whole list makes three sections claim
+  // one incident each, which the overlap rule below now refuses for its own reason. The subject of
+  // this test is whether each incident NAME is accepted, so the pack is built to ask only that.
+  assert.doesNotThrow(() => {
+    const pack = base();
+    for (const coverage of pack.coverages) coverage.incident_types = [];
+    pack.coverages[OWN_DAMAGE].incident_types = [...INCIDENT_TYPES];
+    return loadPolicyPack(pack);
+  });
 });
 
 // THE OTHER HALF THAT MUST NOT MOVE. Third party liability is not written against an incident
@@ -653,6 +663,106 @@ test('an empty incident_types stays legal, and both shipped packs rely on that t
     const empty = pack.coverages.filter((coverage) => coverage.incident_types.length === 0);
     assert.equal(empty.length, 1, `${pack.id} ships exactly one section with no incident list`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// One incident, one section. Two sections claiming it is the file deciding by order
+// ---------------------------------------------------------------------------
+
+// LOADED BEFORE, AND THE ORDER OF THE FILE DECIDED THE EXCESS. findCoverage in src/core/coverage.js
+// picks a section with Array.find, so the first entry naming the incident wins and every later one
+// is never read. Measured on a deep copy of northwind with a second glass section added, against a
+// glass claim on 2026-08-23:
+//
+//   glass written first             clause GL-2.3, excess 0
+//   windscreen_extra written first  clause WX-1.1, excess 900
+//
+// Same pack, same claim, two answers, and the only difference is which line the author typed first.
+// The excess is the number a claimant plans around, so a file that does not say which section
+// answers is a file this build cannot read out.
+test('two sections claiming one incident type are refused, because order would decide the excess', () => {
+  const overlapping = () => {
+    const pack = base();
+    pack.coverages.push({
+      code: 'windscreen_extra',
+      label: 'Windscreen extra',
+      clause: 'WX-1.1',
+      active: true,
+      deductible: 900,
+      incident_types: ['glass'],
+    });
+    return loadPolicyPack(pack);
+  };
+
+  assert.throws(overlapping, /writes the incident "glass" into both the "glass" and the "windscreen_extra" sections/);
+  assert.throws(overlapping, PackRefused);
+
+  const refusal = refusalFrom(overlapping);
+  assert.equal(refusal.packId, 'northwind', 'the refusal names the pack it came from');
+
+  // A section that names the incident twice inside its own list is the same ambiguity written
+  // shorter, and it was accepted too.
+  assert.throws(
+    withCoverage(OWN_DAMAGE, (c) => { c.incident_types = ['collision', 'collision']; }),
+    /writes the incident "collision" into the "own_damage" section twice/,
+  );
+});
+
+// THE HALF THAT MUST NOT MOVE. Both shipped packs give several sections several incidents each and
+// none of them collide, so a rule this strict still reads the files this build ships with.
+test('the shipped packs still load, and every incident they name belongs to one section', () => {
+  for (const raw of [northwindRaw, kestrelRaw]) {
+    const pack = loadPolicyPack(JSON.parse(JSON.stringify(raw)));
+    const claimed = pack.coverages.flatMap((coverage) => coverage.incident_types);
+    assert.equal(new Set(claimed).size, claimed.length, `${pack.id} names one incident under two sections`);
+    assert.ok(claimed.length >= 4, `${pack.id} has to name enough incidents for this to be worth asserting`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// One excluded driver, one row
+// ---------------------------------------------------------------------------
+
+// LOADED BEFORE, AND ONE PERSON WAS COUNTED AS TWO. normaliseExcludedDriver trims the name and stops
+// there, while findExcludedDriver in src/core/coverage.js matches on trim AND lower case, so two
+// spellings of one name are one person to the cover check and two people to everything that counts
+// rows. Measured on a deep copy of northwind carrying a second row for "  nikos p.  ":
+//
+//   excluded_drivers loaded as  [["Nikos P.","EX-9.1"],["nikos p.","EX-9.7"]]
+//   a claim naming Nikos P.     refused under clause EX-9.1, because find stops at the first row,
+//                               so which clause the claimant is shown depends on the row order
+//   a claim naming nobody       "this policy excludes 2 named drivers under clauses EX-9.1, EX-9.7"
+//
+// The last line is the one a claimant reads. It tells them the policy shuts out two people it does
+// not, and it cites a clause that can never be the one that fires.
+test('one excluded driver written twice is refused, however the second row is spelled', () => {
+  const twice = (name) => () => {
+    const pack = base();
+    pack.excluded_drivers.push({ name, clause: 'EX-9.7', reason: 'A second row for the same person.' });
+    return loadPolicyPack(pack);
+  };
+
+  assert.throws(twice('  nikos p.  '), /names "Nikos P\." as an excluded driver twice/);
+  assert.throws(twice('Nikos P.'), /names "Nikos P\." as an excluded driver twice/);
+  assert.throws(twice('NIKOS P.'), /names "Nikos P\." as an excluded driver twice/);
+  assert.throws(twice('nikos p.'), PackRefused);
+});
+
+// THE HALF THAT MUST NOT MOVE. Two different people are two rows, and a pack that excludes nobody
+// is still an ordinary pack. Both shipped files depend on one of those.
+test('two different excluded drivers stay legal, and so does excluding nobody', () => {
+  assert.doesNotThrow(() => {
+    const pack = base();
+    pack.excluded_drivers.push({ name: 'Nikos Papadopoulos', clause: 'EX-9.7', reason: 'A different person.' });
+    return loadPolicyPack(pack);
+  });
+  assert.doesNotThrow(() => {
+    const pack = base();
+    pack.excluded_drivers = [];
+    return loadPolicyPack(pack);
+  });
+  assert.deepEqual(loadPolicyPack(JSON.parse(JSON.stringify(kestrelRaw))).excluded_drivers, [],
+    'the kestrel pack excludes nobody, and a rule about duplicates may not change that');
 });
 
 // ---------------------------------------------------------------------------

@@ -21,32 +21,66 @@ and the path to save to.
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
-| Freeze commit | `c93b138`. Declared 2026-09-02, before any take was shot. It supersedes `9b64fb2`, and the reason is recorded below |
+| Freeze commit | not yet declared. It is blank on purpose, and the release step fills it. Two earlier declarations are superseded and both are named below, with the reason |
 
-## The freeze, declared before the takes
+## The freeze, and why there is not one yet
 
-**Freeze commit: `c93b138`.** Everything the page loads is at that commit. Verified against the live
-host on 2026-09-02 with
+**No freeze commit is declared, and the readiness row `FRZ` is red because of it.** That is the
+state on 2026-09-02 and it is not an oversight. A correctness, evidence and reproducibility work
+package is sitting in the working tree unreleased, and part of it changes `index.html` and files
+under `src/`. Those are among the 26 files the page loads. Naming a commit today would name one that
+no take could honestly be shot against, so the field stays blank until the work is released.
+
+**Two declarations are superseded. Each one is named here with its reason, rather than deleted.**
+
+**`c93b138`, declared 2026-09-02, superseded the same day.** It is what the rest of this runbook was
+written against, and everything below about beats, framing and takes still stands. It is superseded
+because it is no longer what a take would show. Work landed after it that touches the runtime, so a
+recording made against `c93b138` would show a page the repository no longer contains.
+
+**`39690d4`, never declared here, and superseded before it could be.** It is `origin/main`, so it is
+what a default dispatch of `.github/workflows/video.yml` would write into `manifest.json` as
+`deployed_sha`. It is superseded for the same reason. The unreleased work in the tree sits on top of
+it and changes the runtime, so it describes the page a judge opens today and not the page the takes
+will show.
+
+**What the release step has to do, in this order.** Release the work in the tree. Wait for GitHub
+Pages to serve it. Then run the verify command against the new commit, put that SHA in the record
+row at the top of this file, and re-run the native evidence against it:
 
 ```sh
-python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha c93b138
+python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha <the new commit>
 ```
 
-which printed `the deployed page is c93b138, on every one of those files` and exited 0. All 26 of
-them, the three insurer and demo JSON fixtures among them.
+It has to exit 0 over all 26 files the page loads before the SHA goes in the record row. Nothing
+here invents a SHA and no command above is written with one filled in, because a SHA typed ahead of
+the release is a guess that reads like a measurement.
 
-**Native evidence against that same commit**, rather than against an earlier one:
-[run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732), `headSha`
-`c93b138`, `Passed steps: 16/16 across 3 case(s)`, the negative control `7/8` with the verdict
-`PROVEN`, and our own probe `probe: PASS. 71 checks against the deployed page, none failed`.
+**The record row is what the gate reads, and it now reads only that row.** `FRZ` used to take the
+first line anywhere in this file that said freeze commit and carried a backticked hex string, which
+meant a paragraph explaining a SUPERSEDED freeze was enough to turn it green. It went green over
+this very file. The row is now the deliverable record row alone, and the SHA has to be the first
+thing in its cell, so the history above votes on nothing.
+`tests/unit/readiness_freeze_row.test.js` feeds both of those shapes in and requires a refusal.
 
-### The unfreeze that produced this one, recorded as this file requires
+### The native evidence has to be re-run, and the numbers below are about an older runtime
 
-The previous freeze was **`9b64fb2`, declared 2026-09-01**. It was broken deliberately on
+[run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732) ran with
+`headSha` `c93b138` and reported `Passed steps: 16/16 across 3 case(s)`, the negative control `7/8`
+with the verdict `PROVEN`, and our own probe `probe: PASS. 71 checks against the deployed page, none
+failed`. That run is true about `c93b138` and it is kept for that reason. It is not evidence about
+what will be recorded. Two things have moved under it. The runtime changed, and the probe's
+judgement grew from 71 checks to 81 when the note phase and the declarative phase were both found to
+pass a forged transcript, so a fresh run cannot reproduce the number 71 at all. Re-run the evals
+workflow against the new commit once it is live, and quote that run instead of this one.
+
+### The unfreeze that produced the superseded `c93b138`, recorded as this file requires
+
+The freeze before it was **`9b64fb2`, declared 2026-09-01**. It was broken deliberately on
 2026-09-01, before any take was shot, and the reason is the first of the three this file allows: a
 judge-facing statement that was false.
 
-**The defect.** `src/core/coverage.js` returns `provisional: true` for a covered claim whose driver
+**The defect.** `src/core/coverage.js` returned `provisional: true` for a covered claim whose driver
 is not yet named. The page drew `Covered, provisionally` and `check_coverage` answered
 `COVERED, PROVISIONALLY`, while `src/core/packet.js` carried no reference to `provisional` at all
 and sealed a flat `covered` inside a SHA-256 digest. So the artifact a handler receives contradicted
@@ -56,17 +90,18 @@ the page it came from, and the digest made it look settled.
 authoritative home insurer was missing, so a policy the file says is with one insurer could be filed
 under another's rules.
 
-**Which takes it invalidates: none.** No take had been recorded. The six owner takes are still to be
-shot, and they are shot against `c93b138`.
+**Which takes any of this invalidates: none.** No take has been recorded. All six owner takes are
+still to be shot, and they will be shot against whatever commit the record row ends up naming.
 
-**What may still change after this line, and what may not.** Commits after `c93b138` may touch
-documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/` or
-`fixtures/`, because those are the 26 files the page serves and the takes are shot against them.
-The command above is how anyone checks that promise was kept: run it with `c93b138` after any later
-commit and it still has to exit 0.
+**What may change before that row is filled, and what may not.** Everything may change now, because
+nothing has been recorded. Once the row names a SHA, later commits may touch documentation, evidence
+and this runbook, and they may NOT touch `index.html`, `src/`, `assets/` or `fixtures/`, because
+those are the 26 files the page serves and the takes are shot against them. The verify command above
+is how anyone checks that promise was kept: run it with the declared SHA after any later commit and
+it still has to exit 0.
 
-**Unfreezing again needs a stated reason and only three of them count**: a judge-facing statement
-that is false, a mandatory deliverable that is broken, or a rule violation that risks
+**Unfreezing after that needs a stated reason and only three of them count**: a judge-facing
+statement that is false, a mandatory deliverable that is broken, or a rule violation that risks
 disqualification. Not making something better. To unfreeze, write the defect here, say which takes
 it invalidates, then re-freeze at the new commit and record the new SHA beside the old ones rather
 than replacing them.

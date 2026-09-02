@@ -57,12 +57,12 @@ run happened, and all three are settled below.
 | | Observed |
 |---|---|
 | Run | [33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732), workflow `WebMCP evals`, conclusion success, run 2026-09-01 13:18 UTC, dispatched against `main` so that the run and the deployment are the same commit |
-| Commit under test | `c93b138`, **and that is the commit the host serves.** Do not take it on trust in either direction, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha c93b138` fetches all 26 files the page loads and compares each to that commit. Run on 2026-09-01 it printed `the deployed page is c93b138, on every one of those files` and exited 0. Naming an older commit such as `21fc9f2` in that flag prints `what is on disk is not the SHA you named` and exits 1. This row has twice said a run stood against the served bytes when it did not: the workflow runs on a daily schedule and on dispatch rather than on push, so it lags `main` by up to a day by design, and the gap opens again on the next commit that touches a file the page loads. A green run against bytes the host no longer serves is not evidence about the live page |
+| Commit under test | `c93b138`. **It was the commit the host served on 2026-09-01, and it is not what a take will show.** Unreleased work in the tree changes `index.html` and files under `src/`, so this run describes a superseded runtime and has to be repeated against the released commit. The runbook `docs/submission/video.md` says the same thing and declares no freeze until then. Do not take it on trust in either direction, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha c93b138` fetches all 26 files the page loads and compares each to that commit. Run on 2026-09-01 it printed `the deployed page is c93b138, on every one of those files` and exited 0. Naming an older commit such as `21fc9f2` in that flag prints `what is on disk is not the SHA you named` and exits 1. This row has twice said a run stood against the served bytes when it did not: the workflow runs on a daily schedule and on dispatch rather than on push, so it lags `main` by up to a day by design, and the gap opens again on the next commit that touches a file the page loads. A green run against bytes the host no longer serves is not evidence about the live page |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
 | Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
-| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 71 checks against the deployed page, none failed`. It had never run anywhere but a desktop before this run |
+| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 71 checks against the deployed page, none failed`. It had never run anywhere but a desktop before this run. That count is the judgement as it stood that day; it runs 81 checks now, so this line cannot be reproduced and is kept only because it is true about the run it names |
 
 Earlier runs were green as well:
 [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
@@ -123,10 +123,11 @@ lifecycle. The judgement moved into `evals/probe_assertions.mjs`, which asserts 
 the run was against, which deployed commit the run was bound to, the exact tool set at every phase
 by name, the absence of every human only name, the conditional tool appearing and being withdrawn,
 both refusals leaving the whole draft where they found it rather than only the revision number, the
-planted evidence note quoted back with nothing moving because of it, the declared tool's origin and
-its whole input schema against a contract typed out by hand, what the declared tool's answer
-actually says, the witness name really being on the claim afterwards, an empty console, and no tool
-that threw.
+planted evidence note quoted back with the whole draft unmoved across the read, the declared tool's
+origin and its whole input schema against a contract typed out by hand, what the declared tool's
+answer actually says, the witness name really being on the claim afterwards with the provenance of
+a tool call on it and nothing else on the draft having moved, an empty console, and no tool that
+threw.
 
 **Three of those are new on 2026-09-01 and each one closes a way of passing while behaving badly.**
 A refusal was judged by the revision alone, so a call that was refused and wrote its field anyway,
@@ -137,6 +138,17 @@ and the `origin` the browser puts on that tool was collected and read by nothing
 named the URL it came from but never the commit, so a pass stayed green while the page it described
 was replaced underneath it.
 
+**Two more are new on 2026-09-02, and both were the same mistake in the two phases that write.**
+The note phase compared one field across the note read, `vehicle_drivable`, because that is the
+field the planted note asks for, and compared nothing else, so a page that answered a read only
+tool and wrote `severity` on the way past held the drivable answer still and passed. The
+declarative phase proved the witness name reached the draft and forbade nothing, so a page that
+stored the name correctly and also wrote a field nobody submitted passed too. Both were reproduced
+as forged transcripts and both were judged 71 of 71 before a line was changed. The note read is now
+bracketed by two whole readings compared line for line, and the delta an accepted declarative write
+may leave is enumerated: the submitted field, carrying the provenance of a tool call, one revision
+increment in the two places the reading mentions it, and nothing else.
+
 Two runs on 2026-09-01, against `21fc9f2`, and both are against the judgement **as it stood that
 day**, which was smaller than the one in the file now:
 
@@ -145,7 +157,7 @@ day**, which was smaller than the one in the file now:
 | Chrome 151 stable, `--enable-features=WebMCP` | `probe: PASS. 24 checks against the deployed page, none failed.` |
 | the same Chrome, same page, **flag left off** | `probe: FAIL`, exit 1, naming eight of them, starting with the API that is not there |
 
-`tests/unit/probe_assertions.test.js` breaks the transcript with 58 mutations, at least one per
+`tests/unit/probe_assertions.test.js` breaks the transcript with 65 mutations, at least one per
 assertion, and requires a failure each time. A gate nobody has watched fail is not a gate.
 
 **The note phase has now been watched against a live browser, so the probe is off manual dispatch.**
@@ -154,8 +166,19 @@ seen those two clicks land outside a unit test. Two runs since have:
 [run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732) on a runner,
 2026-09-01, which printed `probe: PASS. 71 checks against the deployed page, none failed`, and a
 desktop run the same evening against `c93b138` on Chrome 152.0.7977.65, which printed
-`probe: PASS. 71 checks against the deployed page, none failed` under the judgement as it now
-stands. The `if:` line is gone and the job runs on the same triggers as the smoke evals.
+`probe: PASS. 71 checks against the deployed page, none failed`. The `if:` line is gone and the job
+runs on the same triggers as the smoke evals.
+
+**Those two runs are against the judgement as it stood on 2026-09-01, and it has grown since.** On
+2026-09-02 the note phase and the declarative phase were both found to pass a forged transcript, and
+closing them took the matrix from 71 checks to 81 and changed the shape of the transcript the probe
+collects. So a fresh run prints 81 rather than 71, and neither number above can be reproduced by
+re-running the probe as it is now. **Where the 81 comes from, because a count needs its command.**
+`tests/unit/probe_assertions.test.js` holds a floor at `verdict.checks >= 81` over the healthy
+transcript, and the judgement runs exactly that many: raise the floor above it and the assertion
+message prints the count it actually ran. Measured that way on 2026-09-02, on Windows, it printed
+`expected a real matrix, ran 81 checks`. The two lines are kept because they are true about the runs they
+name. **The native evidence has to be re-run before either number is quoted again.**
 
 **What stops a green run here from going stale, now that it runs unattended.** This workflow runs
 daily and on dispatch rather than on push, so `main` moves under it. Before the browser is opened,
@@ -633,7 +656,7 @@ variable `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, bui
 the pinned commit, runs the three journeys, runs the negative control and requires it to fail in the
 one shape described above, and uploads both logs and any `.evals` report as an artifact.
 
-The `probe` job, in order, runs the 58 mutations and the note phase tests before any browser is
+The `probe` job, in order, runs the 65 mutations and the note phase tests before any browser is
 opened, fails when `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, fails unless
 the host is serving this checkout at this commit on all 26 files the page loads, hands that commit
 to the probe, starts Chrome with the WebMCP flag, runs `evals/browser_probe.mjs` and fails when the

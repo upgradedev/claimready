@@ -7,10 +7,13 @@ submission form, and if any figure here ever turns up in a judge-facing file, th
 not the figure.
 
 First written against `7b50d4a`, a working commit that reached the public repository squashed as
-`c93b138`. Revised 2026-09-01 against `ab2db69`, which is head. `c93b138` is still what the live
-page serves, because `ab2db69` changed only documentation and touched nothing under `index.html`,
-`src`, `assets` or `fixtures`. Reviewed two days before the deadline, with the video still
-unrecorded.
+`c93b138`. Revised 2026-09-01 against `ab2db69`. **Revised again 2026-09-02, and this time not
+against a commit**, which is a weaker footing and is said rather than hidden: head is `4afecb0` and
+a correctness, evidence and reproducibility work package is sitting in the working tree unreleased.
+It changes `index.html` and files under `src/`, so the live page no longer serves what this review
+read. Every count below was taken from a command run in that working tree on 2026-09-02, on Windows,
+and every one of them has to be taken again from a fresh clone at the released commit. Reviewed one
+day before the deadline, with the video still unrecorded and no freeze commit declared.
 
 ## What the criteria actually are
 
@@ -94,7 +97,9 @@ What a judge marks down.
 - **The browser evidence goes stale on every push, and did twice.** When this review was written
   the newest eval run drove `a9c3ba4` while the page served a commit five changes later. It was
   closed the same day by dispatching the workflow against `main`: run 33560224732 drove `c93b138`,
-  which is the commit the host serves. The workflow runs on a daily schedule and on dispatch rather
+  which was the commit the host served on 2026-09-01 and is not what a take will show. It is open
+  again on 2026-09-02, and this time because unreleased work in the tree changes files the page
+  loads. The workflow runs on a daily schedule and on dispatch rather
   than on push, so the gap reappears on the next commit that touches a file the page loads. That is
   written into the Status row instead of being smoothed over, and a judge should re-check it with
   the `--verify-deployed` command rather than believe the row.
@@ -108,10 +113,13 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 **Estimate: 8 out of 10 if the video lands. 5 out of 10 if it does not. Ours, not measured.**
 
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
-serves and it can be proved in one command. 771 unit tests, from `node --test tests/` printing
-`# pass 771` and `# fail 0` on 2026-09-01, which is the command this file is required to carry
-rather than a number somebody typed. A style gate over 177 text files, from
-`node scripts/check_style.mjs`. A
+serves and it can be proved in one command. 861 unit tests, from `node --test tests/unit` printing
+`# tests 861`, `# pass 861` and `# fail 0` on 2026-09-02, which is the command this file is required
+to carry rather than a number somebody typed. A style gate over 187 text files, from
+`node scripts/check_style.mjs`. Coverage of `src` alone, from
+`node --test --experimental-test-coverage --test-reporter=./tests/support/coverage_report.mjs --test-reporter-destination=stdout tests/unit`,
+which printed `src, 21 files` at 98.18 percent of lines, between 88.4 and 88.6 percent of branches and 97.86 percent
+of functions against floors of 97, 86 and 96. A
 readiness gate that prints one row per deliverable and breaks every row it prints, in its own copy
 of the repository, to show that each one refuses. Numbers in the README come with the command that
 produces them.
@@ -121,9 +129,16 @@ What a judge marks down.
 - **The video does not exist.** It is a mandatory deliverable, the readiness gate is red on it in
   every mode, and this is the single largest thing between the repository and a finished entry.
   Everything else in this file is worth less than that one row.
-- **The gate says 25 of 31, not 31 of 31.** From `node scripts/readiness.mjs --ci` on 2026-09-01:
-  `READY TO SUBMIT: 25 of 31 proven, 80.6 percent`, with `automated rows: 25 of 27 PASS, 92.6 percent`
-  and mandatory at `4 of 5`. It exits 1. Reading only the green badges overstates the position. This
+- **The gate says 25 of 31, not 31 of 31.** From `node scripts/readiness.mjs` on 2026-09-02:
+  `READY TO SUBMIT: 25 of 31 proven, 80.6 percent`, with `automated rows: 25 of 27 PASS, 92.6 percent`,
+  mandatory at `4 of 5` and recommended at `21 of 22`. It exits 1. Offline, from
+  `node scripts/readiness.mjs --ci --allow-undeployed`, it is `24 of 27 PASS, 88.9 percent` and
+  `24 of 31 proven, 77.4 percent`, because the live row then proves nothing. **The total is the same
+  as on 2026-09-01 and it is not the same rows.** `TST` went green when the Windows line-ending
+  defect was fixed, and `FRZ` went red in the same pass, because the freeze declaration was found to
+  be naming a commit no take could be shot against. Two deliverable rows are outstanding, `D4` and
+  `FRZ`, and no engineering row is. `node scripts/readiness.mjs --selftest` reports
+  `46 breaks over 27 rows` and passes. Reading only the green badges overstates the position. This
   is by design and it is still what a judge sees. The figure in this bullet was 17 of 24 and had
   been left behind by two rows going green, which is the same defect this file exists to catch.
 - **Our own evidence has been wrong more than once and we found it by reading, not by a gate.** A
@@ -234,7 +249,7 @@ seconds of video to land.
 Four of those five are answered somewhere in the repository. The first is not answerable by writing
 anything. It is answerable by recording.
 
-Number 5 is closed for now and will reopen on its own. Run 33560224732 drove `c93b138`, which is
+Number 5 was closed on 2026-09-01 and has reopened, exactly as this sentence predicted. Run 33560224732 drove `c93b138`, which is
 what the host serves, and `python video/build_video.py --verify-deployed --url
 https://upgradedev.github.io/claimready/ --deployed-sha c93b138` says so over all 26 files the page
 loads. The evals workflow runs daily and on dispatch rather than on push, so the next commit that
@@ -306,3 +321,54 @@ file and a judge cannot open that:
 **What it still does not do is consult anybody outside the build.** Both persona runs were carried
 out by workspace agents. Every judgement in this file is ours, made by the people with the strongest
 possible reason to be generous, and it should be read that way.
+
+## The framing gate, five rows, checked 2026-09-02
+
+The workspace keeps a shared framing standard at `C:\dev\solutions\_submission_kit\STANDARDS.md`,
+written after two entries lost on positioning rather than on code. Its five rows are marked amber
+there because no script can settle them. An adversarial audit on 2026-09-02 called J1, J2 and J3 red
+against this entry. Here is each one with what was actually done, and none of the three is being
+recorded as closed just because something was written.
+
+**J1, one named persona rather than a market. OWNER ITEM, still red.** The standard asks for a real
+person named verbatim. The description says "the driver at the roadside with a damaged car and a
+phone, and the handler who works what they send", which is a person in a setting doing a job, and it
+is still a segment rather than somebody with a name. **This one is not fixable from inside the
+repository, and writing a name in would be the worst possible response**: an invented customer in a
+judge-facing file is fabricated evidence, which is the one thing this project refuses. It needs the
+owner to name a real operator or a real driver they have spoken to, and to be willing to have that
+checked. Until then the row stays red and says why.
+
+**J2, a real consequence behind the hero. Document defect, fixed.** Filing produced a packet a
+reader could take for something an insurer had received. It is not. It is built in the browser tab,
+from the draft on screen, and nothing is sent anywhere. Two changes landed: the description now
+carries a paragraph saying exactly what a bare SHA-256 is worth and what it is not
+(`docs/submission/description.md`, the paragraph beginning "That digest is a plain SHA-256"), and the
+README's packet row now enumerates what a matching digest does not show, page origin and authorship
+among them. **The underlying limit is not fixed and cannot be**: the consequence this gate guards is
+a local artifact, not a filed claim, and that ceiling on Potential Impact is real. What was fixed is
+a document that let a reader believe otherwise.
+
+**J3, one headline comparative number. Document defect, fixed, and the honest reading is that we do
+not have one.** The 9 against 8 intake figure is a count of fields over two rule packs this
+repository invented, Kestrel Assurance and Northwind Mutual, and it belongs to no real policy. Both
+judge-facing files now say that in the same breath as the number: the description reads "on the two
+invented packs here and nowhere else", and the README's list under the figure opens with "It
+measures this repository's own invented rule packs". `node scripts/measure_intake.mjs` prints every
+one of the twelve pack and incident type combinations, so neither end of the range is hidden.
+**What the standard actually asks for, a metric that beats an obvious baseline with an n beside it,
+this entry does not have**, and the one comparative study that was run came out against the page:
+5 of 18 policy complete against 6 of 18 for a static form, with two truth mismatches against none.
+That result is published in the description rather than dropped. A judge should read J3 as unmet,
+not as satisfied by a field count.
+
+**J4, the sponsor's product is load-bearing. Green.** Remove `document.modelContext` and
+`navigator.modelContext` and there is no tool surface, no runtime discovery and no capability
+appearing or being withdrawn, so the page degrades to an ordinary insurance form. The description
+says so in its first section. The gap that remains is persona 01's K1, recorded above as unrun.
+
+**J5, one republishable sentence first. Green.** 25 words, no em dash, first in both the README and
+the description, and pinned by the `FLAGSHIP`, `IDX`, `LIVE` and `RDM` readiness rows so the four
+copies cannot drift apart. The finding that it never says the word WebMCP is recorded above as an
+owner item and is not being acted on this close to the deadline.
+

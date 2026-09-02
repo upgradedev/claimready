@@ -74,7 +74,14 @@ test('the reason on the page names the pack, the rule and what is wrong with it'
   assert.match(note, /policy pack:/, 'the refusal keeps the prefix that says where it came from');
   assert.match(note, /impact_position/, 'a reader has to be able to say WHICH rule was refused');
   assert.match(note, /carries equals and not_equals in one block/);
-  assert.match(note, /falls back to the schedule stored with this policy/);
+
+  // THIS LINE USED TO ASSERT THE FALLBACK AND THE FALLBACK WAS THE DEFECT. It read
+  // /falls back to the schedule stored with this policy/, and the page did exactly that: with the
+  // pack refused it pointed the cover check at the sample file's own policy block, which
+  // src/core/policy.js has never seen. So the sentence was true and what it described was wrong.
+  // A refused pack now leaves no schedule at all, and the note says so.
+  assert.match(note, /cover cannot be checked against it/);
+  assert.doesNotMatch(note, /falls back to the schedule/, 'the page is announcing a fallback again');
 });
 
 test('an intake it will not read is said to be unknown, never drawn as empty', () => {

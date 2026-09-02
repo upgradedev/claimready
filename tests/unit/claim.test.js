@@ -290,7 +290,10 @@ test('applyPatch clears an optional field but never a required one', () => {
 });
 
 test('applyPatch refuses every edit once the claim is filed', () => {
-  const claim = { ...createClaim(fixture), status: 'filed' };
+  // The filing time is on it because a filed claim carries one. Without it this fixture is the
+  // state hydrateClaim now refuses, and the patch would be turned away for that instead, which
+  // would stop this test asserting the thing it is named after.
+  const claim = { ...createClaim(fixture), status: 'filed', filed_at: '2026-09-01T09:15:00.000Z' };
   const result = patch(claim, 'severity', 'dent');
   assert.equal(result.ok, false);
   assert.match(result.error, /already been filed/);
@@ -882,10 +885,38 @@ test('hydrateClaim does not carry a badge that has nothing behind it', () => {
   assert.deepEqual(claim.provenance, { severity: 'agent' });
 });
 
-test('hydrateClaim will not read back a filed claim that carries no time it was filed', () => {
-  const claim = hydrateClaim({ status: 'filed', severity: 'dent' });
-  assert.equal(claim.status, 'draft', 'a filed state with no timestamp is not answerable');
-  assert.equal(claim.filed_at, null);
+/**
+ * THIS TEST USED TO ASSERT THE HOLE, AND THE HOLE WAS THE STATE IT DESCRIBED.
+ *
+ * It read "a filed state with no timestamp is not answerable" and then asserted that hydrateClaim
+ * answered it anyway, by handing the claim back as a draft. Filed is the closed state on this
+ * page. It is what stops a patch, stops a second filing, and stops the claimant's own answers
+ * moving under a reference a handler already holds. Reading it back as a draft reopened all three,
+ * silently, on a claim somebody else had stored. Measured on a stored claim at revision 7 before
+ * this changed:
+ *
+ *   stored status  : filed  filed_at: null
+ *   hydrated status: draft  filed_at: null
+ *   patch ok       : true   Something else entirely.
+ *
+ * A genuinely absent value may take a documented default, which is why a claim written before the
+ * revision counter existed still opens at 0. It may not take one that unlocks a state somebody
+ * had closed.
+ */
+test('hydrateClaim refuses a stored filed claim that carries no time it was filed', () => {
+  assert.throws(
+    () => hydrateClaim({ status: 'filed', severity: 'dent' }),
+    (error) => error instanceof TypeError
+      && error.message.includes('marked filed')
+      && error.message.includes('full UTC instant'),
+    'a filed claim with no filing time was read back anyway',
+  );
+
+  // The other shape of the same thing: filed, with a reading nobody can order or convert.
+  assert.throws(
+    () => hydrateClaim({ status: 'filed', filed_at: '19:15:31' }),
+    /full UTC instant/,
+  );
 
   const real = hydrateClaim({ status: 'filed', filed_at: '2026-08-21T08:14:00.000Z' });
   assert.equal(real.status, 'filed');

@@ -328,8 +328,20 @@ if (problems.length) {
 // The one part a person wrote. It is inlined rather than left sitting at the bottom of the
 // artifact, because a file that is half generated and half hand written cannot be checked against
 // its own evidence, and this program used to delete it on every run.
+//
+// THE LINE ENDINGS ARE FLATTENED ON THE WAY IN, and that is not tidiness. Every other line of the
+// report is built inside this program and joined with a single newline. This one is copied off the
+// disk, so whatever the checkout did to it lands in the middle of an otherwise uniform artifact.
+//
+// Watched failing on 2026-09-02, on a Windows checkout with core.autocrlf true. results-v2.md is
+// pinned by .gitattributes and interpretation-v2.md was not, so the interpretation arrived with
+// carriage returns and the generated report did not. --check printed a mismatch at line 71 between
+// the heading on disk and the same heading with a carriage return on the end. .gitattributes pins
+// the interpretation files now as well. This is the other half of that fix, and it is the half
+// that does not depend on how a reader's git happens to be configured.
 if (existsSync(interpretationFile)) {
-  lines.push(readFileSync(interpretationFile, 'utf8').replace(/\s+$/, ''));
+  const interpretation = readFileSync(interpretationFile, 'utf8').replace(/\r\n/g, '\n');
+  lines.push(interpretation.replace(/\s+$/, ''));
   lines.push('');
 }
 

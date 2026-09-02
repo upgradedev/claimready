@@ -42,11 +42,19 @@ page exactly as a person is. A tool call records the word the caller used for it
 here authenticates that word. It is a route, not an identity, and the badge says so when you hover
 it.
 
-Filing leaves something behind: a handler packet built from that exact revision, carrying the
-facts, the clause and excess, every requirement with what answered it, the pinned rows, the tool
-calls and a SHA-256 that scripts/verify_packet.mjs recomputes. That script shares a module with
+Filing leaves something behind, in this browser tab and nowhere else: a handler packet built from
+that exact revision, carrying the facts, the clause and excess, every requirement with what answered
+it, the pinned rows, the tool calls and a SHA-256 that scripts/verify_packet.mjs recomputes. Nothing
+is transmitted. No insurer receives it, no handler is notified, and no claim is opened anywhere. It
+is a file this page hands you, and the word filed on it means this page filed it. That script shares a module with
 the thing that made the digest, so docs/handler-verification.md gives two routes that share
 nothing with it, and one worked example where all three agree.
+
+That digest is a plain SHA-256 over the exported content and there is no key and no signature
+anywhere here. A match says the content in front of you is the content the digest was taken
+over, so it catches a packet changed on the way to a handler and two copies that have drifted
+apart. It does not show which page made it, who wrote it, that nobody edited the content and
+recomputed the digest to match, or that any insurer received it.
 
 ## What people and agents can do together that was difficult or impossible before
 

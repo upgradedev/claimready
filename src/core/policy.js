@@ -92,6 +92,48 @@ export class PackRefused extends TypeError {
  */
 let refusalOrigin = { packId: null, ruleId: null, coverageId: null };
 
+/**
+ * The packs this build has actually read, held by identity and by nothing else.
+ *
+ * WHAT THIS REPLACES AND WHY IT IS NOT A FLAG. Every trust point downstream used to decide whether
+ * it had a rule pack by looking at the object in its hand: an `id`, a `requirements` array and a
+ * `coverages` array. That is a description of a pack, not evidence one was loaded. Measured before
+ * this existed, with an object literal typed out by hand and never shown to this module:
+ *
+ *   canFile ok: true code: null
+ *   fileClaim ok: true status: filed
+ *   sealed insurer : Totally Not An Insurer
+ *   sealed clause  : MADE-UP-1
+ *   sealed excess  : 1
+ *
+ * THREE WAYS WERE AVAILABLE AND THIS IS THE ONE CHOSEN. A public marker such as `validated: true`
+ * is written by whoever builds the object, so the forgery above would simply have carried it.
+ * Revalidating at each boundary would work and would mean running the whole loader several times on
+ * every keystroke that redraws the file gate, on a page that has to stay responsive on a phone. A
+ * WeakSet is neither: membership is not a property, so it cannot be typed, copied, spread or
+ * serialised in, and `loadPolicyPack` below is the only writer in this repository. It is weak so a
+ * pack the page has swapped away from can still be collected.
+ *
+ * IDENTITY IS THE WHOLE CLAIM. A JSON round trip of a validated pack holds the same data and is not
+ * the same object, so it is refused until this module reads it for itself. That is deliberate, and
+ * tests/unit/validated_pack_boundary.test.js pins it: it is what makes this different from the
+ * shape check it replaces.
+ */
+const validatedPacks = new WeakSet();
+
+/**
+ * Did this build load and check THIS object.
+ *
+ * The reading half is exported and the writing half is not, which is the point. A caller can ask
+ * and cannot answer.
+ *
+ * @param {*} pack anything at all
+ * @returns {boolean}
+ */
+export function isValidatedPack(pack) {
+  return Boolean(pack) && typeof pack === 'object' && validatedPacks.has(pack);
+}
+
 function fail(message) {
   throw new PackRefused(`policy pack: ${message}`, refusalOrigin);
 }
@@ -298,33 +340,56 @@ const textValues = (cap) => ({
   accepts: (value) => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= cap,
 });
 
-const CLAIM_FIELD_VALUES = {
-  incident_date: {
-    describe: 'a real calendar date written as YYYY-MM-DD, in the years this build reads',
-    accepts: isIsoDate,
-  },
-  incident_type: {
-    describe: `one of ${INCIDENT_TYPES.join(', ')}, in lower case`,
-    accepts: (value) => INCIDENT_TYPES.includes(value),
-  },
-  damage_zone: {
-    describe: `a whole clock position from ${DAMAGE_ZONES[0]} to ${DAMAGE_ZONES[DAMAGE_ZONES.length - 1]}, as a number`,
-    accepts: (value) => DAMAGE_ZONES.includes(value),
-  },
-  severity: {
-    describe: `one of ${SEVERITIES.join(', ')}, in lower case`,
-    accepts: (value) => SEVERITIES.includes(value),
-  },
-  vehicle_drivable: {
-    describe: 'true or false, as a boolean and not as a word',
-    accepts: (value) => typeof value === 'boolean',
-  },
-  description: textValues(DESCRIPTION_MAX_LENGTH),
-  driver: textValues(DRIVER_MAX_LENGTH),
-  location: textValues(LOCATION_MAX_LENGTH),
-  police_report_ref: textValues(POLICE_REF_MAX_LENGTH),
-  witness_name: textValues(WITNESS_MAX_LENGTH),
-};
+/**
+ * Built on first use rather than at module load, and the delay is the point.
+ *
+ * The entries below read `INCIDENT_TYPES`, `DAMAGE_ZONES`, `SEVERITIES` and the four length caps
+ * out of claim.js. Reading them while this module evaluated was safe only while nothing in the
+ * import cycle reached here first. src/core/filing.js now imports `isValidatedPack` from this
+ * module, which puts policy.js inside the cycle claim.js and filing.js already form, and a graph
+ * entered through claim.js would evaluate this object before claim.js had initialised one of those
+ * bindings. That is a ReferenceError at import time, on every path, which is a hard failure of the
+ * whole page rather than anything a reader could act on.
+ *
+ * Nothing here is read outside `checkOperand`, and by the time a pack is being loaded every module
+ * in the cycle has finished, so building it lazily costs one branch and removes the hazard.
+ */
+let claimFieldValues = null;
+
+function fieldValues() {
+  if (claimFieldValues === null) claimFieldValues = buildClaimFieldValues();
+  return claimFieldValues;
+}
+
+function buildClaimFieldValues() {
+  return {
+    incident_date: {
+      describe: 'a real calendar date written as YYYY-MM-DD, in the years this build reads',
+      accepts: isIsoDate,
+    },
+    incident_type: {
+      describe: `one of ${INCIDENT_TYPES.join(', ')}, in lower case`,
+      accepts: (value) => INCIDENT_TYPES.includes(value),
+    },
+    damage_zone: {
+      describe: `a whole clock position from ${DAMAGE_ZONES[0]} to ${DAMAGE_ZONES[DAMAGE_ZONES.length - 1]}, as a number`,
+      accepts: (value) => DAMAGE_ZONES.includes(value),
+    },
+    severity: {
+      describe: `one of ${SEVERITIES.join(', ')}, in lower case`,
+      accepts: (value) => SEVERITIES.includes(value),
+    },
+    vehicle_drivable: {
+      describe: 'true or false, as a boolean and not as a word',
+      accepts: (value) => typeof value === 'boolean',
+    },
+    description: textValues(DESCRIPTION_MAX_LENGTH),
+    driver: textValues(DRIVER_MAX_LENGTH),
+    location: textValues(LOCATION_MAX_LENGTH),
+    police_report_ref: textValues(POLICE_REF_MAX_LENGTH),
+    witness_name: textValues(WITNESS_MAX_LENGTH),
+  };
+}
 
 /**
  * One value a condition compares a field against.
@@ -348,7 +413,7 @@ function checkOperand(field, value, where, operator) {
       + `field ever holds ${shape}, so the test answers the same thing for every claim that will `
       + 'ever be read against it. For several values write in: [...].');
   }
-  const known = CLAIM_FIELD_VALUES[field];
+  const known = fieldValues()[field];
   if (!known) {
     fail(`${where} watches ${field}, and this loader holds no list of what that field can contain, `
       + 'so it cannot say whether this pack is asking for something reachable.');
@@ -663,7 +728,67 @@ export function loadPolicyPack(raw, options) {
   const duplicate = codes.find((code, index) => codes.indexOf(code) !== index);
   if (duplicate) fail(`pack "${id}" lists the coverage code "${duplicate}" twice.`);
 
-  return deepFreeze(pack);
+  // ONE INCIDENT BELONGS TO ONE SECTION, BECAUSE THE COVER CHECK STOPS AT THE FIRST MATCH.
+  //
+  // findCoverage in src/core/coverage.js picks a section with Array.find, so the first entry that
+  // names the incident answers and every later one is never read. Nothing said so, and nothing
+  // refused a pack that named an incident twice. Measured on a deep copy of northwind with a second
+  // glass section added, against one glass claim:
+  //
+  //   glass written first             clause GL-2.3, excess 0
+  //   windscreen_extra written first  clause WX-1.1, excess 900
+  //
+  // Same pack, same claim, two answers, and the only thing between them is which line the author
+  // typed first. The excess is the number a claimant reads off the page and plans around, so a file
+  // that does not say which section answers is a file this build will not answer from. Refusing here
+  // rather than picking in coverage.js keeps the decision a table lookup with one row per incident.
+  const claimedBy = new Map();
+  for (const coverage of pack.coverages) {
+    for (const type of coverage.incident_types) {
+      const already = claimedBy.get(type);
+      if (already === coverage.code) {
+        fail(`pack "${id}" writes the incident "${type}" into the "${coverage.code}" section twice. `
+          + 'A section covers an incident or it does not, and a list saying it twice says nothing '
+          + 'the first entry did not.');
+      }
+      if (already !== undefined) {
+        fail(`pack "${id}" writes the incident "${type}" into both the "${already}" and the `
+          + `"${coverage.code}" sections. The cover check answers from the first section that names `
+          + 'an incident, so which clause and which excess a claimant is told would be decided by '
+          + 'which of the two was written first. Name the incident under one section.');
+      }
+      claimedBy.set(type, coverage.code);
+    }
+  }
+
+  // ONE PERSON, ONE ROW, AND THE COMPARISON IS THE ONE THE COVER CHECK MAKES.
+  //
+  // normaliseExcludedDriver trims a name and stops there, while findExcludedDriver in
+  // src/core/coverage.js matches on trim AND lower case. So two spellings of one name are one
+  // person to the decision and two people to everything that counts rows. Measured on a deep copy
+  // of northwind carrying a second row reading "  nikos p.  ":
+  //
+  //   a claim naming Nikos P.  refused under clause EX-9.1, because find stops at the first row, so
+  //                            which clause the claimant is shown depends on the row order
+  //   a claim naming nobody    "this policy excludes 2 named drivers under clauses EX-9.1, EX-9.7"
+  //
+  // The second sentence is the one a claimant reads on a provisional yes. It tells them the policy
+  // shuts out two people it does not, and it cites a clause that can never be the one that fires.
+  const driverKeys = pack.excluded_drivers.map((entry) => entry.name.toLowerCase());
+  const repeatedAt = driverKeys.findIndex((key, index) => driverKeys.indexOf(key) !== index);
+  if (repeatedAt !== -1) {
+    const first = pack.excluded_drivers[driverKeys.indexOf(driverKeys[repeatedAt])];
+    fail(`pack "${id}" names "${first.name}" as an excluded driver twice, once as `
+      + `"${pack.excluded_drivers[repeatedAt].name}". The cover check matches a driver on the `
+      + 'trimmed lower cased name, so both rows are the same person to the decision and only the '
+      + 'first one can ever supply the clause. Write the person once.');
+  }
+
+  // THE LAST LINE OF THE LOADER IS THE ONLY WAY INTO THE SET, AND IT IS REACHED ONLY BY A PACK THAT
+  // GOT PAST EVERY CHECK ABOVE. Every `fail` throws, so nothing part way through arrives here.
+  const checked = deepFreeze(pack);
+  validatedPacks.add(checked);
+  return checked;
 }
 
 /**

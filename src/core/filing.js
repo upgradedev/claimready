@@ -43,7 +43,8 @@
  * `tests/unit/filing.test.js` enters the graph through this module to keep that honest.
  */
 
-import { validateClaim } from './claim.js';
+import { checkClaimSnapshot, validateClaim } from './claim.js';
+import { isValidatedPack } from './policy.js';
 import {
   deriveRequirements,
   outstandingRequirements,
@@ -71,6 +72,10 @@ export const FILE_CODES = {
   borrowedRules: 'FILE_REFUSED_BORROWED_RULES',
   incomplete: 'FILE_REFUSED_INCOMPLETE',
   requirements: 'FILE_REFUSED_REQUIREMENTS',
+  // Not about what the draft is missing. About what it holds: a severity this page has no word
+  // for, a clock position of 47, an object where the claimant's account belongs. `checkClaimSnapshot`
+  // in claim.js decides it and writes the sentence.
+  unusableState: 'FILE_REFUSED_UNUSABLE_STATE',
   // Not a decision `canFile` ever reaches. A filing time is handed in by whoever files, and this
   // is the code `fileClaim` answers with when what arrived is not one. It lives here so every
   // filing refusal a caller can meet is named in one list.
@@ -138,9 +143,36 @@ export function borrowedRulesReason(insurer) {
 }
 
 /**
- * Whether the thing handed in is a rule pack this module can read.
+ * Whether the thing handed in is a rule pack this build actually loaded and checked.
  *
- * Checked rather than trusted, and a half loaded pack counts as no pack. `deriveRequirements`
+ * THIS USED TO BE A SHAPE CHECK AND THE SHAPE WAS FORGEABLE. It asked for an `id`, a `requirements`
+ * array and a `coverages` array, which is a description of a pack rather than evidence that
+ * src/core/policy.js ever read one. Measured on an object literal typed out by hand:
+ *
+ *   canFile ok: true code: null
+ *   fileClaim ok: true status: filed
+ *   sealed insurer : Totally Not An Insurer
+ *   sealed clause  : MADE-UP-1
+ *   sealed excess  : 1
+ *
+ * A whole FNOL packet, sealed under a digest, describing an insurer that does not exist and a
+ * clause that says nothing, and every one of those facts came from the caller.
+ *
+ * WHICH OF THE THREE MARKERS THIS MODULE USES, AND WHY. A public boolean such as `validated: true`
+ * was rejected first, because the forgery above would just have carried it: a marker a caller can
+ * write proves only that the caller wrote it. Deep revalidation at each boundary was rejected
+ * second, because this function is called on every keystroke that redraws the file gate and running
+ * the loader again each time is work a phone would feel. What is used instead is a WeakSet held
+ * privately inside src/core/policy.js, which `loadPolicyPack` adds to on its last line and which
+ * nothing else in this repository can reach. Membership is not a property, so it cannot be typed,
+ * spread, copied or serialised in. `isValidatedPack` is the reading half and there is no exported
+ * writing half.
+ *
+ * THE SHAPE CHECKS STAY, UNDERNEATH. They are cheap, they still name what every surface downstream
+ * reads, and keeping them means the four counterexamples in
+ * tests/unit/filing_borrowed_pack.test.js still fail for the reason they were written for.
+ *
+ * Still checked rather than trusted, and still a boolean rather than a throw: `deriveRequirements`
  * throws on anything else, and a throw here would reach a tool as a hard failure instead of a
  * sentence a model can act on.
  *
@@ -149,6 +181,8 @@ export function borrowedRulesReason(insurer) {
  */
 function isUsablePack(pack) {
   if (!pack || typeof pack !== 'object') return false;
+  // The one question that cannot be answered by the object itself.
+  if (!isValidatedPack(pack)) return false;
   // A list of requirements alone is not a pack. `{ requirements: [] }` used to pass here and then
   // answer for an insurer with no name, no id and no schedule, which is a worse failure than no
   // pack at all because it looks like an answer. The three fields below are the ones every surface
@@ -285,6 +319,34 @@ export function filingIdentity(pack, claim, options) {
 export function canFile(pack, claim, completedHumanActions, options) {
   if (!claim || typeof claim !== 'object') {
     throw new TypeError('canFile needs a claim object.');
+  }
+
+  // WHAT THE DRAFT HOLDS IS ASKED BEFORE WHAT IT IS MISSING, AND BEFORE ANYTHING ELSE.
+  //
+  // `validateClaim` below answers one question, which required field is empty, and it does not look
+  // at a single held value. So a claim carrying `severity: "catastrophic"`, `damage_zone: 47` or an
+  // object where the claimant's own account belongs came through this gate reading "The draft is
+  // complete. Filing is yours to do." and was sealed into a handler packet. Both doors into a claim
+  // push every value through the field validators, so a snapshot that fails here did not come
+  // through either of them and there is nothing this function can honestly say about it.
+  //
+  // IT IS A REFUSAL RATHER THAN A THROW, like every other answer here, so the page draws it beside
+  // the button and a model reads it as a sentence it can act on.
+  const snapshot = checkClaimSnapshot(claim);
+  if (!snapshot.ok) {
+    return {
+      ok: false,
+      code: FILE_CODES.unusableState,
+      reason: snapshot.reason,
+      // Still complete, because the docstring promises it. `missing` is safe to compute on any
+      // object, since it only asks which fields are empty. Nothing was derived from the pack, so
+      // the requirements are not known and every reader downstream fails closed on that.
+      missing: validateClaim(claim).missing,
+      outstanding: [],
+      requirementsKnown: false,
+      insurer: null,
+      borrowed: false,
+    };
   }
 
   // One answer about whose rules these are and whose policy this is, shared with src/core/packet.js.

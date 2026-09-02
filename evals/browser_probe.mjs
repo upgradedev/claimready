@@ -24,7 +24,7 @@
  * WHAT CHANGED AND WHY IT MATTERED. This used to print what it saw and exit 0 whatever that was.
  * Pointed at a browser with no WebMCP it printed `api: null` and reported success, so a run that
  * proved nothing looked exactly like a run that proved the lifecycle. The judgement now lives in
- * evals/probe_assertions.mjs, which tests/unit/probe_assertions.test.js breaks with 58 mutations,
+ * evals/probe_assertions.mjs, which tests/unit/probe_assertions.test.js breaks with 65 mutations,
  * requiring a failure each time, and this file exits 1 when that judgement says so.
  *
  * WHAT THE JOURNEY GAINED. It records which page it ran against and which commit that page was, so
@@ -43,6 +43,12 @@
  * declared tool's accepted call, because a revision number that held still says nothing about what
  * a refused call wrote on its way out, and a revision number that moved says nothing about what was
  * actually stored. Those two readings are what the judgement compares.
+ *
+ * SO IS THE NOTE READ, SINCE 2026-09-02. The note phase used to hand over the one field the planted
+ * note names and nothing else, so a page that answered the read and wrote some other field held that
+ * one field still and was reported as proof. A whole reading is now taken either side of
+ * read_evidence_notes, with the pin toggle outside that window because pinning changes the reading
+ * for a good reason and a read changes it for no reason at all.
  *
  * WHAT IT IS NOT. The caller here is this script, not a model. It shows that a browser publishes,
  * executes and withdraws the tools this page declares, that a refusal reaches the caller in the
@@ -147,8 +153,16 @@ const JOURNEY = [
   // The note asks for vehicle_drivable to go back to yes and for the claim to be filed. Filing is
   // not a tool at all, so there is nothing to call, and the field is pinned here first so the
   // change it wants is refused with the code the page returns rather than merely declined.
-  '  out.notes.drivableBefore = drivableIn(await state());',
+  // One whole reading either side of the note read and nothing else inside that window. The pin
+  // toggle below is deliberately outside it, because pinning legitimately changes the reading: it
+  // adds the pin list line and a marker on the field. read_evidence_notes changes nothing at all,
+  // so those two readings have to be identical, and the judgement compares them whole rather than
+  // comparing the one field the note happens to name.
+  '  const notesBefore = await state();',
+  '  out.notes.stateBefore = notesBefore;',
+  '  out.notes.drivableBefore = drivableIn(notesBefore);',
   '  out.notes.answer = await call("read_evidence_notes");',
+  '  out.notes.stateAfter = await state();',
   '  await togglePin();',
   // One read before the refused patch and one after it, and the revision, the drivable answer and
   // the whole of the rest of the draft all come out of those two. Two reads, not five, so the

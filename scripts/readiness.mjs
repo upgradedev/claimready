@@ -48,7 +48,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, mkdirSync, mkdtempSync, writeFileSync, cpSync, rmSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1191,6 +1191,15 @@ function checkQuickstart(root) {
  * outstanding. What it does not do is turn a CI run red for a fact that only a person with a screen
  * recorder can settle. Nothing is hidden and no threshold moved: the row simply blocks the same
  * way the other things a person still owes block.
+ *
+ * ONLY THE DELIVERABLE RECORD ROW COUNTS, AND THE SHA HAS TO COME FIRST IN ITS CELL. This used to
+ * take the first line anywhere in the file that said "freeze commit" and carried a backticked hex
+ * string. On 2026-09-02 that turned the row green over a runbook whose own record said nothing was
+ * declared yet: the paragraph naming the SUPERSEDED freeze was what satisfied it. A gate that reads
+ * history as a declaration goes green exactly when a person is being careful, so the declaration is
+ * now one place with one shape. Prose may then say whatever it needs to about commits that no
+ * longer apply. tests/unit/readiness_freeze_row.test.js feeds both of those shapes in and requires
+ * a refusal, and the selftest breaks this row the same two ways.
  */
 const FREEZE_DECLARATION_PATH = ['docs', 'submission', 'video.md'];
 
@@ -1202,30 +1211,39 @@ function checkFreezeCommit(root) {
     return row('FRZ', label, FAIL, `${rel} does not exist, so nothing declares a commit to record against`, DELIVERABLE);
   }
 
-  const lines = text.split(/\r?\n/).filter((line) => /freeze commit/i.test(line));
-  if (lines.length === 0) {
+  // The record row, and nothing else. The first cell has to BE the words, not merely contain them,
+  // so a prose line that happens to mention the freeze commit is not a candidate.
+  const cells = text
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*\|([^|]*)\|([^|]*)\|/))
+    .filter((match) => match && match[1].trim().replace(/\*/g, '').toLowerCase() === 'freeze commit')
+    .map((match) => match[2].trim());
+
+  if (cells.length === 0) {
     return row(
       'FRZ',
       label,
       FAIL,
-      `${rel} declares no freeze commit. Add a line naming it, for example a deliverable record row `
-      + 'reading Freeze commit with the SHA in backticks. No SHA is invented here.',
+      `${rel} declares no freeze commit. Add a deliverable record row whose first cell reads `
+      + 'Freeze commit and whose second cell opens with the SHA in backticks. No SHA is invented here.',
       DELIVERABLE,
     );
   }
 
-  const withSha = lines.map((line) => line.match(/`([0-9a-f]{7,40})`/)).find(Boolean);
-  if (!withSha) {
+  // It has to OPEN with the SHA. A cell that opens with anything else is a note about the freeze
+  // rather than the freeze, and the commonest anything else is a sentence naming a superseded one.
+  const declared = cells.map((cell) => cell.match(/^`([0-9a-f]{7,40})`/)).find(Boolean);
+  if (!declared) {
     return row(
       'FRZ',
       label,
       FAIL,
-      `${rel} names a freeze commit and declares no SHA for it: ${lines[0].trim().slice(0, 90)}`,
+      `${rel} has a freeze commit record and it does not open with a SHA: ${cells[0].slice(0, 90)}`,
       DELIVERABLE,
     );
   }
 
-  return row('FRZ', label, PASS, `${rel} declares the recording frozen at ${withSha[1]}`, DELIVERABLE);
+  return row('FRZ', label, PASS, `${rel} declares the recording frozen at ${declared[1]}`, DELIVERABLE);
 }
 
 /**
@@ -1846,9 +1864,58 @@ function makeSandbox(dest) {
   return dest;
 }
 
+/**
+ * Edit one file in a sandbox, and REFUSE IF THE EDIT CHANGED NOTHING.
+ *
+ * The refusal is the whole point. A break step that searches for a literal the file does not
+ * contain writes the file straight back and reports success, so the broken half of the case runs
+ * against an intact tree. The row then passes when it should have failed, and this program prints
+ * a case that measured nothing.
+ *
+ * That is not hypothetical. On 2026-09-02 the QCK case that renames the clone directory searched
+ * for `\ncd claimready\n`. On a Windows checkout with core.autocrlf true the README arrives with
+ * carriage returns, the literal matches nothing, and the case went red on this machine while
+ * passing on Linux CI. `publishSelftestTool` already asserted its own edit landed; this was the
+ * hole beside it. The literal is written line ending independent below as well, so the assertion
+ * is a backstop rather than the fix.
+ *
+ * @param {string} sandbox
+ * @param {string} relPath path inside the sandbox
+ * @param {(text: string) => string} transform
+ */
 function editFile(sandbox, relPath, transform) {
   const full = join(sandbox, relPath);
-  writeFileSync(full, transform(readFileSync(full, 'utf8')), 'utf8');
+  const before = readFileSync(full, 'utf8');
+  const after = transform(before);
+  if (after === before) {
+    throw new Error(
+      `the selftest tried to break ${relPath} and the edit changed nothing, so the broken half `
+      + 'would have run against an intact file. The pattern it searched for is not in this copy. '
+      + 'A line ending is the usual reason: write the literal with replaceAnyEol.',
+    );
+  }
+  writeFileSync(full, after, 'utf8');
+}
+
+/**
+ * Replace a literal that spans lines, whatever line endings the file happens to carry.
+ *
+ * `String.prototype.replace` with a literal is exact, so `'\ncd claimready\n'` finds nothing in a
+ * file whose lines end `\r\n`. Every newline in the pattern is widened to accept either spelling,
+ * and the replacement is written back in the spelling the file was already using, so a break step
+ * cannot leave one CRLF file with a stray LF line in the middle of it.
+ *
+ * @param {string} text the file contents
+ * @param {string} from the literal to find, written with plain newlines
+ * @param {string} to what to put in its place, written with plain newlines
+ * @returns {string} the text with the first match replaced, or the text unchanged if there is none
+ */
+function replaceAnyEol(text, from, to) {
+  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').split('\n').join('\\r?\\n');
+  const match = new RegExp(escaped).exec(text);
+  if (!match) return text;
+  const eol = match[0].includes('\r\n') ? '\r\n' : '\n';
+  return text.slice(0, match.index) + to.split('\n').join(eol) + text.slice(match.index + match[0].length);
 }
 
 /** Rewrite one string across every module under src, since checkApiDetection reads all of them. */
@@ -2231,8 +2298,12 @@ const SELFTEST_CASES = [
   {
     id: 'QCK',
     // The cd branch. One character, and every later command runs in a directory that is not there.
+    //
+    // THE ONE THAT ONLY BROKE ON WINDOWS. This searched for the literal `\ncd claimready\n`, which
+    // finds nothing in a README whose lines end `\r\n`, so on a fresh Windows clone the break step
+    // wrote the file back unchanged and the case reported a row that had refused nothing.
     name: 'the quickstart changes into a directory the clone does not create',
-    break: (s) => editFile(s, 'README.md', (t) => t.replace('\ncd claimready\n', '\ncd claim-ready\n')),
+    break: (s) => editFile(s, 'README.md', (t) => replaceAnyEol(t, '\ncd claimready\n', '\ncd claim-ready\n')),
     run: (s) => checkQuickstart(s),
   },
   {
@@ -2259,6 +2330,29 @@ const SELFTEST_CASES = [
       s,
       join('docs', 'submission', 'video.md'),
       (t) => t.replace('`0123456789abcdef0123456789abcdef01234567`', 'not declared yet'),
+    ),
+    run: (s) => checkFreezeCommit(s),
+  },
+  {
+    id: 'FRZ',
+    // The second way this row went green over nothing, and the one that actually happened. A
+    // runbook that has just superseded two freeze commits wants to say so, and the older check read
+    // that sentence as the declaration. The break here writes the careful version: the record says
+    // nothing is declared, and names the SHA it is no longer recording against. It has to refuse.
+    name: 'the freeze record names a superseded commit instead of declaring one',
+    prepare: (s) => editFile(
+      s,
+      join('docs', 'submission', 'video.md'),
+      (t) => `${t.split(/\r?\n/).filter((line) => !/freeze commit/i.test(line)).join('\n')}\n`
+        + '| Freeze commit | \`0123456789abcdef0123456789abcdef01234567\` |\n',
+    ),
+    break: (s) => editFile(
+      s,
+      join('docs', 'submission', 'video.md'),
+      (t) => t.replace(
+        '`0123456789abcdef0123456789abcdef01234567`',
+        'not declared yet, superseding `0123456789abcdef0123456789abcdef01234567`',
+      ),
     ),
     run: (s) => checkFreezeCommit(s),
   },
@@ -2633,7 +2727,26 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((error) => {
-  console.error(`readiness crashed: ${error.stack || error.message}`);
-  process.exit(1);
-});
+// THE TABLE RUNS ONLY WHEN THIS FILE IS THE PROGRAM. Everything above is reachable by import now,
+// which is how tests/unit/readiness_selftest_mutations.test.js can ask the two helpers below
+// whether a break step would actually land, without running 45 sandboxes to find out. An
+// unconditional call here would have made that test build the whole readiness table, fetch the
+// live URL and exit the test runner's process.
+const invokedDirectly = process.argv[1]
+  && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+
+if (invokedDirectly) {
+  main().catch((error) => {
+    console.error(`readiness crashed: ${error.stack || error.message}`);
+    process.exit(1);
+  });
+}
+
+// Exported for that test and for nothing else. They are the two pieces of the selftest that decide
+// whether a mutation reaches the file it names.
+//
+// checkFreezeCommit is exported for tests/unit/readiness_freeze_row.test.js, which feeds it whole
+// video.md files that a reader would skim past as a declaration and requires a refusal for each.
+// That test runs in milliseconds and needs no sandbox, so it sits beside the selftest case rather
+// than replacing it.
+export { editFile, replaceAnyEol, checkFreezeCommit };

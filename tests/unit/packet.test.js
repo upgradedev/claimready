@@ -40,8 +40,17 @@ const fixture = JSON.parse(readFileSync(
 const HOME = 'northwind';
 const DONE = ['roadside_collection'];
 
-/** The journey the video films, ending in a filed claim. */
-function filedClaim() {
+/**
+ * The journey the video films, ending in a filed claim.
+ *
+ * `extra` is applied to the draft, through the real patch path, immediately before it is filed.
+ * A test that wants a different filed claim asks for it here rather than writing to the filed
+ * snapshot afterwards: a claim built by hand is not one this page could have produced, and
+ * src/core/packet.js now refuses to seal one.
+ *
+ * @param {Array<{field: string, value: *}>} [extra]
+ */
+function filedClaim(extra = []) {
   let claim = createClaim(fixture);
   claim = applyPatch(claim, [
     { field: 'damage_zone', value: 10 },
@@ -52,6 +61,11 @@ function filedClaim() {
   ], { actor: 'agent', baseRevision: 0 }).claim;
   claim = applyPatch(claim, [{ field: 'vehicle_drivable', value: false }], { actor: 'human' }).claim;
   claim = lockField(claim, 'vehicle_drivable').claim;
+  if (extra.length > 0) {
+    const patched = applyPatch(claim, extra, { actor: 'human' });
+    assert.equal(patched.ok, true, `the extra changes must apply: ${patched.error}`);
+    claim = patched.claim;
+  }
   const filed = fileClaim(claim, {
     pack: northwind,
     completedHumanActions: DONE,
@@ -139,7 +153,10 @@ test('the tool calls are oldest first, and a refusal keeps its code', () => {
  * provisionally". Everything else stays as the filmed journey leaves it.
  */
 function provisionallyFiled() {
-  const claim = { ...filedClaim(), driver: null };
+  // Cleared on the draft rather than on the filed snapshot. Clearing a field through a patch also
+  // drops the badge saying who answered it, and a badge left standing over an empty field is a
+  // claim with nothing behind it, which is one of the states the snapshot check refuses.
+  const claim = filedClaim([{ field: 'driver', value: null }]);
   const decided = checkCoverage(northwind, claim);
   assert.equal(decided.covered, true, 'the setup has to produce a yes, or there is nothing to qualify');
   assert.equal(decided.provisional, true, 'and a yes that is not settled');
@@ -177,6 +194,39 @@ test('the open question in the packet is the one src/core/coverage.js states', (
   assert.equal(content.coverage.provisional_reason, openCoverQuestions(northwind, claim).join(' '));
   assert.ok(checkCoverage(northwind, claim).reason.includes(content.coverage.provisional_reason),
     'the claimant prose and the handler field say different things');
+});
+
+/**
+ * The same agreement, on a decision that is a NO.
+ *
+ * The test above pins the wording of a provisional yes. This one pins a refusal, because that is
+ * where the sentence a judge can read went wrong: an incident outside the policy period was refused
+ * and the same string went on to tell the claimant that third party liability under clause TP-1.1
+ * stayed in force. The pack does not say that. A refusal about the whole policy is not a statement
+ * about one section of it.
+ *
+ * Measured before the fix, from the packet this test builds:
+ *
+ *   The incident date 2025-11-04 falls outside the policy period, which runs from 2026-01-01 to
+ *   2026-12-31. That is clause PL-1.2. Third party liability under clause TP-1.1 is unaffected and
+ *   stays in force.
+ *
+ * The negative assertion is the regression. The equality beside it is what stops a fix landing on
+ * the packet and leaving the page saying something else, since both read decision.reason.
+ */
+test('a refusal reaches the packet word for word, and promises no cover it cannot show', () => {
+  const claim = filedClaim([{ field: 'incident_date', value: '2025-11-04' }]);
+  const decided = checkCoverage(northwind, claim);
+  assert.equal(decided.covered, false, 'the setup has to produce a refusal, or there is nothing to check');
+
+  const content = build(claim).packet;
+
+  assert.equal(content.coverage.reason, decided.reason,
+    'the sealed document and the page are reading one sentence, so they cannot disagree');
+  assert.match(content.coverage.reason, /falls outside the policy period/);
+  assert.doesNotMatch(content.coverage.reason, /TP-1\.1/,
+    'the packet names a section as standing on a refusal the schedule scopes to the whole policy');
+  assert.doesNotMatch(content.coverage.reason, /stays in force/i);
 });
 
 test('the markdown view draws the qualifier the JSON carries', () => {
@@ -218,28 +268,47 @@ test('two builds from one filed revision produce one digest', async () => {
   assert.equal(await digestOf(first.canonical), await digestOf(second.canonical));
 });
 
+/**
+ * The digest of a built packet, refusing to hash a refusal.
+ *
+ * WHY THIS EXISTS RATHER THAN `digestOf(build(x).canonical)`. A refusal returns `canonical: null`,
+ * `digestOf` hashes the four characters of the string "null" quite happily, and every notEqual in
+ * the test below then passes for the wrong reason. Two of those variants used to be built by
+ * spreading a filed claim, which stopped producing a packet the moment the filing receipt landed,
+ * and the test went on printing ok. So the assertion is made here, once, where it cannot be
+ * forgotten at a call site.
+ */
+async function digestOfPacket(result) {
+  assert.equal(result.ok, true, `there is no packet to hash: ${result.reason}`);
+  return digestOf(result.canonical);
+}
+
 test('changing anything the packet describes changes the digest', async () => {
   const claim = filedClaim();
-  const before = await digestOf(build(claim).canonical);
+  const before = await digestOfPacket(build(claim));
 
-  // A different filed revision is a different filing.
-  const later = { ...claim, revision: claim.revision + 1 };
-  assert.notEqual(await digestOf(build(later).canonical), before);
+  // A different filed revision is a different filing. It is produced by filing a draft that has
+  // moved one more time, not by writing a number onto a filed claim: a claim assembled by hand is
+  // not one this page filed, and src/core/packet.js refuses to describe one as a filing.
+  const later = filedClaim([{ field: 'witness_name', value: 'A. Bystander' }]);
+  assert.equal(later.revision, claim.revision + 1, 'the setup has to produce a later revision');
+  assert.notEqual(await digestOfPacket(build(later)), before);
 
   // A different claim decides differently under the same rules, and the packet follows the claim
-  // rather than anything a caller says. A theft is not covered by this pack.
-  const asTheft = { ...claim, incident_type: 'theft' };
-  assert.notEqual(await digestOf(build(asTheft).canonical), before);
+  // rather than anything a caller says. A loss outside the policy period is not covered.
+  const outsidePeriod = filedClaim([{ field: 'incident_date', value: '2025-11-04' }]);
+  assert.equal(build(outsidePeriod).packet.coverage.covered, false, 'the setup has to change the cover');
+  assert.notEqual(await digestOfPacket(build(outsidePeriod)), before);
 
   // And a caller cannot inject one: coverage is not an input any more, so passing one changes
   // nothing at all. This is the assertion that would have caught the defect it replaces.
   const injected = build(claim, { coverage: { covered: false, clause: 'XX-9', deductible: 0 } });
-  assert.equal(await digestOf(injected.canonical), before);
+  assert.equal(await digestOfPacket(injected), before);
   assert.equal(injected.packet.coverage.clause, 'OD-4.1');
 
   // And so is one with a different ledger.
   const otherLedger = build(claim, { ledger: [{ at: '09:00:00', tool: 'describe_claim' }] });
-  assert.notEqual(await digestOf(otherLedger.canonical), before);
+  assert.notEqual(await digestOfPacket(otherLedger), before);
 });
 
 test('the canonical form sorts keys, so insertion order cannot move the digest', () => {

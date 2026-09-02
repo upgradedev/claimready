@@ -344,6 +344,18 @@
         would rather not take our word for it,
         <code>docs/handler-verification.md</code> states the canonical form and gives a plain Node
         route and a plain Python route that import none of our code.</p>
+
+      <!--
+        The limit, on the page rather than only in the docs. The digest is the surface most likely
+        to be read as more than it is, and a reader who never opens docs/handler-verification.md
+        should still be told what a bare hash does not cover.
+      -->
+      <p class="reason">What that is worth, exactly: it is a plain SHA-256 over the exported
+        content, with no key and no signature behind it. A match says the content in front of you is
+        the content the digest was taken over, which catches a file changed on the way to you and
+        two copies that have drifted apart. It does not show which page made the packet, who wrote
+        it, that nobody edited the content and recomputed the digest to match, that it was stored
+        anywhere, or that an insurer received it.</p>
     </section>
 
   </div>

@@ -374,10 +374,11 @@ test('a complete claim files, and the claim locks once it has', () => {
  *
  * It read "filing works without a timestamp, which stays null rather than invented", and it was
  * right that nothing may be invented. It was wrong about what the other option is. A filed claim
- * with `filed_at: null` is a state nothing downstream can answer for: the packet writes "Filed at
- * not recorded" under a digest, the page prints "Filed at null", and `hydrateClaim` reads the whole
- * thing back as a draft because a filing with no time on it is not one anybody can stand behind.
- * So the store produced a state that only one of its three readers could handle.
+ * with `filed_at: null` is a state nothing downstream can answer for: the packet used to write
+ * "Filed at not recorded" under a digest, the page prints "Filed at null", and `hydrateClaim` used
+ * to read the whole thing back as a draft, which reopened a closed claim to any later writer. So
+ * the store produced a state none of its three readers could handle. Both of those now refuse, and
+ * this is the layer that stops the state existing in the first place.
  *
  * Refusing is the third option, and it is the one that keeps both halves: nothing is invented and
  * no unanswerable state is written. The clock lives in src/ui/app.js, which is the only layer

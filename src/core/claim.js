@@ -567,7 +567,8 @@ export function createClaim(fixture) {
  *
  * @param {object} value
  * @returns {object} a complete, normalised claim
- * @throws {TypeError} when a stored field is unknown or its value is invalid
+ * @throws {TypeError} when a stored field is unknown, when its value is invalid, or when the
+ *         claim as a whole is not one this page could have written
  */
 export function hydrateClaim(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -588,11 +589,33 @@ export function hydrateClaim(value) {
   claim.evidence_notes = normaliseNotes(value.evidence_notes);
   claim.locked = storedLocks(value.locked);
 
-  // A filed claim with no filed_at is not a claim anyone can answer for. Rather than invent a
-  // timestamp, which would be a fact this function made up, the state that carries no time is read
-  // back as the draft it is indistinguishable from.
-  if (claim.status === 'filed' && !claim.filed_at) claim.status = 'draft';
-  if (claim.status !== 'filed') claim.filed_at = null;
+  // A FILED CLAIM WITH NO FILING TIME IS REFUSED. IT USED TO BE READ BACK AS A DRAFT.
+  //
+  // The two lines that stood here said `claim.status = 'draft'` on a stored claim marked filed that
+  // carried no instant, and then blanked the instant on anything not marked filed. The reasoning
+  // was that a filing with no time on it is indistinguishable from a draft, which is true about the
+  // timestamp and false about the state. Filed is the closed state on this page: it is what stops a
+  // patch, stops a second filing and stops the claimant's own answers being edited under a
+  // reference a handler already has. Reading it back as a draft reopens all three, silently, on a
+  // claim somebody stored. Measured before this changed, on a stored claim at revision 7:
+  //
+  //   stored status  : filed  filed_at: null
+  //   hydrated status: draft  filed_at: null
+  //   patch ok       : true   Something else entirely.
+  //
+  // An agent patch went straight through. That is the rule the block below `storedRevision` states
+  // in capitals, broken by the one value that block did not cover, so the refusal now lives with
+  // the rest of them in `checkClaimSnapshot`.
+  //
+  // WHAT THIS DOOR STILL DOES REPAIR, said here rather than left to be discovered. The provenance
+  // loop below drops a badge whose source this model does not know, a badge over a field holding
+  // nothing, and a badge naming a field that is not on the claim. That is a repair, and an earlier
+  // version of this comment claimed the door repaired nothing, which a reviewer read twenty lines
+  // above three `continue` statements doing exactly that. Dropping an unusable badge is safe in the
+  // direction that matters, because it removes a claim about where a value came from rather than
+  // inventing one, and `checkClaimSnapshot` refuses the same snapshot at every gate that decides
+  // something. A lock is treated the other way and refused outright, because dropping a lock opens
+  // a field the claimant closed.
 
   for (const [field, held] of Object.entries(value)) {
     if (PROTECTED_FIELDS.includes(field)) continue;
@@ -620,6 +643,18 @@ export function hydrateClaim(value) {
     if (!PROVENANCE_SOURCES.includes(source)) continue;
     if (claim[field] === null || claim[field] === undefined) continue;
     claim.provenance[field] = source;
+  }
+
+  // THE POST-CONDITION, AND IT IS DELIBERATELY THE SAME FUNCTION THE FILE GATE ASKS.
+  //
+  // Everything above already refuses field by field, so on the ordinary path this passes by
+  // construction and closes nothing on its own. Two things make it worth the call. It is where the
+  // filed-with-no-time state is now refused, because nothing above looks at status and filed_at
+  // together. And it means a claim that came back through this door and a claim the file gate will
+  // accept are the same set, checked by one function, rather than two lists that agree today.
+  const snapshot = checkClaimSnapshot(claim);
+  if (!snapshot.ok) {
+    throw new TypeError(`This stored claim cannot be read back. ${snapshot.problems.join(' ')}`);
   }
 
   return claim;
@@ -723,6 +758,168 @@ function optionalString(held, field) {
     );
   }
   return held;
+}
+
+/* ---------------------------------------------------------- whole snapshot */
+
+/**
+ * Said first whenever a claim is refused for what it holds rather than for what it lacks.
+ *
+ * Named once so the file gate, the handler packet and the stored claim reader all open the same
+ * way, and so a reader who meets the sentence twice knows it is one check talking.
+ */
+export const UNUSABLE_STATE_INTRO =
+  'This claim holds values this page could not have written, so no decision can be taken on it.';
+
+/** Every problem is one sentence, and the verdict is those sentences with the opener in front. */
+function snapshotVerdict(problems) {
+  return {
+    ok: problems.length === 0,
+    problems,
+    reason: problems.length === 0 ? null : `${UNUSABLE_STATE_INTRO} ${problems.join(' ')}`,
+  };
+}
+
+/** The two strings that say which policy this is and what this page calls the claim. */
+const IDENTITY_STRINGS = ['policy_id', 'reference'];
+
+/**
+ * IS THIS WHOLE CLAIM ONE THIS PAGE COULD HAVE WRITTEN.
+ *
+ * WHY IT EXISTS. `validateClaim` answers one question, "which required field is empty", and it was
+ * being read as though it answered a second one. It does not look at a single held value. So a
+ * claim carrying `severity: "catastrophic"`, `damage_zone: 47`, an incident date of "yesterday",
+ * `vehicle_drivable: "maybe"` or an object where the claimant's own account belongs passed the file
+ * gate, filed, and was sealed into a handler packet under a digest. Measured before this existed,
+ * on a claim built through the real patch path and then written to by hand:
+ *
+ *   unknown severity                canFile=true fileClaim=true packet=SEALED
+ *   damage_zone out of range        canFile=true fileClaim=true packet=SEALED
+ *   object where free text belongs  canFile=true fileClaim=true packet=SEALED ... {}
+ *   negative revision               canFile=true fileClaim=true packet=SEALED ref=CR-...-R-4
+ *
+ * The last two are the ones worth reading twice. A handler was handed an empty JSON object under
+ * the heading a claimant's account of the crash goes under, and a reference with a negative
+ * revision in it, both under a digest that made them look checked.
+ *
+ * WHAT IT CHECKS, AND WHY IT IS ONE FUNCTION RATHER THAN THREE. Every patchable field against the
+ * same validator a patch uses, the two identity strings, the revision, the status, the pins, the
+ * provenance vocabulary and the filing time. Three surfaces need this answer, `canFile`,
+ * `buildFilingPacket` and `hydrateClaim`, and three copies of it would be three chances to disagree
+ * about what a usable claim is. That is the defect src/core/filing.js was written to close, one
+ * input further out.
+ *
+ * ABSENT IS NOT WRONG. A field nobody has answered yet holds null, and this says nothing about it:
+ * "which field is still empty" is `validateClaim`'s question and the file gate already asks it. A
+ * draft halfway through being filled in has to pass here, or the ordinary journey stops.
+ *
+ * A HELD VALUE HAS TO BE IN THE FORM THIS PAGE WRITES, not merely one the validators could repair.
+ * `damage_zone: "10"` and `severity: "DENT"` are values a patch accepts and coerces on the way in,
+ * so a claim still carrying them was never written by a patch. Everything downstream compares and
+ * seals these values exactly as they are.
+ *
+ * @param {*} claim
+ * @returns {{ok: boolean, problems: string[], reason: (string|null)}}
+ */
+export function checkClaimSnapshot(claim) {
+  if (!claim || typeof claim !== 'object' || Array.isArray(claim)) {
+    return snapshotVerdict([
+      `A claim is an object, and this is ${Array.isArray(claim) ? 'a list' : typeof claim}.`,
+    ]);
+  }
+
+  const problems = [];
+
+  for (const field of PATCHABLE_FIELDS) {
+    const held = claim[field];
+    if (held === null || held === undefined) continue;
+    const checked = coerceField(field, held);
+    if (!checked.ok) {
+      problems.push(`${field}: ${checked.error}`);
+    } else if (checked.value !== held) {
+      problems.push(
+        `${field} holds ${JSON.stringify(held)}, and this page writes that answer as `
+        + `${JSON.stringify(checked.value)}.`,
+      );
+    }
+  }
+
+  for (const field of IDENTITY_STRINGS) {
+    const held = claim[field];
+    if (held === null || held === undefined) continue;
+    if (typeof held !== 'string') {
+      problems.push(`${field} must be a string or null, and it is ${typeof held}.`);
+    }
+  }
+
+  // The revision is the number a patch quotes back to prove it is writing to the draft it read, and
+  // it is written into the packet reference. A missing one sealed the reference CR-MTR-2026-0417-Rundefined.
+  if (!Number.isInteger(claim.revision) || claim.revision < 0) {
+    problems.push(
+      `revision is ${JSON.stringify(claim.revision ?? null)}, and it must be a whole number of `
+      + 'zero or more.',
+    );
+  }
+
+  // Status and the filing time are read together, because each of them says what the other must
+  // hold. A claim marked filed with no instant on it is a closed state nobody can answer for, and a
+  // claim marked draft that carries one is the same slide running the other way.
+  const status = claim.status;
+  if (status !== 'draft' && status !== 'filed') {
+    problems.push(
+      `status is ${JSON.stringify(status ?? null)}, and a claim is either "draft" or "filed".`,
+    );
+  } else if (status === 'filed' && !isFilingInstant(claim.filed_at)) {
+    problems.push(
+      `this claim is marked filed and its filing time is ${JSON.stringify(claim.filed_at ?? null)}, `
+      + `and ${FILING_INSTANT_REASON}.`,
+    );
+  } else if (status === 'draft' && claim.filed_at !== null && claim.filed_at !== undefined) {
+    problems.push(
+      `this claim is marked draft and carries a filing time, ${JSON.stringify(claim.filed_at)}.`,
+    );
+  }
+
+  const locked = claim.locked;
+  if (locked !== null && locked !== undefined) {
+    if (!Array.isArray(locked)) {
+      problems.push(`locked must be a list of field names, and it is ${typeof locked}.`);
+    } else {
+      const seen = [];
+      for (const field of locked) {
+        if (!PATCHABLE_FIELDS.includes(field)) {
+          problems.push(`${JSON.stringify(field)} is pinned, and it is not a field a person can pin.`);
+        } else if (seen.includes(field)) {
+          problems.push(`${JSON.stringify(field)} is pinned twice.`);
+        } else {
+          seen.push(field);
+        }
+      }
+    }
+  }
+
+  // A badge is a claim about who put a value there, so it is held to the standard the value is.
+  const badges = claim.provenance;
+  if (badges !== null && badges !== undefined) {
+    if (typeof badges !== 'object' || Array.isArray(badges)) {
+      problems.push(`provenance must be an object of field names, and it is ${typeof badges}.`);
+    } else {
+      for (const [field, source] of Object.entries(badges)) {
+        if (!PATCHABLE_FIELDS.includes(field)) {
+          problems.push(`provenance names ${JSON.stringify(field)}, which is not a field on this claim.`);
+        } else if (!PROVENANCE_SOURCES.includes(source)) {
+          problems.push(
+            `provenance says ${field} came from ${JSON.stringify(source)}, and this page writes `
+            + `only ${PROVENANCE_SOURCES.join(', ')}.`,
+          );
+        } else if (claim[field] === null || claim[field] === undefined) {
+          problems.push(`provenance says who answered ${field}, and ${field} holds nothing.`);
+        }
+      }
+    }
+  }
+
+  return snapshotVerdict(problems);
 }
 
 /* ------------------------------------------------------------------- patch */
@@ -838,8 +1035,27 @@ export function applyPatch(claim, changes, options = {}) {
     );
   }
 
-  // The filed check comes first on purpose. A stale refusal tells the reader to
-  // read again and retry, and on a filed claim that retry can never work. Saying
+  // THE DOOR THAT WRITES ASKS THE SAME QUESTION THE DOORS THAT READ ASK.
+  //
+  // `canFile`, `buildFilingPacket` and `hydrateClaim` all refuse a claim holding a value this page
+  // could not have written. This one used to accept it and then move it on. Measured before the
+  // check, patching the description of a draft somebody had written to by hand:
+  //
+  //   unknown severity   patch ok=true revision 1 -> 2 still holds "catastrophic"
+  //   zone out of range  patch ok=true revision 1 -> 2 still holds 47
+  //   negative revision  patch ok=true revision -5 -> -4
+  //
+  // So the bad value survived under a revision that had moved, which is worse than where it
+  // started: the counter is the one thing a later writer trusts to prove it read what it is
+  // writing to. The refusal is PATCH_REJECTED_VALUE because that is what it is, a value this model
+  // will not stand behind, and a caller already branches on that code.
+  const snapshot = checkClaimSnapshot(claim);
+  if (!snapshot.ok) {
+    return refusal(claim, PATCH_CODES.value, `${snapshot.reason} Nothing was changed.`);
+  }
+
+  // The filed check comes first among the state checks on purpose. A stale refusal tells the reader
+  // to read again and retry, and on a filed claim that retry can never work. Saying
   // "this is closed" straight away costs one round trip less and is the truth.
   if (claim.status === 'filed') {
     return refusal(
@@ -1126,6 +1342,49 @@ export function provenanceOf(claim, field) {
 }
 
 /**
+ * THE FILING RECEIPT. Every claim object this function has actually filed, and nothing else.
+ *
+ * WHAT IT CLOSES. The handler packet's own `filed.through` field says the claim was filed through a
+ * control on the page. Nothing checked that. `status` is an ordinary string on an ordinary object,
+ * so a caller that wrote `{ ...draft, status: 'filed', filed_at: '2026-09-01T09:15:00.000Z' }` got a
+ * document that said a filing had happened, with a digest over it, and no filing had happened.
+ *
+ * WHY A WeakSet AND NOT A FIELD. This is the same mechanism src/core/policy.js uses for a validated
+ * rule pack, and the reasoning is the same one written out at `isUsablePack` in src/core/filing.js.
+ * A public marker such as `filed_here: true` proves only that somebody wrote it, because the forgery
+ * above would carry it too. Membership of a set held privately in this module is not a property: it
+ * cannot be typed out, spread, cloned, serialised or restored from storage. `wasFiledHere` below is
+ * the reading half and there is no exported writing half, so no tool, no page and no test can put a
+ * claim in here without going through the file gate.
+ *
+ * A COPY IS NOT THE CLAIM. `{ ...filed }` produces a different object and is not a member, and that
+ * is the intended reading rather than a rough edge. A copied filed claim was assembled by somebody
+ * rather than filed here, so the packet refuses to describe it as a filing.
+ *
+ * AND HERE IS ITS LIMIT, WHICH IS REAL AND HAS TO TRAVEL WITH IT. This is a browser local
+ * demonstration. The receipt proves that this code path ran in this page in this session, to this
+ * module, and nothing more. It proves nothing at all to anybody outside that session: a reader
+ * holding an exported packet has no way to check it, because the whole record lives in memory and
+ * disappears with the tab. It is not a signature, it is not an insurer receipt, and it is not
+ * evidence a handler could rely on. It stops this page describing a filing it did not perform.
+ * `docs/handler-verification.md` says the same to a handler.
+ */
+const FILED_BY_THIS_MODULE = new WeakSet();
+
+/**
+ * Did this exact claim object come out of `fileClaim` here.
+ *
+ * The reading half of the receipt above. Read the limit written there before you rely on this: it
+ * is a statement about one object in one browser session, not about the world.
+ *
+ * @param {*} claim
+ * @returns {boolean}
+ */
+export function wasFiledHere(claim) {
+  return Boolean(claim) && typeof claim === 'object' && FILED_BY_THIS_MODULE.has(claim);
+}
+
+/**
  * Mark the claim filed. There is no tool for it on this page's surface.
  *
  * Filing is a change like any other, so it advances the revision: an agent
@@ -1201,6 +1460,9 @@ export function fileClaim(claim, options = {}) {
   next.status = 'filed';
   next.filed_at = options.at;
   next.revision = revision + 1;
+  // The receipt, written on the one line where a filing actually happens and nowhere else. See
+  // FILED_BY_THIS_MODULE above for what it is worth and, more importantly, what it is not.
+  FILED_BY_THIS_MODULE.add(next);
   return { claim: next, ok: true, error: null, code: null, revision: next.revision };
 }
 

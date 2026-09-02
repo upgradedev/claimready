@@ -20,6 +20,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import { loadPolicyPack } from '../../src/core/policy.js';
 
 import {
   ALWAYS_ON_TOOLS,
@@ -206,14 +209,27 @@ test('a withheld notice that cannot fit either throws rather than returning an o
 
 /* ------------------------------------------------------------- rule pack */
 
-test('a pack that is missing, or half loaded, is treated as no pack rather than throwing later', () => {
+test('a pack that is missing, half loaded, or merely pack shaped is treated as no pack', () => {
   assert.equal(packOf(null), null);
   assert.equal(packOf(undefined), null);
   assert.equal(packOf({}), null);
   assert.equal(packOf({ pack: null }), null);
   assert.equal(packOf({ pack: { requirements: 'not a list' } }), null);
-  const good = { requirements: [] };
-  assert.equal(packOf({ pack: good }), good);
+
+  // THE LAST TWO LINES OF THIS TEST USED TO READ:
+  //   const good = { requirements: [] };
+  //   assert.equal(packOf({ pack: good }), good);
+  // which said a well shaped literal is a pack. That was the fail open the audit of 2026-09-02
+  // named: anything that could put an object on the context could put an insurer's name, a clause
+  // id and an excess in front of an agent. packOf now asks src/core/policy.js whether this build
+  // loaded and checked THAT object, so the literal is refused and a loaded pack is not.
+  const shapedButUnchecked = { id: 'northwind', requirements: [], coverages: [] };
+  assert.equal(packOf({ pack: shapedButUnchecked }), null, 'a pack shaped literal was read as a pack');
+
+  const loaded = loadPolicyPack(JSON.parse(readFileSync(
+    new URL('../../fixtures/insurers/northwind.json', import.meta.url), 'utf8',
+  )));
+  assert.equal(packOf({ pack: loaded }), loaded);
 });
 
 test('a requirement the pack does not describe answers with nothing, not with a guess', () => {
