@@ -25,17 +25,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 
-const EXAMPLE = new URL('../../docs/handler-packet.example.json', import.meta.url);
-const SCRIPT = new URL('../../scripts/verify_packet.mjs', import.meta.url);
+// fileURLToPath, NOT `new URL(...).pathname`. A first version of this file sliced the leading
+// character off the pathname, which turns Windows' `/C:/...` into a usable path and turns Linux's
+// `/home/runner/...` into a relative one. It passed here and failed in CI with
+// `Cannot find module '/home/runner/work/claimready/claimready/home/runner/work/...'`, the path
+// doubled because a relative path was resolved against the working directory. That is the same
+// class as the CRLF defect this repository already carries a lesson about: a test that only ever
+// runs on one platform is a test that has only been checked on one platform.
+const EXAMPLE = fileURLToPath(new URL('../../docs/handler-packet.example.json', import.meta.url));
+const SCRIPT = fileURLToPath(new URL('../../scripts/verify_packet.mjs', import.meta.url));
 const here = mkdtempSync(join(tmpdir(), 'claimready-forge-'));
 
 /** Run the verifier on a file and hand back the exit code and what it said. */
 function verify(file) {
   try {
-    const out = execFileSync(process.execPath, [SCRIPT.pathname.slice(1), file], { encoding: 'utf8' });
+    const out = execFileSync(process.execPath, [SCRIPT, file], { encoding: 'utf8' });
     return { code: 0, out };
   } catch (error) {
     return { code: error.status, out: `${error.stdout || ''}${error.stderr || ''}` };
@@ -51,7 +59,7 @@ function write(name, packet) {
 const original = () => JSON.parse(readFileSync(EXAMPLE, 'utf8'));
 
 test('the packet this build ships still verifies', () => {
-  const result = verify(EXAMPLE.pathname.slice(1));
+  const result = verify(EXAMPLE);
   assert.equal(result.code, 0, result.out);
   assert.match(result.out, /The digest matches/);
 });
