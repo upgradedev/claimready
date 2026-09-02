@@ -1,19 +1,25 @@
 # Judge review, written against ourselves
 
-**Every score in this file is an ESTIMATE made by the people who built the entry, and it is not a
-measurement of anything.** This is an internal working document. Nothing in it is written for a
-judge to read, no number in it may be quoted into the README, the description, the video or the
-submission form, and if any figure here ever turns up in a judge-facing file, that is the defect,
-not the figure.
+**This file used to carry four scores out of ten, one per criterion, and it does not any more.**
+They were removed on 2026-09-02. Each was labelled `Ours, not measured`, and the label was true and
+was not the point: a number awarded by the people who built the entry, sitting in a folder anybody
+who clones the repository can browse, is the exact shape of the thing this project refuses
+everywhere else. The findings the scores were attached to are all still here, which is the part
+that was ever worth reading. **Every judgement below is ours**, made by the people with the
+strongest possible reason to be generous, and no reviewer outside the build has seen this entry.
+
+What this file is: an adversarial read of our own submission against the organizer's four criteria,
+kept because it is where the entry's own defects get written down before a judge finds them.
 
 First written against `7b50d4a`, a working commit that reached the public repository squashed as
-`c93b138`. Revised 2026-09-01 against `ab2db69`. **Revised again 2026-09-02, and this time not
-against a commit**, which is a weaker footing and is said rather than hidden: head is `4afecb0` and
-a correctness, evidence and reproducibility work package is sitting in the working tree unreleased.
-It changes `index.html` and files under `src/`, so the live page no longer serves what this review
-read. Every count below was taken from a command run in that working tree on 2026-09-02, on Windows,
-and every one of them has to be taken again from a fresh clone at the released commit. Reviewed one
-day before the deadline, with the video still unrecorded and no freeze commit declared.
+`c93b138`. Revised 2026-09-01 against `ab2db69`. **Revised again 2026-09-02, and again not against
+a released commit**, which is a weaker footing and is said rather than hidden: `origin/main` is
+`12f7935`, the deployed runtime is `e942ee3`, and filing integrity work is sitting in the working
+tree unreleased. It changes `src/core/claim.js`, one of the 26 files the page loads, so the live
+page no longer serves what this review read. Every count below was taken from a command run in that
+working tree on 2026-09-02, on Windows, and every one has to be taken again from a fresh clone at
+the released commit. Reviewed one day before the deadline, with the video still unrecorded and no
+freeze commit declared.
 
 ## What the criteria actually are
 
@@ -70,8 +76,6 @@ is not mistaken for a list of everything that is true.
 
 ## 1. WebMCP Leverage, 25 percent
 
-**Estimate: 8.5 out of 10. Ours, not measured.**
-
 What earns it. Both halves of the standard ship, not one. Nine tools register in JavaScript, and a
 tenth is an ordinary HTML form carrying four attributes, so the page shows an insurer the cheap
 adoption path as well as the thorough one. The tool surface moves at runtime: say the car cannot be
@@ -84,8 +88,9 @@ What a judge marks down.
 
 - **Filing, assistance and pinning reach no tool.** The page says so, and it is the right call for
   safety, but a judge reading "your agent handles the claim" and then finding that the agent cannot
-  file it has met a smaller product than the sentence promised. The description does say this. It
-  says it in the last third, after the claim.
+  file it has met a smaller product than the sentence promised. The description does say this. Since the
+  2026-09-02 cut it says it in bold, in the What it does section, under the heading **Filing is human
+  only**, which is the middle of the file rather than the last third.
 - **The declarative half has never been seen working in the surface the video is shot on.** Chrome
   151 builds the tool from the markup and runs it. The ChatGPT desktop browser has not been watched
   doing so, and the page cannot see what a browser synthesised, so we cannot close this from here.
@@ -110,15 +115,13 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 
 ## 2. Execution, 25 percent
 
-**Estimate: 8 out of 10 if the video lands. 5 out of 10 if it does not. Ours, not measured.**
-
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
-serves and it can be proved in one command. 861 unit tests, from `node --test tests/unit` printing
-`# tests 861`, `# pass 861` and `# fail 0` on 2026-09-02, which is the command this file is required
-to carry rather than a number somebody typed. A style gate over 187 text files, from
+serves and it can be proved in one command. 872 unit tests, from `node --test tests/unit` printing
+`# tests 872`, `# pass 872` and `# fail 0` on 2026-09-02, which is the command this file is required
+to carry rather than a number somebody typed. A style gate over 189 text files, from
 `node scripts/check_style.mjs`. Coverage of `src` alone, from
 `node --test --experimental-test-coverage --test-reporter=./tests/support/coverage_report.mjs --test-reporter-destination=stdout tests/unit`,
-which printed `src, 21 files` at 98.18 percent of lines, between 88.4 and 88.6 percent of branches and 97.86 percent
+which printed `src, 21 files` at 98.25 percent of lines, 88.64 percent of branches and 97.87 percent
 of functions against floors of 97, 86 and 96. A
 readiness gate that prints one row per deliverable and breaks every row it prints, in its own copy
 of the repository, to show that each one refuses. Numbers in the README come with the command that
@@ -144,7 +147,13 @@ What a judge marks down.
 - **Our own evidence has been wrong more than once and we found it by reading, not by a gate.** A
   Status row claimed the browser evidence stood against the served bytes when it no longer did. A
   README command carried a broken line continuation and exited 2 for anyone who pasted it. Both were
-  caught by a person, days out. A judge cannot see how many were not caught.
+  caught by a person, days out. A judge cannot see how many were not caught. The newest of them is
+  the reason the freeze is broken on 2026-09-02: the private filing receipt attested the identity of
+  the object that was filed rather than the state that was filed, so a value changed after filing was
+  sealed and hashed into a packet that went on saying the filing happened through a control on the
+  page. It is closed, with the measured before values kept in
+  `tests/unit/filing_receipt_state.test.js`. A previous refutation pass had named that exact gap and
+  written it down instead of fixing it, which is the part a judge would mark.
 - **The impact study went against us and we published it anyway.** That is the right thing to have
   done and it does not score points. It scores points for honesty and it removes the number that
   would have scored points for impact.
@@ -163,7 +172,7 @@ strongest claims here are commands, and a judge who does not run them is left wi
 
 ## 3. Potential Impact, 25 percent
 
-**Estimate: 6 out of 10. Ours, not measured. This is the weakest of the four and we know why.**
+**This is the weakest of the four and we know why.**
 
 What earns it. The problem is real and the owner works in it. The surface is one a driver already
 opens on the worst morning of their year. The trigger is the crash, not a login. The thing it
@@ -201,8 +210,6 @@ There is no handler in the loop, and there was never going to be one in the time
 ---
 
 ## 4. Creativity & Ambition, 25 percent
-
-**Estimate: 7 out of 10. Ours, not measured.**
 
 What earns it. A tool surface that withdraws a capability when the world changes under it is not a
 common demo. Neither is shipping both halves of the standard and then proving they share one code
@@ -249,12 +256,15 @@ seconds of video to land.
 Four of those five are answered somewhere in the repository. The first is not answerable by writing
 anything. It is answerable by recording.
 
-Number 5 closed, reopened when the correctness work landed on the runtime, and closed again the
-same way. Run 33588857520 drove `e942ee3`, which is what the host serves, and
+**Number 5 is open, and a judge would be right to say it.** It closed on 2026-09-01, reopened when
+the correctness work landed on the runtime, and closed again: runs 33588857520 and 33600367240 both
+drove the `e942ee3` the host serves, and
 `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/
---deployed-sha e942ee3` says so over all 26 files the page loads. The evals workflow runs daily and on dispatch rather than on push, so the next commit that
-touches a file the page loads reopens the gap. Anyone finishing this entry re-dispatches that
-workflow against `main` after the last such commit, and before the video is uploaded.
+--deployed-sha e942ee3` says so over all 26 files the page loads. It is open a third time as this is
+written, because filing integrity work in the working tree changes `src/core/claim.js`, which is one
+of those 26 files. The evals workflow runs daily and on dispatch rather than on push, so the gap
+reopens on every commit that touches them. Anyone finishing this entry re-dispatches that workflow
+against `main` after the last such commit, and before the video is uploaded.
 
 ## The decision this file used to demand, which does not exist
 
@@ -331,9 +341,9 @@ against this entry. Here is each one with what was actually done, and none of th
 recorded as closed just because something was written.
 
 **J1, one named persona rather than a market. OWNER ITEM, still red.** The standard asks for a real
-person named verbatim. The description says "the driver at the roadside with a damaged car and a
-phone, and the handler who works what they send", which is a person in a setting doing a job, and it
-is still a segment rather than somebody with a name. **This one is not fixable from inside the
+person named verbatim. The description opens on "the driver at the roadside" and names who builds
+it, "I build claims systems for European assistance operators", which is a person in a setting doing
+a job. It is still a segment rather than somebody with a name. **This one is not fixable from inside the
 repository, and writing a name in would be the worst possible response**: an invented customer in a
 judge-facing file is fabricated evidence, which is the one thing this project refuses. It needs the
 owner to name a real operator or a real driver they have spoken to, and to be willing to have that
@@ -341,21 +351,26 @@ checked. Until then the row stays red and says why.
 
 **J2, a real consequence behind the hero. Document defect, fixed.** Filing produced a packet a
 reader could take for something an insurer had received. It is not. It is built in the browser tab,
-from the draft on screen, and nothing is sent anywhere. Two changes landed: the description now
-carries a paragraph saying exactly what a bare SHA-256 is worth and what it is not
-(`docs/submission/description.md`, the paragraph beginning "That digest is a plain SHA-256"), and the
-README's packet row now enumerates what a matching digest does not show, page origin and authorship
-among them. **The underlying limit is not fixed and cannot be**: the consequence this gate guards is
+from the draft on screen, and nothing is sent anywhere. Two changes landed: the description says what a bare SHA-256 is
+worth and what it is not, in the paragraph that begins "**Filing is human only.**" and ends "With no
+key and no signature, a match shows only that the content is unchanged", and the README's packet row
+enumerates what a matching digest does not show, page origin and authorship among them. The
+description was cut from 1,265 words to 746 on 2026-09-02 and that sentence survived the cut in a
+shorter form, which is the test of whether it was load bearing. This paragraph quoted the longer
+wording for an hour after the cut, which is the small version of the defect this whole file is
+about: a document describing another document it had stopped matching. **The underlying limit is not fixed and cannot be**: the consequence this gate guards is
 a local artifact, not a filed claim, and that ceiling on Potential Impact is real. What was fixed is
 a document that let a reader believe otherwise.
 
 **J3, one headline comparative number. Document defect, fixed, and the honest reading is that we do
 not have one.** The 9 against 8 intake figure is a count of fields over two rule packs this
-repository invented, Kestrel Assurance and Northwind Mutual, and it belongs to no real policy. Both
-judge-facing files now say that in the same breath as the number: the description reads "on the two
-invented packs here and nowhere else", and the README's list under the figure opens with "It
-measures this repository's own invented rule packs". `node scripts/measure_intake.mjs` prints every
-one of the twelve pack and incident type combinations, so neither end of the range is hidden.
+repository invented, Kestrel Assurance and Northwind Mutual, and it belongs to no real policy. The README's list under the figure opens
+with "It measures this repository's own invented rule packs", and `node scripts/measure_intake.mjs`
+prints every one of the twelve pack and incident type combinations, so neither end of the range is
+hidden. **The figure is no longer in the description at all.** It was cut on 2026-09-02, when the
+description came down from 1,265 words to 746, and cutting it is the honest end of this row: a
+number counted on fixtures we wrote was never going to carry a headline, and the space went to the
+negative study instead.
 **What the standard actually asks for, a metric that beats an obvious baseline with an n beside it,
 this entry does not have**, and the one comparative study that was run came out against the page:
 5 of 18 policy complete against 6 of 18 for a static form, with two truth mismatches against none.
@@ -365,7 +380,7 @@ not as satisfied by a field count.
 **J4, the sponsor's product is load-bearing. Green.** Remove `document.modelContext` and
 `navigator.modelContext` and there is no tool surface, no runtime discovery and no capability
 appearing or being withdrawn, so the page degrades to an ordinary insurance form. The description
-says so in its first section. The gap that remains is persona 01's K1, recorded above as unrun.
+says so under Why it is a strong fit for WebMCP and again under How it was built and implemented. The gap that remains is persona 01's K1, recorded above as unrun.
 
 **J5, one republishable sentence first. Green.** 25 words, no em dash, first in both the README and
 the description, and pinned by the `FLAGSHIP`, `IDX`, `LIVE` and `RDM` readiness rows so the four

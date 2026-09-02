@@ -56,11 +56,11 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520), workflow `WebMCP evals`, conclusion success, run 2026-09-02, dispatched against `main` after the release was served so the run and the deployment name one commit |
-| Commit under test | `e942ee3`, **and that is the commit the host serves**. Checked, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha e942ee3` fetches all 26 files the page loads and printed `the deployed page is e942ee3, on every one of those files`, exit 0. The workflow runs on a daily schedule and on dispatch rather than on push, so the gap opens again on the next commit that touches a file the page loads |
+| Run | [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240), workflow `WebMCP evals`, conclusion success, run 2026-09-02. It is the newest run, and [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) before it reported the same three numbers with `headSha` `e942ee3` |
+| Commit under test | `headSha` `12f7935`, a documentation only commit whose runtime is `e942ee3`, **and `e942ee3` is what the host served on 2026-09-02**. Checked, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha e942ee3`, run from a clone at that commit, fetches all 26 files the page loads and printed `the deployed page is e942ee3, on every one of those files`, exit 0. **The gap is open again.** Filing integrity work in the working tree changes `src/core/claim.js`, one of those 26 files, so this run says nothing about the runtime this entry will record and the workflow has to be dispatched against `main` after the release |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
-| Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
-| Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
+| Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step. That string was read from the log of 33588857520; the dev channel moves, so re-read it from the run you are quoting |
+| Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179`, which is pinned in the workflow and so is the same in both runs |
 | Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
 | Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 81 checks against the deployed page, none failed`. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle, not to the product |
 
@@ -72,11 +72,12 @@ the one quoted here for a reason worth stating: each of the others was driven ag
 later commits superseded, and two of those commits changed what the browser loads. A green run
 against bytes the host no longer serves is not evidence about the live page, so this file is
 re-run rather than left pointing at the old number. Read it for yourself with
-`gh run view 33588857520 --repo upgradedev/claimready --log`, and confirm the commit with
-`gh run view 33588857520 --repo upgradedev/claimready --json headSha`.
+`gh run view 33600367240 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33600367240 --repo upgradedev/claimready --json headSha`, which prints
+`12f7935e3e6e9362471c8f62cdb51b332db42d5d`.
 
 **The negative control HAS now run in a browser, twice.** This paragraph used to say it had not, at
-any commit. In runs 33334936720, 33458929502, 33560224732 and 33588857520 its own job reported `Passed steps: 7/8 across 1
+any commit. In runs 33334936720, 33458929502, 33560224732, 33588857520 and 33600367240 its own job reported `Passed steps: 7/8 across 1
 case(s).` and named the step that had to fail: `step 8 (get_assistance_options): tool
 "get_assistance_options" is not available.` The workflow asserts both the summary and that sentence,
 so a browser that quietly kept the tool would have turned the job green and failed the assertion
@@ -178,7 +179,11 @@ re-running the probe as it is now. **Where the 81 comes from, because a count ne
 transcript, and the judgement runs exactly that many: raise the floor above it and the assertion
 message prints the count it actually ran. Measured that way on 2026-09-02, on Windows, it printed
 `expected a real matrix, ran 81 checks`. The two lines are kept because they are true about the runs they
-name. **The native evidence has to be re-run before either number is quoted again.**
+name, and 81 is the number to quote now. It has been run twice on a runner since, in
+[33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) and [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240), both against the `e942ee3`
+the host serves. **Neither describes the runtime this entry will record**: filing integrity work in
+the working tree changes `src/core/claim.js`, which is one of the 26 files the page loads, so the
+workflow has to be dispatched against `main` once more after the release is served.
 
 **What stops a green run here from going stale, now that it runs unattended.** This workflow runs
 daily and on dispatch rather than on push, so `main` moves under it. Before the browser is opened,
