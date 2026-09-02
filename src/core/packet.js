@@ -799,8 +799,16 @@ export function buildFilingPacket(input) {
       `${nameless.length} of the ${rows.length} rows on the ledger name no tool at all. A packet `
       + 'lists the calls an agent made against this page, and a call with no name is not one a '
       + 'handler can look up or this page can stand behind. The row is refused rather than dropped, '
+      // THE WORD HERE IS "record" AND NOT "document", AND THAT IS THE READINESS GATE, NOT TASTE.
+      // checkCorePurity in scripts/readiness.mjs matches its banned word list against the source
+      // with comments stripped and STRING LITERALS LEFT IN, so an ordinary English "document"
+      // inside a refusal sentence reads to it as src/core reaching for the browser. It failed that
+      // way once, on this exact line: PUR intact FAIL, "packet.js uses document", which also broke
+      // the gate's own selftest. The gate was not loosened to accept the sentence, a day out from a
+      // deadline, so the sentence gives way instead. Every refusal string in src/core has to avoid
+      // document, window, navigator, fetch and the timer names as plain English words.
       + 'for the same reason the row below it is: a shorter ledger than the one handed in is a '
-      + 'document a handler cannot tell has lost anything.',
+      + 'record a handler cannot tell has lost anything.',
     );
   }
 
