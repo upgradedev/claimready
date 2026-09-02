@@ -35,17 +35,24 @@ python video/build_video.py --verify-deployed   --url https://upgradedev.github.
 It printed `the deployed page is 357410e, on every one of those files` and exited 0, over all 26 of
 them, the three insurer and demo JSON fixtures among them.
 
-**Native evidence against that same commit**, dispatched after the release rather than quoted from
-an older run: [run 33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770),
-workflow `WebMCP evals`, conclusion success, `headSha` `357410e`, on
-`Google Chrome 154.0.8025.0 dev`. It reported `Passed steps: 16/16 across 3 case(s)`, the negative
-control `Passed steps: 7/8 across 1 case(s)` with the verdict `PROVEN`, and our own probe
-`probe: PASS. 81 checks against the deployed page, none failed`. **That 81 is what the run printed
-and it is no longer the size of the gate.** Later on 2026-09-02 three calls in the probe's journey
-were found to have no reading of the draft either side of them, closing that took the matrix to 110,
-and the change is in `evals/` and `tests/` only. None of the 26 files the page loads moved, so the
-takes still stand against `357410e` and nothing needs re-cutting. The run that prints 110 has still
-to be dispatched.
+**Native evidence against that same runtime**, dispatched after the release rather than quoted from
+an older run: [run 33623166901](https://github.com/upgradedev/claimready/actions/runs/33623166901),
+workflow `WebMCP evals`, conclusion success, on `Google Chrome 154.0.8025.0 dev`. It reported
+`Passed steps: 16/16 across 3 case(s)`, the negative control `Passed steps: 7/8 across 1 case(s)`
+with the verdict `PROVEN`, and our own probe
+`probe: PASS. 110 checks against the deployed page, none failed`.
+
+**That run's head is `6a855f7`, not `357410e`, and the freeze still holds.** The commits between
+them changed `evals/`, `scripts/` and `tests/` and nothing else. None of the 26 files the page loads
+moved, which the verify command above confirms against `357410e` after each of them, so the takes
+stand and nothing needs re-cutting.
+
+**Read 110 as the size of the judgement rather than a score for the page.** It was 53, then 71, then
+81, then 110, and the page did not improve between them. Each rise is a class of forged transcript
+that used to pass: first the schema and the origin, then the note read and the declarative write,
+then three calls that had no reading of the draft either side of them. An earlier
+[run 33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) printed 81
+against these same bytes, and it is kept as a true statement about the judgement of that hour.
 
 **What may change after this line, and what may not.** Commits after `357410e` may touch
 documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/` or
