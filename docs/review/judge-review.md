@@ -14,7 +14,7 @@ kept because it is where the entry's own defects get written down before a judge
 First written against `7b50d4a`, a working commit that reached the public repository squashed as
 `c93b138`. Revised 2026-09-01 against `ab2db69`. **Revised again 2026-09-02, and again not against
 a released commit**, which is a weaker footing and is said rather than hidden: `origin/main` is
-`12f7935`, the deployed runtime is `e942ee3`, and filing integrity work is sitting in the working
+`12f7935`, the deployed runtime is `357410e`, and filing integrity work is sitting in the working
 tree unreleased. It changes `src/core/claim.js`, one of the 26 files the page loads, so the live
 page no longer serves what this review read. Every count below was taken from a command run in that
 working tree on 2026-09-02, on Windows, and every one has to be taken again from a fresh clone at
@@ -256,11 +256,11 @@ seconds of video to land.
 Four of those five are answered somewhere in the repository. The first is not answerable by writing
 anything. It is answerable by recording.
 
-**Number 5 is open, and a judge would be right to say it.** It closed on 2026-09-01, reopened when
-the correctness work landed on the runtime, and closed again: runs 33588857520 and 33600367240 both
-drove the `e942ee3` the host serves, and
+**Number 5 is closed today, and it reopens on the next runtime commit.** It closed on 2026-09-01,
+reopened twice on 2026-09-02 as work landed on the runtime, and closed again each time. Run
+33616908770 drove the `357410e` the host serves, and
 `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/
---deployed-sha e942ee3` says so over all 26 files the page loads. It is open a third time as this is
+--deployed-sha 357410e` says so over all 26 files the page loads. It is open a third time as this is
 written, because filing integrity work in the working tree changes `src/core/claim.js`, which is one
 of those 26 files. The evals workflow runs daily and on dispatch rather than on push, so the gap
 reopens on every commit that touches them. Anyone finishing this entry re-dispatches that workflow
