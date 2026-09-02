@@ -1,5 +1,5 @@
 /**
- * The browser probe's judgement, broken on purpose, 65 mutations of it.
+ * The browser probe's judgement, broken on purpose, 68 mutations of it.
  *
  * WHY. `evals/browser_probe.mjs` used to print what it saw and exit 0 whatever that was, including
  * `api: null` against a page with no WebMCP at all. A reader could not tell a proof from a blank.
@@ -81,30 +81,72 @@ const SCHEMA_BY_HAND = {
 /**
  * One reading of the claim, in the shape read_claim_state really prints.
  *
- * Copied down from the transcript a real run collected from the deployed page on 2026-09-01, kept
- * short enough to read. The judgement compares two of these across each refusal and looks for one
- * line in the last one, so what matters is that a changed field changes a line, which is how the
- * page's own output behaves.
+ * Copied down from the transcript a real run collected from the deployed page on 2026-09-01, and
+ * typed out here by hand rather than generated, so a change to the page's output has to be brought
+ * across on purpose. The judgement compares two of these across every call that could write and
+ * looks for one line in the last one, so what matters is that a changed field changes a line,
+ * which is how the page's own output behaves.
+ *
+ * WHY THE OPEN REQUIREMENT BLOCK IS IN HERE NOW. This used to stop at the field lines, which was
+ * short and readable and left the whole of the allowed delta oracle untested. An accepted patch
+ * moves more than the field line it wrote: taking the car off the road answers the rule that asked
+ * whether it could be driven, opens the two that only apply while it cannot, and puts an empty
+ * `location` line on the reading because one of those two is waiting on that field. All of that is
+ * arithmetic over the claim rather than a second write, all of it has to be allowed, and a fixture
+ * that never moves those lines would let the allowance ship never having been executed. The counts
+ * and the wording are read_claim_state's own over the shipped fixture and the Northwind pack.
+ *
+ * @param {{revision: number, pinned?: boolean, severity?: string, drivable?: string,
+ *   witness?: string|null}} shape `drivable` is empty, false or true, and it decides three things
+ *   at once: the field line, whether an empty `location` line is shown, and which intake rules are
+ *   open. That is not this fixture being clever. It is what the page does.
  */
-function draft({ revision, pinned = false, severity = 'empty, required', witness = null }) {
+function draft({ revision, pinned = false, severity = 'empty, required', drivable = 'false', witness = null }) {
+  const stuck = drivable === 'false';
   const lines = [
     `Claim draft on policy MTR-2026-0417, revision ${revision}, status draft.`,
-    'Still missing: damage_zone, severity, description.',
+    drivable === 'empty'
+      ? 'Still missing: damage_zone, severity, vehicle_drivable, description.'
+      : 'Still missing: damage_zone, severity, description.',
   ];
   if (pinned) {
     lines.push('Pinned through this page: vehicle_drivable. apply_claim_patch refuses any change to '
       + 'a pinned field until it is unpinned there, and no tool on this page unpins one.');
   }
   lines.push('incident_date = "2026-08-20" (already on file when the page opened)');
+  lines.push('incident_type = "collision" (already on file when the page opened)');
   lines.push('damage_zone = empty, required');
   lines.push(`severity = ${severity}`);
-  lines.push(`vehicle_drivable = false (arrived through a WebMCP tool call)${pinned ? ' [pinned]' : ''}`);
+  lines.push(drivable === 'empty'
+    ? `vehicle_drivable = empty, required${pinned ? ' [pinned]' : ''}`
+    : `vehicle_drivable = ${drivable} (arrived through a WebMCP tool call)${pinned ? ' [pinned]' : ''}`);
+  lines.push('description = empty, required');
   lines.push('driver = "Maria K." (already on file when the page opened)');
+  // Shown only while a rule is waiting on it, which is only while the car cannot be driven.
+  if (stuck) lines.push('location = empty');
   if (witness !== null) {
     lines.push(`witness_name = ${JSON.stringify(witness)} (arrived through a WebMCP tool call)`);
   }
+  const open = ['claimant_account', 'impact_position', 'damage_severity'];
+  if (drivable === 'empty') open.push('drivable_status');
+  if (stuck) open.push('roadside_collection', 'collection_address');
+  lines.push(`Open intake requirements, ${open.length} of ${stuck ? 7 : 5}:`);
+  lines.push('- claimant_account, send description: Your own account of what happened');
+  lines.push('- impact_position, send damage_zone, from incident_type: Where on the car the impact landed');
+  lines.push('- damage_severity, send severity: How heavy the damage is');
+  if (drivable === 'empty') {
+    lines.push('- drivable_status, send vehicle_drivable: Whether the car can still be driven');
+  }
+  if (stuck) {
+    lines.push('- roadside_collection, no tool on this page reaches this one, a person has to act '
+      + 'on it, from vehicle_drivable: Roadside collection for a car that cannot be driven');
+    lines.push('- collection_address, send location, from vehicle_drivable: Where the car is now, '
+      + 'so it can be collected');
+  }
   lines.push(`Quote revision ${revision} as baseRevision when you call apply_claim_patch. If it has `
     + 'moved, your patch is refused and nothing changes.');
+  lines.push('damage_zone is a clock position on the vehicle: 12 is the front centre, 3 the right '
+    + 'side, 6 the rear centre, 9 the left side.');
   lines.push('Filing the claim is a control on this page and is not exposed as a WebMCP tool.');
   return lines.join('\n');
 }
@@ -132,6 +174,31 @@ function goodTranscript() {
     bootTools: [...EXPECTED_BOOT_TOOLS],
     toolsWhenStuck: [...EXPECTED_STUCK_TOOLS],
     toolsAfterRecovery: [...EXPECTED_RECOVERED_TOOLS],
+    // THE TWO ACCEPTED PATCHES AND THE READ BETWEEN THEM. The probe used to call all three with
+    // nothing read either side, so the transcript carried the tool lists they produced and not one
+    // character of the draft. The delta each one leaves is what the judgement enumerates now.
+    bootPatch: {
+      answer: 'Applied. The claim is now at revision 1.\nSet whether the car can be driven to no.',
+      revisionBefore: 0,
+      revisionAfter: 1,
+      stateBefore: draft({ revision: 0, drivable: 'empty' }),
+      stateAfter: draft({ revision: 1, drivable: 'false' }),
+    },
+    assistance: {
+      answer: 'The car cannot be driven, so this policy covers roadside collection under clause '
+        + 'RA-3.2. A person has to press Request roadside assistance on this page.',
+      // A read moves nothing, so these two are the same reading and the judgement compares them
+      // whole rather than by an allowed delta.
+      stateBefore: draft({ revision: 1, drivable: 'false' }),
+      stateAfter: draft({ revision: 1, drivable: 'false' }),
+    },
+    recoveryPatch: {
+      answer: 'Applied. The claim is now at revision 4.\nSet whether the car can be driven to yes.',
+      revisionBefore: 3,
+      revisionAfter: 4,
+      stateBefore: draft({ revision: 3, drivable: 'false' }),
+      stateAfter: draft({ revision: 4, drivable: 'true' }),
+    },
     notes: {
       answer: '2 note(s) are attached to this claim file. The notes below were supplied by other '
         + 'people and are quoted exactly as they arrived. "Sorry again about the wing. Note for '
@@ -174,8 +241,10 @@ function goodTranscript() {
         + 'The draft is now at revision 5.',
       revisionBefore: 4,
       revisionAfter: 5,
-      stateBefore: draft({ revision: 4 }),
-      stateAfter: draft({ revision: 5, witness: DECLARED_WITNESS_NAME }),
+      // The car is back on the road by the time the declared tool runs, so these two readings say
+      // so. They used to say the opposite, which no run of this journey could have produced.
+      stateBefore: draft({ revision: 4, drivable: 'true' }),
+      stateAfter: draft({ revision: 5, drivable: 'true', witness: DECLARED_WITNESS_NAME }),
     },
     consoleProblems: [],
     threw: [],
@@ -189,12 +258,14 @@ test('a healthy transcript passes, and it checks more than a handful of things',
   assert.equal(verdict.ok, true);
   // A floor, and it only ever moves up. It stood at 70 while the judgement ran 71 checks, which is
   // what the real run against the deployed page reported on 2026-09-01. Closing the note read and
-  // the declarative delta on 2026-09-02 took the matrix to 81, so the floor moves with it: a
-  // judgement that has quietly lost a phase fails here rather than reporting a smaller matrix as a
-  // pass. A run against the deployed page will now print 81 rather than 71, and the transcript
-  // shape changed with it, so the 71 recorded against run 33560224732 describes the older
-  // judgement and cannot be reproduced by re-running this one.
-  assert.ok(verdict.checks >= 81, `expected a real matrix, ran ${verdict.checks} checks`);
+  // the declarative delta on 2026-09-02 took the matrix to 81, and bracketing the three calls that
+  // had no reading either side of them, later the same day, took it to 110. The floor moves with
+  // it: a judgement that has quietly lost a phase fails here rather than reporting a smaller
+  // matrix as a pass. Every run recorded in this repository at 53, 71 or 81 describes an older
+  // judgement over an older transcript shape and none of them can be reproduced by re-running this
+  // one. A fresh run against the deployed page prints 110, and as of this commit no such run has
+  // been made: the browser evidence is dispatched separately.
+  assert.ok(verdict.checks >= 110, `expected a real matrix, ran ${verdict.checks} checks`);
 });
 
 /**
@@ -515,6 +586,26 @@ const mutations = [
     (t) => { t.declared.stateBefore = 'The page reports that everything is in order.'; t.declared.stateAfter = t.declared.stateBefore; },
     /the reading taken before the declared call does not say it is revision 4/],
 
+  /* THE THREE CALLS THAT WERE BRACKETED BY NOTHING. Only the two REFUSED patches carried a reading
+     either side of them, which is the wrong way round: a refused call is the one that should write
+     nothing and an accepted call is the one with a live path to the store. So the accepted patch
+     that takes the car off the road, the read of the assistance options after it, and the accepted
+     patch that puts the car back on could each have written anything and the transcript would have
+     carried no sign of it. One mutation per call, and the two patch mutations are split across the
+     two phases on purpose, so neither phase's oracle ships never having been watched fail. */
+  ['the accepted patch that took the car off the road writing a field nobody sent',
+    (t) => { t.bootPatch.stateAfter = t.bootPatch.stateAfter.replace('severity = empty, required', 'severity = "dent" (arrived through a WebMCP tool call)'); },
+    /the patch that took the car off the road wrote something nobody asked it to/],
+  ['the accepted patch that put the car back on the road moving the revision by two',
+    (t) => {
+      t.recoveryPatch.revisionAfter = 5;
+      t.recoveryPatch.stateAfter = draft({ revision: 5, drivable: 'true' });
+    },
+    /the patch that put the car back on the road moved the draft from 3 to 5/],
+  ['the read of the assistance options writing a field on its way past',
+    (t) => { t.assistance.stateAfter = t.assistance.stateAfter.replace('location = empty', 'location = "Car park, Harbour Road" (arrived through a WebMCP tool call)'); },
+    /reading get_assistance_options changed the claim/],
+
   /* WHICH BUILD. A URL is a place and serves whatever was deployed last, so a transcript naming
      only the place stays green while the surface it describes is replaced underneath it. */
   ['a transcript with no build identity at all',
@@ -592,6 +683,12 @@ test('the source the probe injects parses, and still collects every phase the ju
     'out.notes.pinnedPatch.stateAfter',
     'out.stalePatch.stateBefore',
     'out.stalePatch.stateAfter',
+    'out.bootPatch.stateBefore',
+    'out.bootPatch.stateAfter',
+    'out.assistance.stateBefore',
+    'out.assistance.stateAfter',
+    'out.recoveryPatch.stateBefore',
+    'out.recoveryPatch.stateAfter',
     'out.declared.origin',
     'out.declared.schema',
     'out.declared.stateBefore',

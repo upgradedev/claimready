@@ -64,6 +64,67 @@ if (!content || content.kind !== PACKET_KIND) {
 // Exit 2, with the unreadable file, rather than exit 1. Exit 1 means the content and the digest
 // disagree, which is a real answer about a real packet. This is the other thing: it is not a packet
 // this build describes, so there is no digest question to answer yet.
+// KEYS THIS BUILD NEVER WRITES ARE REFUSED HERE, and this is the half checkPacketContent does not
+// do. It validates the keys it knows and walks past every key it does not, at every level. A
+// reviewer walked straight through that with a text editor: take the shipped example, add
+// `insurer_receipt: {received: true, by: "Northwind Claims"}` and `policy.underwriter_signature`,
+// recompute the digest, and the verifier printed `The digest matches` and exited 0. Outside the
+// digested region it did not even need the recompute.
+//
+// That matters more here than anywhere else in this repository, because this script is the thing a
+// handler runs on a document somebody else handed them. The page only ever verifies packets it just
+// built. So the refusal lives here rather than in src/core/packet.js: this is where a foreign
+// document arrives, and the runtime the takes are shot against does not move for it.
+//
+// The lists are written out rather than derived from the example file, because a check that reads
+// its expectation from a document is a check that agrees with whatever it is given.
+// THE ENVELOPE IS THE MORE DANGEROUS HALF, and it is the one a first pass at this missed. A key
+// added beside `content` rather than inside it needs no recomputed digest at all: the digest covers
+// the content and nothing else, so `insurer_receipt` sitting next to it survives untouched and the
+// verifier goes on printing that the digest matches. A handler reading the file sees a receipt, and
+// the line under it agrees.
+const ALLOWED_ENVELOPE_KEYS = ['content', 'content_digest', 'generated_at'];
+
+const foreignEnvelope = Object.keys(parsed)
+  .filter((key) => !ALLOWED_ENVELOPE_KEYS.includes(key));
+if (foreignEnvelope.length > 0) {
+  console.error(`${path} carries ${foreignEnvelope.length} key(s) beside the packet that this build `
+    + 'never writes. The digest covers the content and nothing else, so a key added here is not '
+    + 'protected by it and never was.');
+  console.error('');
+  for (const key of foreignEnvelope.sort()) console.error(`  ${key}`);
+  process.exit(2);
+}
+
+const ALLOWED_KEYS = {
+  '': ['claim', 'coverage', 'filed', 'human_actions_completed', 'kind', 'notice',
+    'pinned_by_the_claimant', 'policy', 'provenance', 'reference', 'requirements', 'synthetic',
+    'tool_calls', 'version'],
+  filed: ['at', 'revision', 'through'],
+  policy: ['insurer', 'number', 'pack_contract', 'pack_id', 'pack_period', 'pack_product'],
+  coverage: ['clause', 'covered', 'currency', 'deductible', 'exclusions', 'provisional',
+    'provisional_reason', 'reason', 'recomputed_from'],
+  claim: ['damage_zone', 'description', 'driver', 'incident_date', 'incident_type', 'location',
+    'severity', 'vehicle_drivable'],
+};
+
+const foreign = [];
+for (const [where, allowed] of Object.entries(ALLOWED_KEYS)) {
+  const held = where === '' ? content : content[where];
+  if (!held || typeof held !== 'object' || Array.isArray(held)) continue;
+  for (const key of Object.keys(held)) {
+    if (!allowed.includes(key)) foreign.push(where === '' ? key : `${where}.${key}`);
+  }
+}
+if (foreign.length > 0) {
+  console.error(`${path} carries ${foreign.length} key(s) this build never writes, so it is not a `
+    + 'packet this page produced, whatever its digest says.');
+  console.error('An added key is how a document gets made to assert something the page never said.');
+  console.error('');
+  for (const key of foreign.sort()) console.error(`  ${key}`);
+  process.exit(2);
+}
+
 const shape = checkPacketContent(content);
 if (!shape.ok) {
   console.error(`${path} is not a packet this build describes, so the digest was not checked.`);
