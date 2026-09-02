@@ -113,6 +113,13 @@ returned, and that record is a set held privately in the module with no way to w
 outside. A status typed by hand, and a copy of a filed claim, both get a refusal instead of a
 document.
 
+The record names an object, so `fileClaim` freezes the whole claim it files, every nested value
+with it, before that object is recorded. Otherwise the check would be about an address rather than
+about a state: the page hands the same live object to whatever draws the packet, and a value
+changed after the filing would have been sealed and hashed under a sentence saying the filing had
+already happened. So the packet carries what passed the file gate, and nothing that arrived after
+it.
+
 That check lives entirely inside one browser tab and it dies with the tab. It cannot travel in the
 file. So to you, holding the packet, `filed.through` is a sentence the page wrote, exactly like
 every other sentence in there, and nothing on this page lets you check it. It is not a signature and
