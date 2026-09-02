@@ -21,40 +21,54 @@ and the path to save to.
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
-| Freeze commit | not yet declared. It is blank on purpose, and the release step fills it. Two earlier declarations are superseded and both are named below, with the reason |
+| Freeze commit | `e942ee3`, declared 2026-09-02 after the release was served and verified. Three earlier declarations are superseded and all are named below, with the reason |
 
-## The freeze, and why there is not one yet
+## The freeze
 
-**No freeze commit is declared, and the readiness row `FRZ` is red because of it.** That is the
-state on 2026-09-02 and it is not an oversight. A correctness, evidence and reproducibility work
-package is sitting in the working tree unreleased, and part of it changes `index.html` and files
-under `src/`. Those are among the 26 files the page loads. Naming a commit today would name one that
-no take could honestly be shot against, so the field stays blank until the work is released.
-
-**Two declarations are superseded. Each one is named here with its reason, rather than deleted.**
-
-**`c93b138`, declared 2026-09-02, superseded the same day.** It is what the rest of this runbook was
-written against, and everything below about beats, framing and takes still stands. It is superseded
-because it is no longer what a take would show. Work landed after it that touches the runtime, so a
-recording made against `c93b138` would show a page the repository no longer contains.
-
-**`39690d4`, never declared here, and superseded before it could be.** It is `origin/main`, so it is
-what a default dispatch of `.github/workflows/video.yml` would write into `manifest.json` as
-`deployed_sha`. It is superseded for the same reason. The unreleased work in the tree sits on top of
-it and changes the runtime, so it describes the page a judge opens today and not the page the takes
-will show.
-
-**What the release step has to do, in this order.** Release the work in the tree. Wait for GitHub
-Pages to serve it. Then run the verify command against the new commit, put that SHA in the record
-row at the top of this file, and re-run the native evidence against it:
+**Freeze commit: `e942ee3`.** Every file the page loads is at that commit. Verified against the live
+host on 2026-09-02, after Pages had served it:
 
 ```sh
-python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha <the new commit>
+python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha e942ee3
 ```
 
-It has to exit 0 over all 26 files the page loads before the SHA goes in the record row. Nothing
-here invents a SHA and no command above is written with one filled in, because a SHA typed ahead of
-the release is a guess that reads like a measurement.
+It printed `the deployed page is e942ee3, on every one of those files` and exited 0, over all 26 of
+them, the three insurer and demo JSON fixtures among them.
+
+**Native evidence against that same commit**, dispatched after the release rather than quoted from
+an older run: [run 33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520),
+`headSha` `e942ee3`, `Passed steps: 16/16 across 3 case(s)`, the negative control `7/8` with the
+verdict `PROVEN`, and our own probe `probe: PASS. 81 checks against the deployed page, none failed`.
+
+**The probe reports 81 checks where the last run reported 71, and the page is not why.** Its
+judgement grew: the evidence note phase and the declarative write phase were each found to pass a
+forged transcript describing a page behaving wrongly, so both now compare a full claim state rather
+than one field. Ten checks were added to the oracle, not to the product.
+
+**What may still change after this line, and what may not.** Commits after `e942ee3` may touch
+documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/` or
+`fixtures/`, because those are the 26 files the page serves and the takes are shot against them. The
+command above is how anyone checks the promise was kept: run it with `e942ee3` after any later
+commit and it still has to exit 0.
+
+### Three superseded declarations, each named with its reason rather than deleted
+
+**`c93b138`, declared 2026-09-02, superseded the same day.** Most of this runbook was written
+against it and everything about beats, framing and takes still stands. It stopped being what a take
+would show when the correctness work package landed on the runtime.
+
+**`39690d4`, never declared here, superseded before it could be.** It was `origin/main`, so a default
+dispatch of `.github/workflows/video.yml` would have written it into `manifest.json` as
+`deployed_sha`. The same work sat on top of it.
+
+**`9b64fb2`, declared 2026-09-01**, and the unfreeze that ended it is recorded below.
+
+### The native evidence that is kept for history, and is not about this freeze
+
+[run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732) ran with
+`headSha` `c93b138` and reported 16 of 16, the negative control at 7 of 8 `PROVEN`, and
+`probe: PASS. 71 checks`. That run is true about `c93b138` and is kept for that reason. It is not
+evidence about what will be recorded, and nothing quotes it as such.
 
 **The record row is what the gate reads, and it now reads only that row.** `FRZ` used to take the
 first line anywhere in this file that said freeze commit and carried a backticked hex string, which
@@ -62,17 +76,6 @@ meant a paragraph explaining a SUPERSEDED freeze was enough to turn it green. It
 this very file. The row is now the deliverable record row alone, and the SHA has to be the first
 thing in its cell, so the history above votes on nothing.
 `tests/unit/readiness_freeze_row.test.js` feeds both of those shapes in and requires a refusal.
-
-### The native evidence has to be re-run, and the numbers below are about an older runtime
-
-[run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732) ran with
-`headSha` `c93b138` and reported `Passed steps: 16/16 across 3 case(s)`, the negative control `7/8`
-with the verdict `PROVEN`, and our own probe `probe: PASS. 71 checks against the deployed page, none
-failed`. That run is true about `c93b138` and it is kept for that reason. It is not evidence about
-what will be recorded. Two things have moved under it. The runtime changed, and the probe's
-judgement grew from 71 checks to 81 when the note phase and the declarative phase were both found to
-pass a forged transcript, so a fresh run cannot reproduce the number 71 at all. Re-run the evals
-workflow against the new commit once it is live, and quote that run instead of this one.
 
 ### The unfreeze that produced the superseded `c93b138`, recorded as this file requires
 

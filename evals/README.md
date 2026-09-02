@@ -56,13 +56,13 @@ run happened, and all three are settled below.
 
 | | Observed |
 |---|---|
-| Run | [33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732), workflow `WebMCP evals`, conclusion success, run 2026-09-01 13:18 UTC, dispatched against `main` so that the run and the deployment are the same commit |
-| Commit under test | `c93b138`. **It was the commit the host served on 2026-09-01, and it is not what a take will show.** Unreleased work in the tree changes `index.html` and files under `src/`, so this run describes a superseded runtime and has to be repeated against the released commit. The runbook `docs/submission/video.md` says the same thing and declares no freeze until then. Do not take it on trust in either direction, check it: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha c93b138` fetches all 26 files the page loads and compares each to that commit. Run on 2026-09-01 it printed `the deployed page is c93b138, on every one of those files` and exited 0. Naming an older commit such as `21fc9f2` in that flag prints `what is on disk is not the SHA you named` and exits 1. This row has twice said a run stood against the served bytes when it did not: the workflow runs on a daily schedule and on dispatch rather than on push, so it lags `main` by up to a day by design, and the gap opens again on the next commit that touches a file the page loads. A green run against bytes the host no longer serves is not evidence about the live page |
+| Run | [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520), workflow `WebMCP evals`, conclusion success, run 2026-09-02, dispatched against `main` after the release was served so the run and the deployment name one commit |
+| Commit under test | `e942ee3`, **and that is the commit the host serves**. Checked, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha e942ee3` fetches all 26 files the page loads and printed `the deployed page is e942ee3, on every one of those files`, exit 0. The workflow runs on a daily schedule and on dispatch rather than on push, so the gap opens again on the next commit that touches a file the page loads |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179` |
 | Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
-| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 71 checks against the deployed page, none failed`. It had never run anywhere but a desktop before this run. That count is the judgement as it stood that day; it runs 81 checks now, so this line cannot be reproduced and is kept only because it is true about the run it names |
+| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 81 checks against the deployed page, none failed`. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle, not to the product |
 
 Earlier runs were green as well:
 [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
@@ -72,11 +72,11 @@ the one quoted here for a reason worth stating: each of the others was driven ag
 later commits superseded, and two of those commits changed what the browser loads. A green run
 against bytes the host no longer serves is not evidence about the live page, so this file is
 re-run rather than left pointing at the old number. Read it for yourself with
-`gh run view 33560224732 --repo upgradedev/claimready --log`, and confirm the commit with
-`gh run view 33560224732 --repo upgradedev/claimready --json headSha`.
+`gh run view 33588857520 --repo upgradedev/claimready --log`, and confirm the commit with
+`gh run view 33588857520 --repo upgradedev/claimready --json headSha`.
 
 **The negative control HAS now run in a browser, twice.** This paragraph used to say it had not, at
-any commit. In runs 33334936720, 33458929502 and 33560224732 its own job reported `Passed steps: 7/8 across 1
+any commit. In runs 33334936720, 33458929502, 33560224732 and 33588857520 its own job reported `Passed steps: 7/8 across 1
 case(s).` and named the step that had to fail: `step 8 (get_assistance_options): tool
 "get_assistance_options" is not available.` The workflow asserts both the summary and that sentence,
 so a browser that quietly kept the tool would have turned the job green and failed the assertion
