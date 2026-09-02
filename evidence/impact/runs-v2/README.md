@@ -14,9 +14,14 @@ Scored with:
       --contract claimready.impact.run.v2
 
 Over an empty folder that writes AWAITING_RUNS and exits 1, which is the correct state and is the
-file committed beside this one. It will keep saying that until all 36 records exist and every one of
-them carries the metadata v1 lost. Nothing is published from a partial set, and a v2 that also goes
-against the page gets published in the same words as v1.
+file committed beside this one. Nothing is published from a partial set, and a v2 that also goes
+against the page would get published in the same words as v1.
+
+**This folder stays empty for this submission, and that is a decision, not a delay.** The runner is
+closed: `--spend-credits` refuses before it reads a key, because the `published-rules` arm was never
+implemented and the `static-form` arm bills a request before it has the runtime facts its own
+metadata gate requires. v2 is a preregistration. It contributes no number to anything a judge reads,
+and the v1 result next door stands as the only measurement this entry has, negative as it is.
 
 The v1 runs next door in `../runs/` are frozen. Nothing in this folder replaces them, and the
 runner refuses an `--out` that resolves inside them.

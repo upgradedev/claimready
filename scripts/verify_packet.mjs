@@ -9,11 +9,21 @@
  * the requirements or the provenance and the digest stops matching, which is the whole point of
  * shipping it beside the data.
  *
- * Exit 0 when it matches, 1 when it does not, 2 when the file cannot be read as a packet.
+ * TWO CHECKS, IN THIS ORDER. First the shape, against the same schema src/core/packet.js runs
+ * before it seals anything: the filing instant, the provenance vocabulary, the pack contract, the
+ * cover block and the ledger entries. Then the digest. A matching digest over a document that is
+ * not a packet is the outcome most likely to be mistaken for a pass, so the shape goes first.
+ *
+ * AND SAY WHAT A MATCH IS WORTH. It is a bare SHA-256 with no key and no signature behind it, so it
+ * shows the content in front of you is the content that digest was computed over, and it shows
+ * nothing about who made the file. docs/handler-verification.md spells that out for a handler.
+ *
+ * Exit 0 when it matches, 1 when the content and the digest disagree, 2 when the file cannot be
+ * read as a packet this build describes.
  */
 import { readFileSync } from 'node:fs';
 
-import { canonicalise, digestOf, PACKET_KIND } from '../src/core/packet.js';
+import { canonicalise, checkPacketContent, digestOf, PACKET_KIND } from '../src/core/packet.js';
 
 const path = process.argv[2];
 if (!path) {
@@ -38,6 +48,31 @@ if (!content || content.kind !== PACKET_KIND) {
   process.exit(2);
 }
 
+// THE SHAPE IS CHECKED BEFORE THE DIGEST, AND THAT ORDER IS THE POINT.
+//
+// This script used to check that a content object existed and that its kind was ours, then hash
+// whatever was in it. So a file whose filing time read "09:15", whose provenance said a word this
+// page never writes, or whose cover said covered with an exclusion under it, verified perfectly:
+// the digest is a statement about bytes and says nothing about whether those bytes describe a
+// packet this page could have written. A handler was told the document was checked when only its
+// hash had been.
+//
+// A matching digest over a malformed document is the worst of the four outcomes, because it is the
+// one that looks settled. So the shape goes first, and it is checked by the same function
+// src/core/packet.js runs before it seals anything, rather than by a second list kept here.
+//
+// Exit 2, with the unreadable file, rather than exit 1. Exit 1 means the content and the digest
+// disagree, which is a real answer about a real packet. This is the other thing: it is not a packet
+// this build describes, so there is no digest question to answer yet.
+const shape = checkPacketContent(content);
+if (!shape.ok) {
+  console.error(`${path} is not a packet this build describes, so the digest was not checked.`);
+  console.error('A digest over a document like this would only make it look checked.');
+  console.error('');
+  for (const problem of shape.problems) console.error(`  ${problem}`);
+  process.exit(2);
+}
+
 const canonical = canonicalise(content);
 const recomputed = await digestOf(canonical);
 const claimed = parsed.content_digest;
@@ -53,4 +88,13 @@ if (claimed !== recomputed) {
   process.exit(1);
 }
 
-console.log('\nThe digest matches, so this packet is the one the page built from that filed revision.');
+// SAY WHAT THE MATCH IS WORTH AND NO MORE. This line used to read "so this packet is the one the
+// page built from that filed revision", which is a claim about where the file came from, and a bare
+// SHA-256 with no key and no signature behind it cannot support one. Anyone can edit the content and
+// recompute the digest to match. What the match does give is worth having on its own, and it is what
+// the sentence says now.
+console.log('\nThe digest matches: this content is the content that digest was computed over.');
+console.log('That catches a packet changed on the way to you, and two copies that have drifted');
+console.log('apart. It is a bare SHA-256 with no key and no signature, so it does not show which');
+console.log('page made this packet, who wrote it, or that nobody edited the content and recomputed');
+console.log('the digest to match. docs/handler-verification.md says the same in more detail.');

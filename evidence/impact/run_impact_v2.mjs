@@ -1,17 +1,34 @@
 /**
- * The protocol v2 runner. It is finished, it is testable, and it has never been run.
+ * The protocol v2 runner. IT IS NOT OPERATIONAL. It is a preregistration and nothing else.
  *
  *   node evidence/impact/run_impact_v2.mjs --selftest
  *   node evidence/impact/run_impact_v2.mjs --scenario S1-carpark-dent --arm static-form --repeat 1
- *   node evidence/impact/run_impact_v2.mjs --scenario S1-carpark-dent --arm static-form --repeat 1 \
- *        --out evidence/impact/runs-v2 --spend-credits
  *
- * NOTHING HERE REACHES THE NETWORK UNLESS `--spend-credits` IS ON THE COMMAND LINE. That is the
- * point of the file. v1's runner spent money the moment `OPENAI_API_KEY` was in the environment,
- * which is every shell on this machine, so the only thing standing between a stray command and a
- * bill was remembering not to type it. Here the default is a dry run: the same code path, the same
- * record assembly, the same guards, a stub transport, and nothing written. A run that costs money
- * has to be asked for by name.
+ * NOT OPERATIONAL IS A STATEMENT ABOUT THIS FILE, NOT A PLAN. Three things are wrong with it and
+ * all three are stated here rather than found by whoever types the expensive command:
+ *
+ *   1. ONE ARM DOES NOT EXIST. `published-rules` is the arm the whole study is about, and the loop
+ *      that drives it was never copied across from v1. It throws where the loop should be. A study
+ *      with one arm compares nothing.
+ *   2. THE OTHER ARM SPENDS MONEY AND THEN THROWS THE ANSWER AWAY. `static-form` sends its request
+ *      before anything has read the runtime facts, so `verified_runtime_sha` is still null when the
+ *      metadata gate looks at it, and the gate correctly refuses to write the record. The call is
+ *      billed either way. That is the worst possible order and it is why the paid path is closed
+ *      below rather than fixed the night before a deadline.
+ *   3. THE METADATA GATE COUNTED PRESENCE, NOT MEANING. Any non-empty string satisfied it, so the
+ *      dry run's own placeholders read as a complete record. `missingMetadata` refuses those
+ *      values now, which is the narrow half of that problem. The broad half, that a string can be
+ *      wrong without being obviously a placeholder, is not solved and is not solvable here.
+ *
+ * SO `--spend-credits` IS CLOSED. It refuses, before it reads a key and before anything reaches the
+ * network. There are no v2 runs, `evidence/impact/runs-v2` is empty, `results-v2.md` says
+ * AWAITING_RUNS over a table of zeros, and no number anywhere in this entry comes from v2. The v1
+ * result stands as it is: negative, published, and not reinterpreted because a second study exists
+ * on paper.
+ *
+ * What is left working is the dry run and the guards, because those are what a reader can check.
+ * The default mode assembles a record, runs both guards, prints what it would have done and writes
+ * nothing.
  *
  * WHAT V2 CHANGES, all of it because of `evidence/impact/errata-v1.md`:
  *
@@ -26,11 +43,9 @@
  *   4. `attempted_human_only` is gone. It was never measured. Nothing replaces it until something
  *      actually watches for a tool call that tried to file, pin or dispatch.
  *
- * WHY IT CANNOT RUN TODAY, stated here rather than discovered later. `verified_runtime_sha` has to
- * be read back out of the running page, and the page does not publish its build SHA anywhere a
- * script can read. Until it does, a real run stops at the metadata gate with the message below.
- * That is deliberate: a SHA typed on the command line is an assertion, and v1 already has one of
- * those.
+ * WHY IT COULD NOT RUN EVEN IF THE PAID PATH WERE OPEN. `verified_runtime_sha` has to be read back
+ * out of the running page, and the page does not publish its build SHA anywhere a script can read.
+ * A SHA typed on the command line is an assertion, and v1 already has one of those.
  *
  * The participants are language models. Every record says so and the analyzer refuses a sentence
  * that does not.
@@ -98,11 +113,30 @@ export function guardOutDir(outDir) {
 }
 
 /**
+ * Values that are a note to a reader rather than a measurement.
+ *
+ * The gate used to count any non-empty string as a real answer, so the dry run's own placeholders
+ * satisfied it: `page_url` reading `dry-run, no page was opened` came back complete. That is the
+ * same fail-open shape as `attempted_human_only`, which was present on all 36 v1 records and had
+ * never been measured. A record built by the dry run can now never look like a record built by a
+ * run.
+ *
+ * This is narrow and it is stated as narrow. It catches the placeholders this repository writes
+ * and the four words a person types when they do not have the value. It cannot catch a plausible
+ * string that is simply wrong.
+ */
+const NOT_A_MEASUREMENT = [/^dry.run/i, /^unknown$/i, /^unset$/i, /^n\/a$/i, /^none$/i, /^tbd$/i, /^not recorded/i];
+
+const isPlaceholder = (value) => typeof value === 'string'
+  && NOT_A_MEASUREMENT.some((pattern) => pattern.test(value.trim()));
+
+/**
  * Which of the required metadata fields this record has not actually got.
  *
  * A field that is present and empty counts as missing. That is the case worth catching: a runner
  * that could not read the browser version and wrote an empty string produces a record that passes
- * a key check and carries nothing, which is exactly the shape `attempted_human_only` had.
+ * a key check and carries nothing, which is exactly the shape `attempted_human_only` had. A field
+ * holding a placeholder counts as missing for the same reason.
  *
  * @param {object} record
  * @returns {string[]} field names, in the order they are declared
@@ -113,7 +147,9 @@ export function missingMetadata(record) {
     const value = record ? record[field] : undefined;
     if (value === undefined || value === null) { out.push(field); continue; }
     if (typeof value === 'string' && value.trim() === '') { out.push(field); continue; }
+    if (isPlaceholder(value)) { out.push(field); continue; }
     if (Array.isArray(value) && value.length === 0) { out.push(field); continue; }
+    if (Array.isArray(value) && value.every(isPlaceholder)) { out.push(field); continue; }
     if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
       out.push(field);
     }
@@ -371,13 +407,47 @@ if (invokedDirectly) {
     process.exit(0);
   }
 
-  /* Everything past here costs money. It is reached only with --spend-credits. */
+  /* Everything past here used to cost money. Nothing past here runs any more. */
 
+  // THE OUT DIR GUARD STAYS FIRST, and that is on purpose. It is the refusal that protects the 36
+  // frozen v1 records, it has been watched refusing for that reason, and a reader who points a v2
+  // command at the v1 folder should be told that is what they did, not handed a general notice.
+  // The closure below catches everything else, so no ordering of these two leaves a paid path.
   const guard = guardOutDir(outDir);
   if (!guard.ok) {
     console.error(`refused before spending anything: ${guard.error}`);
     process.exit(2);
   }
+
+  // THE PAID PATH IS CLOSED, AND IT CLOSES HERE, BEFORE THE KEY IS READ AND BEFORE ANY REQUEST.
+  //
+  // Not because spending is forbidden in general, but because this particular program cannot turn
+  // a spend into evidence. Arm A throws instead of running. Arm B bills a request and then loses
+  // it at the metadata gate, because nothing has read the runtime facts by the time the record is
+  // assembled. A study that can only produce one arm, and can only produce that arm as a refused
+  // record, is not a study. Every credit it spends buys nothing.
+  //
+  // So v2 is a preregistration: a protocol, a scoring function, a runner whose guards are tested,
+  // and no runs. That is a defensible thing to publish. A folder of half a study bought at four in
+  // the morning before a deadline is not.
+  //
+  // TO REOPEN IT, three things have to be true and each one is checkable. The page publishes its
+  // build SHA where a script can read it. The runtime facts are read BEFORE the first request, not
+  // after. The arm A loop exists and has been watched completing against a dry transport. Delete
+  // this block when all three hold, and not before.
+  console.error('run_impact_v2.mjs will not spend anything. v2 is a preregistration, not an '
+    + 'instrument: one arm is not implemented, and the other bills a request before it has the '
+    + 'runtime facts its own metadata gate requires, so the record is refused after the money is '
+    + 'gone.');
+  console.error('Nothing was sent and nothing was written.');
+  console.error('The dry run still works and shows exactly what a record would look like: drop '
+    + '--spend-credits. What is published from v2 is the protocol and an empty runs folder, and '
+    + 'evidence/impact/results-v2.md says AWAITING_RUNS because that is true.');
+  process.exit(2);
+
+  // Everything below is unreachable, on purpose, and is kept for the same reason v1's tail is
+  // kept: it is what the errata and the protocol describe, and deleting it would make the two
+  // defects above unverifiable by reading.
 
   const key = process.env.OPENAI_API_KEY;
   if (!key) {

@@ -176,11 +176,31 @@ test('no pack and a half built pack both refuse, and neither is read as an insur
   // The shape that used to pass: a list of requirements and nothing else. It has no id, so it
   // cannot be compared against the home pack either, which is the second reason to refuse it here
   // rather than to let it answer for an insurer with no name.
+  // The fifth entry is not half a pack at all. It is complete, and it is refused for the reason the
+  // other four are not: src/core/policy.js has never read it. Added 2026-09-02, when the audit found
+  // that the shape check above was the whole gate, so a literal like this one filed a claim and
+  // sealed a packet naming an insurer that does not exist. The four before it still fail on their
+  // own shape, which is why they stay in the same loop.
   for (const half of [
     { requirements: [] },
     { id: 'northwind', requirements: [] },
     { id: '   ', requirements: [], coverages: [] },
     { id: 'northwind', coverages: [] },
+    {
+      id: 'northwind',
+      insurer: 'Northwind Mutual',
+      currency: 'EUR',
+      contract: 'claim-intake.v1',
+      requirements: [],
+      coverages: [{
+        code: 'own_damage',
+        label: 'Own damage',
+        clause: 'OD-4.1',
+        active: true,
+        deductible: 250,
+        incident_types: ['collision'],
+      }],
+    },
   ]) {
     const decision = canFile(half, claim, [], HOME);
     assert.equal(decision.code, FILE_CODES.noPack, `${JSON.stringify(half)} must not be a usable pack`);

@@ -10,12 +10,19 @@
 # evidence/impact/protocol-v1.md, which nothing has rewritten since checkout, has 77 CRLF line
 # endings while results.md, which the analyzer wrote, has none.
 #
-# So the three files the check touches are pinned to LF in the working tree. This is narrow on
+# So the files the check touches are pinned to LF in the working tree. This is narrow on
 # purpose. Every other file in the repository keeps whatever it had, because changing that the
 # night before a deadline is a bigger change than the problem.
+#
+# interpretation-v2.md joined the list on 2026-09-02. It was the one file in this set that the
+# analyzer inlines and nothing pinned, so a Windows clone got a CRLF interpretation stitched into
+# an LF report and `--check` failed at line 71 on a heading that differed only by a carriage
+# return. The analyzer flattens the interpretation on read now as well, so a reader whose checkout
+# ignores this file is still fine. Both halves, because one of them is somebody else's git config.
 evidence/impact/results.md text eol=lf
 evidence/impact/results-v2.md text eol=lf
 evidence/impact/interpretation-v1.md text eol=lf
+evidence/impact/interpretation-v2.md text eol=lf
 
 # The worked example a judge is invited to verify by hand, and the fourth file a gate measures in
 # bytes. tests/unit/handler_verification.test.js quotes its size, and docs/handler-verification.md

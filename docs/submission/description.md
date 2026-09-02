@@ -42,11 +42,19 @@ page exactly as a person is. A tool call records the word the caller used for it
 here authenticates that word. It is a route, not an identity, and the badge says so when you hover
 it.
 
-Filing leaves something behind: a handler packet built from that exact revision, carrying the
-facts, the clause and excess, every requirement with what answered it, the pinned rows, the tool
-calls and a SHA-256 that scripts/verify_packet.mjs recomputes. That script shares a module with
+Filing leaves something behind, in this browser tab and nowhere else: a handler packet built from
+that exact revision, carrying the facts, the clause and excess, every requirement with what answered
+it, the pinned rows, the tool calls and a SHA-256 that scripts/verify_packet.mjs recomputes. Nothing
+is transmitted. No insurer receives it, no handler is notified, and no claim is opened anywhere. It
+is a file this page hands you, and the word filed on it means this page filed it. That script shares a module with
 the thing that made the digest, so docs/handler-verification.md gives two routes that share
 nothing with it, and one worked example where all three agree.
+
+That digest is a plain SHA-256 over the exported content and there is no key and no signature
+anywhere here. A match says the content in front of you is the content the digest was taken
+over, so it catches a packet changed on the way to a handler and two copies that have drifted
+apart. It does not show which page made it, who wrote it, that nobody edited the content and
+recomputed the digest to match, or that any insurer received it.
 
 ## What people and agents can do together that was difficult or impossible before
 
@@ -81,7 +89,21 @@ Insurer, policy, vehicle and claimant are invented. No integration, no adjudicat
 this on real intakes, so there is no measurement of claims arriving more complete and I have not
 invented one.
 
-What I did measure went against the page, and it is published rather than dropped. In 36 runs with
+I did not design this from a guess about how claims arrive. I run a first notice system in
+production, and I queried it before I wrote this. In 285,701 records that operator classifies as
+first notices, all five attributes I asked about were present: date, location, driver, vehicle,
+policy. That is a count of fields existing, not a judgement that any answer is right or usable, and
+it is one operator on one line of business.
+
+I am reporting it because it went against me. I expected gaps and there were none, so the pitch that
+claimants forget things is not one I can make. What the number does establish is the scale of the
+domain: a first notice carries these fields, hundreds of thousands of times, and something has to
+decide which ones this policy needs. That is the problem ClaimReady addresses. Whether it addresses
+it better is not measured here and I do not claim it is. The method, the limits, and the wrong
+number I published first and then corrected are in evidence/production-intake. No record left that
+account and the operator is not named.
+
+What I did measure on this page went against it, and it is published rather than dropped. In 36 runs with
 language models standing in for drivers, the arm that got the published rules came out policy
 complete in 5 of 18 against 6 of 18 for a static form. Read those two counts with the thing that
 sits under them: the scorer fills in the date, the incident type and the driver from the file the

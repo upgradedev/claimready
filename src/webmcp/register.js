@@ -42,6 +42,8 @@
  *      call time, so the graph can now be entered through any module in it.
  */
 
+import { isValidatedPack } from '../core/policy.js';
+
 import describeClaimTool from './tools/describe_claim.js';
 import readClaimStateTool from './tools/read_claim_state.js';
 import applyClaimPatchTool from './tools/apply_claim_patch.js';
@@ -373,14 +375,38 @@ const PACK_KEY = 'pack';
  * is checked rather than trusted, so a half loaded pack is treated as no pack instead of throwing
  * somewhere further in.
  *
+ * AND THE SHAPE ALONE IS NOT ENOUGH, WHICH IS NEWER. `Array.isArray(pack.requirements)` says the
+ * object looks like a pack, not that src/core/policy.js ever read one, so anything that could put
+ * an object on the context could put an insurer's name, a clause id and an excess in front of an
+ * agent. This is the same boundary the file gate in src/core/filing.js uses and it comes from the
+ * same function, so a pack the page will not file under is not a pack the tools will quote either.
+ *
  * @param {object} ctx
  * @returns {object|null}
  */
 export function packOf(ctx) {
   if (!ctx) return null;
   const pack = ctx[PACK_KEY];
-  if (pack && typeof pack === 'object' && Array.isArray(pack.requirements)) return pack;
+  if (pack && typeof pack === 'object' && isValidatedPack(pack) && Array.isArray(pack.requirements)) return pack;
   return null;
+}
+
+/**
+ * The schedule a cover decision may be worked out against, or null when there is none.
+ *
+ * WHY IT IS NOT `ctx.policy`. The page used to fall back to the policy block carried in the sample
+ * file whenever no rule pack loaded, and check_coverage answered from it: verdict, clause, excess
+ * and all, off data the strict loader had never seen and would have refused. Embedded data can
+ * still name the policyholder and the policy number, which are display facts. It cannot decide
+ * whether somebody is covered.
+ *
+ * @param {object} ctx
+ * @returns {object|null}
+ */
+export function scheduleOf(ctx) {
+  const pack = packOf(ctx);
+  if (!pack || !Array.isArray(pack.coverages) || pack.coverages.length === 0) return null;
+  return pack;
 }
 
 /**

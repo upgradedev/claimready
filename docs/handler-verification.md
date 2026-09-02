@@ -105,6 +105,19 @@ routes on this page, and produce a file that verifies. If you need origin rather
 need a signature over the digest, and this project does not ship one. That is a real limitation and
 it is written here rather than left for you to work out.
 
+And one field deserves saying out loud, because it is the field that reads like a receipt.
+`content.filed.through` says the claim was filed through a control on the page. Inside the running
+page that sentence is checked rather than asserted: `src/core/packet.js` refuses to build anything
+at all unless the claim object it was handed is the object `fileClaim` in `src/core/claim.js`
+returned, and that record is a set held privately in the module with no way to write to it from
+outside. A status typed by hand, and a copy of a filed claim, both get a refusal instead of a
+document.
+
+That check lives entirely inside one browser tab and it dies with the tab. It cannot travel in the
+file. So to you, holding the packet, `filed.through` is a sentence the page wrote, exactly like
+every other sentence in there, and nothing on this page lets you check it. It is not a signature and
+it is not an insurer receipt. What it does is stop this page describing a filing it did not perform.
+
 ## The canonical form, in five rules
 
 The bytes that get hashed are not the bytes in the file. They are `content` written out again in a
@@ -356,8 +369,34 @@ node scripts/verify_packet.mjs docs/handler-packet.example.json
 
 It printed the reference, the filed revision, the claimed digest and the recomputed digest, said the
 digest matched, and exited 0. Run against the copy with the excess changed to 350 it printed both
-digests, said the packet had been edited since it was built, and exited 1. Exit 2 is a file it
-cannot read as a packet at all.
+digests, said the packet had been edited since it was built, and exited 1.
+
+Exit 2 is a file it cannot read as a packet this build describes, and that check runs BEFORE the
+digest. A digest says nothing about whether the bytes it covers describe a packet, so a document
+with a filing time reading `09:15` and a provenance badge reading `via carrier pigeon` verifies
+perfectly as long as its digest was computed over itself. Measured on the example with those two
+edits and the digest recomputed over the result:
+
+```
+claimed   : sha256:d83cf1ee1987cd1e754ca18d38ef7d834f9f07dc36ce8cbf3d1bcb25fc867f84
+recomputed: sha256:d83cf1ee1987cd1e754ca18d38ef7d834f9f07dc36ce8cbf3d1bcb25fc867f84
+```
+
+The digest is real and it matches. The document is not a packet. So the script checks the shape
+first, using the same schema the page runs before it seals anything, and prints every problem it
+found instead of a digest:
+
+```
+packet.json is not a packet this build describes, so the digest was not checked.
+A digest over a document like this would only make it look checked.
+
+  filed.at is "09:15", and a filing time has to be a full UTC instant such as 2026-09-01T09:15:00.000Z.
+  provenance says damage_zone arrived "via carrier pigeon", and this page writes only via tool, via page, policy, derived.
+```
+
+Routes 1 to 3 on this page check the digest and nothing else, and that is the right division. They
+exist so you do not have to trust our code, and a schema is our opinion about our own document. If
+you want the shape checked too, that is what this script is for.
 
 Use it if you have a clone. If you have only the packet, use routes 1 to 3, which is the situation
 this page exists for.

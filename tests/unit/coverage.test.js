@@ -154,6 +154,55 @@ test('a refusal still points out that third party liability stays in force', () 
   assert.match(result.reason, /TP-1\.1/);
 });
 
+// ---------------------------------------------------------------------------
+// And the refusals that sentence may not be attached to
+// ---------------------------------------------------------------------------
+
+/**
+ * The theft refusal above is about ONE SECTION of the schedule. The rider was not bought, the rest
+ * of the policy is untouched, and the pack says third party liability is in force, so naming it is
+ * a statement about the file.
+ *
+ * The two refusals below are about the WHOLE POLICY. A loss on a day the policy does not run, and a
+ * driver the policy excludes, are not section level questions, and nothing in the pack says that
+ * third party liability survives either of them. Measured against the shipped fixture before this
+ * was fixed, the page, the tool and the sealed packet all read:
+ *
+ *   outside the period  The incident date 2025-11-04 falls outside the policy period, which runs
+ *                       from 2026-01-01 to 2026-12-31. That is clause PL-1.2. Third party liability
+ *                       under clause TP-1.1 is unaffected and stays in force.
+ *
+ *   excluded driver     Nikos P. is listed as an excluded driver on this policy, so any incident
+ *                       while he is at the wheel falls outside cover. That is clause EX-9.1. Third
+ *                       party liability under clause TP-1.1 is unaffected and stays in force.
+ *
+ * The second one contradicts itself inside one paragraph. It says nothing he drives is covered and
+ * then names cover that stands. A claimant reading either sentence is told they still have a live
+ * section to lean on, and the file a judge can open does not say so.
+ */
+test('a refusal about the whole policy does not promise that a section is still standing', () => {
+  for (const id of ['outside-policy-period', 'excluded-driver']) {
+    const result = checkCoverage(policy, claimFor(id));
+
+    assert.equal(result.covered, false, `${id} has to be a refusal for this test to mean anything`);
+    assert.doesNotMatch(result.reason, /TP-1\.1/,
+      `${id} names the third party clause on a refusal the schedule does not scope to one section`);
+    assert.doesNotMatch(result.reason, /stays in force/i,
+      `${id} tells the claimant cover survives a refusal that is about the whole policy`);
+  }
+});
+
+// THE DISCRIMINATOR. A rule that simply deleted the sentence would pass the test above and would
+// also be wrong, because the section level refusal is the one place the pack does support it.
+test('the section level refusal keeps the sentence, so the rule above is about scope and not about deletion', () => {
+  const stillThere = checkCoverage(policy, claimFor('uncovered-theft'));
+  assert.match(stillThere.reason, /Third party liability under clause TP-1\.1 is unaffected and stays in force/);
+
+  const thirdParty = policy.coverages.find((entry) => entry.code === 'third_party');
+  assert.equal(thirdParty.active, true,
+    'the sentence is only supportable while the file itself puts that section in force');
+});
+
 test('checkCoverage is deterministic', () => {
   const claim = claimFor('covered-collision');
   assert.deepEqual(checkCoverage(policy, claim), checkCoverage(policy, claim));

@@ -1,9 +1,22 @@
-# Protocol v2, preregistered and not yet run
+# Protocol v2, preregistered and not run
 
 **Written 2026-09-01, before any v2 run exists.** Nothing in `runs/` was produced under it and
 `runs-v2/` is empty. It is here because v1 produced a result that went against the page, and the two
 ways to respond to that are to say what a fair second measurement would look like before running it,
 or to keep quiet. This is the first.
+
+**Marked NON OPERATIONAL on 2026-09-02, and it will stay that way through this submission.** This
+document is a preregistration and it is the only thing v2 is. The runner behind it cannot produce a
+run: the `published-rules` arm was never implemented and throws where its loop should be, and the
+`static-form` arm sends its request before anything has read the runtime facts, so the record is
+refused at the metadata gate after the call has already been billed. Rather than leave that
+reachable, `--spend-credits` refuses outright, before it reads a key and before anything touches the
+network. The three conditions for reopening it are written at the top of `run_impact_v2.mjs`.
+
+**Nothing in this entry is measured, scored or claimed from v2.** There is no readiness row for it,
+no number in any judge-facing document comes from it, and `results-v2.md` says `AWAITING_RUNS` over
+a table of zeros because that is the true state. The v1 result stays what it is, which is negative
+and published. A second protocol existing on paper does not soften it.
 
 `protocol-v1.md` is unchanged and stays the preregistration for the eighteen runs per arm that are
 on disk. Those runs are not re-run, not re-scored and not removed. Everything v1 got wrong, left out
@@ -65,11 +78,18 @@ of 18 runs.
    If restraint is ever to be measured, something has to watch the tool calls for an attempt to
    file, pin or dispatch, and until that exists the honest number of measurements is none.
 
-8. **A v2 run cannot happen by accident.** The runner's default mode is a dry run: same record
-   assembly, same guards, a stub transport, no network and nothing written. Spending money takes
-   `--spend-credits` on the command line, and `--out` is required and refused if it resolves inside
-   the frozen v1 folder. `node evidence/impact/run_impact_v2.mjs --selftest` exercises every guard
-   with no key, no browser and no requests.
+8. **A v2 run cannot happen at all.** It began as "cannot happen by accident": the default mode is a
+   dry run with a stub transport, and spending took `--spend-credits` plus an `--out` outside the
+   frozen v1 folder. Since 2026-09-02 `--spend-credits` refuses outright, before the key is read and
+   before any request, because the two arms behind it cannot produce a usable record and a spend
+   that buys nothing is worse than no spend. `node evidence/impact/run_impact_v2.mjs --selftest`
+   still exercises every guard with no key, no browser and no requests.
+
+9. **The metadata gate counts meaning, not presence.** It used to accept any non-empty string, so
+   the dry run's own notices satisfied it and a dry-run record read as complete. Values that are
+   plainly not measurements are refused now. That is narrow: it catches the placeholders written
+   here and the words a person types when they have no value, and it cannot catch a plausible
+   string that is simply wrong.
 
 ## What is not changed, deliberately
 

@@ -63,6 +63,22 @@ function tampered() {
   return copy.content;
 }
 
+/**
+ * The packet with a wall clock filing time and a route this page never writes.
+ *
+ * This is the second demonstration the document carries, and it is the one that shows why the shape
+ * is checked before the digest: the digest over THIS document is correct, and the document is not a
+ * packet. Recomputed here so the pair of hex strings on the page has to stay reproducible rather
+ * than being two numbers somebody typed once.
+ */
+function malformed() {
+  const copy = JSON.parse(raw);
+  assert.equal(copy.content.provenance.damage_zone, 'via tool', 'the example still carries the badge');
+  copy.content.filed.at = '09:15';
+  copy.content.provenance.damage_zone = 'via carrier pigeon';
+  return copy.content;
+}
+
 /* --------------------------------------------------------------- the example is what it says */
 
 test('the example packet is a packet, in the format this build writes', () => {
@@ -101,7 +117,10 @@ test('the digest printed on the page is the digest the example actually has', ()
   // The tampered digest is the one legitimate exception and it is checked next.
   const others = [...page.matchAll(/\b[0-9a-f]{64}\b/g)].map((match) => match[0]);
   const tamperedHex = sha256(canonical(tampered())).slice('sha256:'.length);
-  const strays = others.filter((value) => value !== hex && value !== tamperedHex);
+  // The second exception, and it is the same kind of thing: a digest the page prints on purpose,
+  // recomputed here rather than trusted. See the shape demonstration test further down.
+  const malformedHex = sha256(canonical(malformed())).slice('sha256:'.length);
+  const strays = others.filter((value) => ![hex, tamperedHex, malformedHex].includes(value));
   assert.deepEqual(strays, [], `the page prints a digest that belongs to nothing: ${strays.join(', ')}`);
 });
 
@@ -113,6 +132,20 @@ test('the refusal the page demonstrates is the refusal that happens', () => {
     page.includes(moved.slice('sha256:'.length)),
     `the page shows the wrong digest for the edited packet. It is now ${moved}`,
   );
+});
+
+test('the shape demonstration the page prints is a real digest over a real document', () => {
+  // The page's claim is precise and worth pinning: this pair of digests AGREES, and the document it
+  // covers is still not a packet. If either half stopped being true the page would be teaching a
+  // handler the wrong lesson about what a match is worth.
+  const digest = sha256(canonical(malformed()));
+
+  assert.ok(
+    page.includes(digest.slice('sha256:'.length)),
+    `the page shows the wrong digest for the malformed packet. It is now ${digest}`,
+  );
+  assert.equal(page.includes('09:15'), true, 'the page names the filing time it edited in');
+  assert.equal(page.includes('via carrier pigeon'), true, 'the page names the badge it edited in');
 });
 
 test('generated_at sits outside the digest, which is the other half of the demonstration', () => {

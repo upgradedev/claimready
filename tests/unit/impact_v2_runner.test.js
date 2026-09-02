@@ -237,3 +237,111 @@ test('the committed results-v2.md says it is waiting for runs, because it is', (
     `results-v2.md drifted from what an empty runs-v2 produces: ${spawned.stderr}`,
   );
 });
+
+/* --------------------------------------------------- v2 is a preregistration, and it is closed */
+
+// Added 2026-09-02. v2 has zero runs and cannot produce any: arm A throws where its loop should be,
+// and arm B sends its request before anything has read the runtime facts, so the metadata gate
+// refuses the record after the call has been billed. Neither is fixable in the time left and
+// neither may be left reachable. The paid path is closed, and these cases are what stop it being
+// quietly reopened.
+//
+// THE TWO GUARDS ABOVE MUST STILL REFUSE FOR THEIR OWN REASONS. A closure that swallowed every
+// --spend-credits invocation would turn the frozen-folder case into a tautology: it would pass
+// whether or not guardOutDir still worked. So the order is asserted here as well as the closure.
+
+test('the paid path is closed, and it closes before the key is read', () => {
+  // No key in the environment at all. If the closure ran after the key check this would say
+  // OPENAI_API_KEY is not set, which is a different refusal and a weaker one: it would mean the
+  // program is only closed on machines that have no key, and every machine here has one.
+  const { OPENAI_API_KEY, ...withoutKey } = process.env;
+  withTempDir((dir) => {
+    const result = spawnSync(process.execPath, [
+      RUNNER, '--scenario', 'S1-carpark-dent', '--arm', 'static-form', '--repeat', '1',
+      '--out', dir, '--spend-credits',
+    ], { cwd: ROOT, encoding: 'utf8', env: withoutKey });
+
+    assert.equal(result.status, 2, `the paid path did not refuse: ${result.stdout} ${result.stderr}`);
+    assert.match(result.stderr, /will not spend anything/);
+    assert.match(result.stderr, /preregistration, not an instrument/);
+    assert.doesNotMatch(
+      result.stderr,
+      /OPENAI_API_KEY is not set/,
+      'the run reached the key check, so the closure is after it and only protects keyless machines',
+    );
+    assert.deepEqual(readdirSync(dir), [], 'the closed paid path wrote a file');
+  });
+});
+
+test('the paid path is closed with a key present and every argument correct', () => {
+  // The shape a real attempt arrives in: a key, a legal --out, a snapshot named on the command
+  // line. This is the case that has to refuse, because it is the one that used to spend.
+  withTempDir((dir) => {
+    const result = spawnSync(process.execPath, [
+      RUNNER, '--scenario', 'S1-carpark-dent', '--arm', 'static-form', '--repeat', '1',
+      '--out', dir, '--spend-credits', '--model-snapshot', 'gpt-5-2026-01-01',
+    ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, OPENAI_API_KEY: 'not-a-real-key' } });
+
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /Nothing was sent and nothing was written/);
+    assert.deepEqual(readdirSync(dir), [], 'the closed paid path wrote a file');
+  });
+});
+
+test('the arm the study is actually about is refused too, not just the one that was wired', () => {
+  // published-rules is the arm with the page in it. It throws inside its own try block, which used
+  // to mean a run recorded a technical failure rather than refusing, and a folder of technical
+  // failures is not a smaller study, it is no study.
+  withTempDir((dir) => {
+    const result = spawnSync(process.execPath, [
+      RUNNER, '--scenario', 'S1-carpark-dent', '--arm', 'published-rules', '--repeat', '1',
+      '--out', dir, '--spend-credits', '--model-snapshot', 'gpt-5-2026-01-01',
+    ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, OPENAI_API_KEY: 'not-a-real-key' } });
+
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /will not spend anything/);
+    assert.deepEqual(readdirSync(dir), [], 'the closed paid path wrote a file');
+  });
+});
+
+test('the metadata gate refuses a placeholder, not only an empty string', () => {
+  // THE FAIL-OPEN HALF. Every one of these values is present, non-empty and obviously not a
+  // measurement, and the gate used to count all of them as answered. That is the same shape as
+  // attempted_human_only, which sat on all 36 v1 records and had never been measured once.
+  const dressed = buildRecord({
+    scenario_id: 'S1-carpark-dent',
+    arm: 'static-form',
+    repeat: 1,
+    model: 'x',
+    model_snapshot: 'dry-run, no snapshot was served',
+    request_settings: REQUEST_SETTINGS,
+    response_ids: ['dry-run, no request was made'],
+    page_url: 'dry-run, no page was opened',
+    browser_version: 'unknown',
+    verified_runtime_sha: 'not recorded',
+  });
+
+  const missing = missingMetadata(dressed);
+  for (const field of ['model_snapshot', 'response_ids', 'page_url', 'browser_version', 'verified_runtime_sha']) {
+    assert.ok(missing.includes(field), `${field} held a placeholder and was counted as answered`);
+  }
+  // request_settings is a real object of real values, so it is NOT missing. A gate that refused
+  // everything would pass the loop above and prove nothing.
+  assert.ok(!missing.includes('request_settings'), 'a genuine value was counted as missing');
+});
+
+test('a record the dry run assembled can never look like a record a run produced', () => {
+  // The dry run fills the runtime fields with its own notices. Before the change those notices
+  // satisfied the gate, so the only thing between a dry run record and the evidence folder was
+  // that nothing happened to copy it there.
+  const result = spawnSync(process.execPath, [
+    RUNNER, '--scenario', 'S1-carpark-dent', '--arm', 'static-form', '--repeat', '1',
+  ], { cwd: ROOT, encoding: 'utf8' });
+
+  assert.equal(result.status, 0, `the dry run failed: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /metadata gate: missing /,
+    `the dry run reported a complete record: ${result.stdout}`,
+  );
+});

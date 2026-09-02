@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import { textOfResult } from '../../src/webmcp/register.js';
 import { createStore } from '../../src/core/store.js';
 import { loadPolicyPack } from '../../src/core/policy.js';
+import { checkCoverage } from '../../src/core/coverage.js';
 
 import checkCoverageTool from '../../src/webmcp/tools/check_coverage.js';
 import getRepairEstimateTool from '../../src/webmcp/tools/get_repair_estimate.js';
@@ -158,6 +159,28 @@ test('check_coverage prints the exclusion that applied and the deductible, in th
   if (/: COVERED\./.test(saidYes)) {
     assert.match(saidYes, /Deductible the claimant pays: \d+/);
   }
+});
+
+// THE THIRD SURFACE OF THE SAME SENTENCE. tests/unit/packet.test.js pins the packet against
+// src/core/coverage.js and src/ui/render.js draws decision.reason unchanged, so this is the one
+// reader left. It matters here because the tool is the surface an agent reads out loud to somebody
+// who never opens the page. Measured before the fix, with an incident outside the policy period,
+// the tool said "That is clause PL-1.2. Third party liability under clause TP-1.1 is unaffected and
+// stays in force" on a refusal the schedule does not scope to one section.
+test('check_coverage reads out the domain sentence unchanged, and adds no cover to a refusal', async () => {
+  const outside = makeContext({
+    incident_type: 'collision',
+    incident_date: '2025-11-04',
+    driver: 'Maria K.',
+  });
+  const said = await run(checkCoverageTool, outside);
+
+  const decided = checkCoverage(northwind, outside.store.getState().claim);
+  assert.equal(decided.covered, false, 'the setup has to produce a refusal');
+  assert.ok(said.includes(decided.reason),
+    `the tool is not reading the domain sentence back. Tool said: ${said}`);
+  assert.doesNotMatch(said, /TP-1\.1/);
+  assert.doesNotMatch(said, /stays in force/i);
 });
 
 test('check_coverage still works with no page to publish to', async () => {

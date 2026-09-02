@@ -153,6 +153,36 @@ function findCoverage(policy, incidentType) {
   );
 }
 
+/**
+ * The line that names third party liability as still standing, and the refusals it may sit beside.
+ *
+ * WHERE THE PACK SUPPORTS IT. A refusal that is about ONE SECTION of the schedule leaves the rest of
+ * the schedule alone. The theft rider was not bought, or no section is written against this incident
+ * at all. The file separately says third party liability is in force, so the sentence reads the file
+ * back and adds nothing to it.
+ *
+ * WHERE IT DOES NOT, WHICH IS WHY THE EXCLUSION BRANCH BELOW NO LONGER CALLS THIS. The two
+ * exclusions that can fire are about the WHOLE POLICY. A loss on a day the policy does not run, and
+ * a driver the policy shuts out, are not statements about one section, and no pack this build reads
+ * says that third party liability survives either of them. Measured on the shipped fixture before
+ * this changed, and every one of these was on the page, in the tool result and inside the sealed
+ * packet, because all three read this one string:
+ *
+ *   The incident date 2025-11-04 falls outside the policy period, which runs from 2026-01-01 to
+ *   2026-12-31. That is clause PL-1.2. Third party liability under clause TP-1.1 is unaffected and
+ *   stays in force.
+ *
+ *   Nikos P. is listed as an excluded driver on this policy, so any incident while he is at the
+ *   wheel falls outside cover. That is clause EX-9.1. Third party liability under clause TP-1.1 is
+ *   unaffected and stays in force.
+ *
+ * The second contradicts itself inside one paragraph. It says nothing he drives is covered and then
+ * names cover that stands.
+ *
+ * An insurer who wants to say a section outlives an exclusion has to write that in the pack, and
+ * claim-intake.v1 has no field for it. Until it does, silence is the only answer this module can
+ * give without speaking for a file that says nothing.
+ */
 function liabilityNote(policy) {
   const list = Array.isArray(policy.coverages) ? policy.coverages : [];
   const liability = list.find((entry) => entry?.code === 'third_party' && entry?.active);
@@ -226,6 +256,9 @@ export function checkCoverage(policy, claim) {
   const found = { excluded_driver: findExcludedDriver(policy, claim), outside_policy_period: findOutsidePeriod(policy, claim) };
   const triggered = EXCLUSION_ORDER.map((code) => found[code]).filter(Boolean);
 
+  // NO LIABILITY NOTE ON THIS BRANCH, AND THE ABSENCE IS THE DECISION. Both exclusions that reach
+  // here refuse the whole policy for this loss, not one section of it. See liabilityNote above for
+  // the two sentences this used to produce and why neither is anything the pack establishes.
   if (triggered.length > 0) {
     const headline = triggered[0];
     return {
@@ -233,7 +266,7 @@ export function checkCoverage(policy, claim) {
       clause: headline.clause,
       deductible: null,
       currency,
-      reason: `${headline.reason} That is clause ${headline.clause}.${liabilityNote(policy)}`,
+      reason: `${headline.reason} That is clause ${headline.clause}.`,
       exclusions: triggered,
       provisional: false,
     };

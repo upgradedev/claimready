@@ -9,7 +9,7 @@
  * tool only asks the question and puts the answer on the page.
  */
 
-import { toResult, budgetedBlock, clip, packOf } from '../register.js';
+import { toResult, budgetedBlock, clip, packOf, scheduleOf } from '../register.js';
 import { checkCoverage, exclusionLabels } from '../../core/coverage.js';
 import { packIdentity } from '../../core/filing.js';
 
@@ -54,7 +54,15 @@ export default (ctx) => ({
 
     // No schedule means no basis for a decision. Saying "not covered" here would be a false
     // statement about someone's cover, so the tool says what is actually wrong instead.
-    if (!ctx.hasPolicySchedule) {
+    //
+    // ASKED TWICE, AND THE SECOND HALF IS THE ONE THAT MATTERS. `hasPolicySchedule` is a flag the
+    // page sets, and the page used to set it true for the policy block carried in the sample file
+    // whenever no rule pack loaded. This tool then read that block: verdict, clause and excess, off
+    // data src/core/policy.js had never seen and would have refused. `scheduleOf` asks the question
+    // the flag cannot, which is whether this build loaded and checked the thing being read. Both
+    // have to say yes, and the same sentence answers either way.
+    const schedule = scheduleOf(ctx);
+    if (!ctx.hasPolicySchedule || !schedule) {
       return toResult(`${ctx.noScheduleReason} Do not tell the claimant they are uncovered.`);
     }
 
@@ -66,7 +74,9 @@ export default (ctx) => ({
       );
     }
 
-    const decision = checkCoverage(ctx.policy, claim);
+    // The schedule that decided is the validated one, never ctx.policy. They were the same object
+    // whenever a pack had loaded and they were not when one had not, and that gap was the defect.
+    const decision = checkCoverage(schedule, claim);
     // The page shows the same answer the agent just got. Guarded because a tool must still work
     // when it is driven from a harness that has no page to publish to.
     if (typeof ctx.publish === 'function') ctx.publish('coverage', { decision, source: 'agent' });

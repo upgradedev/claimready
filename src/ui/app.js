@@ -37,7 +37,7 @@ import {
 } from '../core/packet.js';
 import { checkCoverage } from '../core/coverage.js';
 import { estimateRepair } from '../core/estimate.js';
-import { loadPolicyPack, describePack, planPackManifest } from '../core/policy.js';
+import { loadPolicyPack, describePack, planPackManifest, isValidatedPack } from '../core/policy.js';
 import { deriveRequirements, outstandingRequirements, summariseRequirements } from '../core/requirements.js';
 
 import { createView } from './render.js';
@@ -237,11 +237,18 @@ async function boot() {
     pack: null,
     packId: null,
     homePackId,
-    policy: embeddedPolicy,
+    // THE SAMPLE FILE'S OWN POLICY BLOCK IS NOT A SCHEDULE THIS PAGE HAS CHECKED, SO IT IS NOT ONE
+    // THIS PAGE ANSWERS FROM. It used to sit here, and again in applyPack below whenever no pack
+    // loaded, and check_coverage read it: a verdict, a clause and an excess worked out from data
+    // src/core/policy.js had never seen and would have refused. `persona` above still takes the
+    // holder, the policy number, the currency and the vehicle class out of that block, because
+    // those are things the page prints rather than facts it decides cover on. Cover comes from a
+    // validated pack or it does not come.
+    policy: null,
     policyId: persona.policyId,
     currency: persona.currency,
     vehicleClass: persona.vehicleClass,
-    hasPolicySchedule: hasSchedule(embeddedPolicy),
+    hasPolicySchedule: false,
     noScheduleReason,
     humanActions: [],
     publish
@@ -408,15 +415,20 @@ async function boot() {
     } else {
       // Nothing loaded, so nothing is active. Leaving the previous id here was the other half of
       // the stranding above: the page reported a pack it was no longer answering under.
+      // NOTHING LOADED, SO NOTHING IS ACTIVE, AND THAT INCLUDES THE COVER. This branch used to
+      // point context.policy at the sample file's own block and say so in the note, which read as
+      // a graceful degradation and was not one: the button and the check_coverage tool both went
+      // on answering, from a schedule nothing had validated. A wrong excess stated confidently is
+      // worse for a claimant than no excess at all.
       activePackId = null;
       context.pack = null;
       context.packId = null;
-      context.policy = embeddedPolicy;
+      context.policy = null;
       context.currency = persona.currency;
-      context.hasPolicySchedule = hasSchedule(embeddedPolicy);
+      context.hasPolicySchedule = false;
       view.renderPersona({ ...persona, insurer: null, borrowed: false });
       view.renderPackNote(entry && entry.error
-        ? `The ${entry.id} rule pack did not load: ${entry.error}. The cover check falls back to the schedule stored with this policy.`
+        ? `The ${entry.id} rule pack did not load: ${entry.error} ${noScheduleReason}`
         : NO_PACK_REASON);
     }
 
@@ -1182,6 +1194,8 @@ async function boot() {
       view.renderCoverage({ blocked: 'Pick what kind of incident it was first, then the cover can be checked.' });
       return;
     }
+    // context.policy is a validated pack or it is null, and hasPolicySchedule above is the check
+    // that says which. Nothing between here and there can put an unchecked block back.
     publish('coverage', { decision: checkCoverage(context.policy, claim), source: 'you' });
   }
 
@@ -1472,8 +1486,18 @@ async function loadFixture() {
   }
 }
 
+/**
+ * Is there a schedule this page may work a cover decision out against.
+ *
+ * A LIST OF COVERAGES IS NOT A SCHEDULE. It used to be enough here, and the sample file carries a
+ * list of its own, so with no rule pack loaded this answered true and the page went on deciding
+ * cover from data src/core/policy.js had never read. The pack has to be one this build loaded and
+ * checked, which is the same question src/core/filing.js asks before it will file, from the same
+ * function.
+ */
 function hasSchedule(policy) {
-  return Boolean(policy && Array.isArray(policy.coverages) && policy.coverages.length > 0);
+  if (!isValidatedPack(policy)) return false;
+  return Array.isArray(policy.coverages) && policy.coverages.length > 0;
 }
 
 function snapshotOf(claim) {
