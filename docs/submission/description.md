@@ -81,7 +81,21 @@ Insurer, policy, vehicle and claimant are invented. No integration, no adjudicat
 this on real intakes, so there is no measurement of claims arriving more complete and I have not
 invented one.
 
-What I did measure went against the page, and it is published rather than dropped. In 36 runs with
+I did not design this from a guess about how claims arrive. I run a first notice system in
+production, and I queried it before I wrote this. In 285,701 records that operator classifies as
+first notices, all five attributes I asked about were present: date, location, driver, vehicle,
+policy. That is a count of fields existing, not a judgement that any answer is right or usable, and
+it is one operator on one line of business.
+
+I am reporting it because it went against me. I expected gaps and there were none, so the pitch that
+claimants forget things is not one I can make. What the number does establish is the scale of the
+domain: a first notice carries these fields, hundreds of thousands of times, and something has to
+decide which ones this policy needs. That is the problem ClaimReady addresses. Whether it addresses
+it better is not measured here and I do not claim it is. The method, the limits, and the wrong
+number I published first and then corrected are in evidence/production-intake. No record left that
+account and the operator is not named.
+
+What I did measure on this page went against it, and it is published rather than dropped. In 36 runs with
 language models standing in for drivers, the arm that got the published rules came out policy
 complete in 5 of 18 against 6 of 18 for a static form. Read those two counts with the thing that
 sits under them: the scorer fills in the date, the incident type and the driver from the file the
