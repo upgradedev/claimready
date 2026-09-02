@@ -161,12 +161,15 @@ test('no module exports a way to put a claim in the receipt', () => {
     .map((match) => match[1]);
   assert.equal(exported.includes('wasFiledHere'), true, 'the reading half has to be reachable');
   assert.equal(
-    exported.some((name) => /^(markFiled|addFilingReceipt|FILED_BY_THIS_MODULE|FILED_HERE)$/.test(name)),
+    exported.some((name) => /^(markFiled|addFilingReceipt|sealAndReceipt|FILED_BY_THIS_MODULE|FILED_HERE)$/.test(name)),
     false,
     'a writing half is exported, so the receipt can be forged',
   );
 
-  // And the set is touched on exactly one line, which is the line inside fileClaim.
+  // And the set is touched on exactly one line. It moved out of fileClaim when noteContextChange
+  // began preserving the receipt on a filed claim: both go through sealAndReceipt, which freezes
+  // and then adds, so one line is still one writer. That helper is private too, which is why its
+  // name is in the list above.
   const adds = source.split('\n').filter((line) => /FILED_BY_THIS_MODULE\.add\(/.test(line));
   assert.equal(adds.length, 1, `the receipt is written in ${adds.length} places`);
 });
