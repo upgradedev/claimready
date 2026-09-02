@@ -338,10 +338,22 @@ export function canFile(pack, claim, completedHumanActions, options) {
       ok: false,
       code: FILE_CODES.unusableState,
       reason: snapshot.reason,
-      // Still complete, because the docstring promises it. `missing` is safe to compute on any
-      // object, since it only asks which fields are empty. Nothing was derived from the pack, so
-      // the requirements are not known and every reader downstream fails closed on that.
-      missing: validateClaim(claim).missing,
+      // Still as complete as it can honestly be, which is what the docstring promises: filled in on
+      // every path they can be KNOWN on. Nothing was derived from the pack, so the requirements are
+      // not known and every reader downstream fails closed on that.
+      //
+      // WHICH FIELD IS EMPTY IS ASKED ONLY WHEN THE CLAIM CAN BE READ. This line used to say
+      // `missing` was safe to compute on any object because it only asks which fields are empty.
+      // That was true until the snapshot check started refusing a claim that answers a field from
+      // a getter, because asking a getter runs somebody else's code. Measured on a claim carrying
+      // a getter on `driver` that throws:
+      //
+      //   fileClaim THREW Error: boom, from validateClaim on this line
+      //
+      // So the gate refused the claim and then crashed reporting the refusal. `readable` says the
+      // snapshot's shape gate passed, which is exactly the condition under which reading a field
+      // returns a stored value.
+      missing: snapshot.readable ? validateClaim(claim).missing : [],
       outstanding: [],
       requirementsKnown: false,
       insurer: null,

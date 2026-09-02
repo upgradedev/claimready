@@ -21,51 +21,117 @@ and the path to save to.
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
-| Freeze commit | `9450d70`, declared 2026-09-02 after the release was served and verified over all 26 files the page loads. It supersedes `357410e`, `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
+| Freeze commit | **NOT YET DECLARED.** `9450d70` was declared on 2026-09-02 and lifted the same day, for the defect written out under [The freeze](#the-freeze). The work that closes it changes `src/core/claim.js`, one of the 26 files the page loads, so no commit the host serves today is a commit a take may be shot in. This cell opens with a SHA again when the release step has served the new runtime and verified it over all 26 files, and `FRZ` is red until it does. The five superseded declarations are `9450d70`, `357410e`, `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
 
 ## The freeze
 
-**Freeze commit: `9450d70`.** Every file the page loads is at that commit. Verified after GitHub
-Pages served it:
+**There is no freeze commit right now.** `9450d70` held it for part of 2026-09-02 and was lifted
+the same day. The record row above is in the shape `FRZ` refuses, on purpose, and the row is red
+until the release step fills it.
+
+**Why it was lifted, and it is the first of the three reasons this file allows.** The filing receipt
+recorded the frozen claim and nothing about the context that claim was filed in. `buildFilingPacket`
+then believed whatever rule pack, home insurer and completed steps its own caller handed it. So a
+packet sealed under a sentence saying the claim was filed through a control on this page could name
+an insurer, a clause and an excess the claim was never decided under, and a ledger row could name a
+tool this page does not publish. That is a judge-facing statement that is false, sealed inside a
+SHA-256 digest, which is exactly what this file says may break a freeze.
+
+**What it costs the runtime.** The fix changes `src/core/claim.js` and `src/core/packet.js`, and
+`src/core/claim.js` is one of the 26 files the page loads. So the bytes the host serves today are
+not the bytes a take may be shot against. The release step deploys the new runtime, verifies it over
+all 26 files with the command below, dispatches one native run against it, and only then writes that
+SHA into the record row:
 
 ```sh
-python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha 9450d70
+python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha <the commit the release serves>
 ```
 
-It printed `the deployed page is 9450d70, on every one of those files` and exited 0, over all 26 of
-them, the three insurer and demo JSON fixtures among them.
+That is how `9450d70` was checked while it held, over all 26 files, the three insurer and demo JSON
+fixtures among them. It printed `the deployed page is 9450d70, on every one of those files` and
+exited 0. That is history now rather than a current claim.
 
-**Native evidence against that exact commit**, dispatched after the release rather than quoted from
-an older run: [run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683),
+**The last native run drove `9450d70`, so it is a true statement about a superseded runtime**:
+[run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683),
 workflow `WebMCP evals`, conclusion success, `headSha` `9450d70`, on
 `Google Chrome 154.0.8025.0 dev`. It reported `Passed steps: 16/16 across 3 case(s)`, the negative
 control `Passed steps: 7/8 across 1 case(s)` with the verdict `PROVEN`, and our own probe
 `probe: PASS. 110 checks against the deployed page, none failed`.
 
-**The run and the freeze name one commit**, which is the state this file has been chasing all day
-and the only state a take may be shot in. Every earlier run in this file names an earlier runtime
-and is kept for that reason rather than quoted as current.
+**That run and that freeze named one commit**, which is the state this file spent the day
+reaching. The unfreeze above ended it, so the release has to reach it again: one native run
+dispatched against `main` after the new runtime is served, at the commit the record row will name.
+Every earlier run in this file names an earlier runtime and is kept for that reason rather than
+quoted as current.
 
 **Read 110 as the size of the judgement rather than a score for the page.** It was 53, then 71, then
 81, then 110, and the page did not improve between them. Each rise is a class of forged transcript
 that used to pass: first the schema and the origin, then the note read and the declarative write,
-then three calls that had no reading of the draft either side of them. An earlier
-[run 33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) printed 81
-against these same bytes, and it is kept as a true statement about the judgement of that hour.
+then three calls that had no reading of the draft either side of them. **The judgement now runs
+178,** after three more forged transcripts passed at 110 on 2026-09-02: an accepted patch claiming
+the claim was filed and a truck dispatched, an assistance read claiming a booking, and an invented
+intake rule authorising a settlement. That is a change to the ruler and not to the runtime that
+run drove, and **no browser run has been made at 178**, so the line above stays as the true record
+of what run 33627149683 printed at `9450d70`. An earlier
+[run 33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) printed 81 at
+`357410e`, which is a different runtime. This sentence used to say 81 was printed against these
+same bytes, and the diff refuses that:
+`git diff --stat 357410e 9450d70 -- index.html src assets fixtures` prints
+`src/core/claim.js | 85 +++`, 77 insertions and 8 deletions, in one of the 26 files the page loads.
+So 81 is history about an earlier runtime rather than a second reading of this one, and it is kept
+under the history heading below with its own commit beside it. Every run named in this file is given
+with the commit it drove, because a run and a commit that did not produce it is the shape of the
+error this paragraph carried.
 
-**What may change after this line, and what may not.** Commits after `357410e` may touch
-documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/` or
-`fixtures/`. Those are the 26 files the page serves and the takes are shot against them. The command
-above is how anyone checks the promise was kept: run it with `357410e` after any later commit and it
-still has to exit 0.
+**What may change while the record row is empty, and what may not.** Everything may change now,
+because nothing is declared and nothing has been recorded. This paragraph used to name `357410e`
+here, under a heading declaring `9450d70`, so it promised nothing at all: the anchor and the freeze
+were two different commits. Once the row names a SHA, commits after it may touch documentation,
+evidence and this runbook, and they may NOT touch `index.html`, `src/`, `assets/` or `fixtures/`,
+because those are the 26 files the page serves and the takes are shot against them. The command
+above is how anyone checks that promise was kept: run it with the declared SHA after any later
+commit and it still has to exit 0.
 
-**Unfreezing again needs a stated reason and only three of them count**: a judge-facing statement
-that is false, a mandatory deliverable that is broken, or a rule violation that risks
+**Unfreezing after that needs a stated reason and only three of them count**: a judge-facing
+statement that is false, a mandatory deliverable that is broken, or a rule violation that risks
 disqualification. Not making something better. To unfreeze, write the defect here, say which takes
 it invalidates, then re-freeze at the new commit and record the new SHA beside the old ones rather
 than replacing them.
 
-### Four superseded declarations, each named with its reason
+### Five superseded declarations, each named with its reason
+
+**How this list was decided, because copying the row above would have proved nothing.** A commit is
+on this list only if the freeze commit cell of this file named it while it stood. That is a
+question the history of the cell answers on its own, without reading any prose:
+
+```sh
+git log --format='%h %s' -- docs/submission/video.md
+git show <each ref>:docs/submission/video.md | grep '^| Freeze commit'
+```
+
+It prints five declarations and no sixth: `9b64fb2` declared at `ab2db69`, `c93b138` at `39690d4`,
+`e942ee3` at `12f7935`, `357410e` at `6883bb5` and `9450d70` at `3a5cf48`. Those five are what the
+record row names and what this section names, and `tests/unit/video_freeze_list.test.js` reads both
+places out of this file and fails when they stop agreeing.
+
+**The two lists had already drifted before this correction, which is why the test exists.** At
+`b5a43e8` the heading read four, the entries named `39690d4`, which was never declared, and omitted
+`357410e`, which was, while the record row named `357410e` and said it was named below. Neither list
+is derived from the other, so each unfreeze updated one by hand and the drift went unread.
+
+**`9450d70`, declared and superseded on 2026-09-02.** The filing receipt bound the claim object and
+not the context it was filed in, so a separately validated pack carrying the same id sealed its own
+insurer, clause and excess into the digest. Reproduced against a real Northwind filing, which sealed
+`Counterfeit Northwind`, clause `ALT-9.9` and excess `999`. A judge-facing statement that is false,
+which is the first of the three.
+
+**`357410e`, declared and superseded on 2026-09-02.** Declared at `6883bb5` once the release was
+served and verified over all 26 files the page loads. It was superseded by `9450d70`, which changed
+`src/core/claim.js`, one of those 26 files, so the bytes under the declaration stopped being the
+bytes the host served. What that commit closed was two known residuals, a pin that advanced the
+revision on a claim every writing door refuses and a context change that threw the filing receipt
+away. Both had been declined under the three reason rule and the owner overruled that with filming
+still ahead, and the decision is recorded as theirs rather than dressed up as a defect finding.
 
 **`e942ee3`, declared and superseded on 2026-09-02.** The filing receipt attested object identity
 rather than the state that passed the gate, so values changed after filing were sealed into the
@@ -75,10 +141,14 @@ judge-facing statement that was false, which is the first of the three reasons t
 **`c93b138`, declared and superseded on 2026-09-02.** Most of this runbook was written against it.
 The correctness work package landed on the runtime under it.
 
-**`39690d4`, never declared here.** It was `origin/main`, so a default dispatch of
-`.github/workflows/video.yml` would have written it into `manifest.json` as `deployed_sha`.
-
 **`9b64fb2`, declared 2026-09-01**, and the unfreeze that ended it is recorded below.
+
+**Why `39690d4` is not on the list, though it sat on it until 2026-09-02.** It is the docs commit
+that declared `c93b138`, so its short SHA stands next to a freeze in the history rather than under
+one. It was also `origin/main` at the time, so a default dispatch of `.github/workflows/video.yml`
+would have written it into `manifest.json` as `deployed_sha`, which is worth keeping and is not a
+declaration. The entry that used to carry it said in its own first line that it was never declared
+here, under a heading counting it as one of the declarations.
 
 **No take was invalidated by any of them, because none has been shot.**
 
@@ -86,8 +156,10 @@ The correctness work package landed on the runtime under it.
 
 [Run 33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935`
 and [run 33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at
-`e942ee3` both reported the same three numbers. They are true about the runtime `e942ee3` and about
-nothing later than it. [Run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732)
+`e942ee3` reported the same three numbers, each about its own runtime and about nothing later than
+it. A sentence here used to give both of them `e942ee3`, which is only the second one's. [Run
+33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) at `357410e` printed
+81 as well. [Run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732)
 at `c93b138` reported `probe: PASS. 71 checks`, and the probe's judgement has grown since: the note
 phase and the declarative phase were each found passing a forged transcript, so both compare a whole
 claim state now. Ten checks were added to the oracle, not to the product.
@@ -627,7 +699,9 @@ so the three cannot quietly disagree again.
 
 1. Upload `cut.mp4` to YouTube.
 2. Set the visibility to **Public**. Unlisted does not satisfy the rules.
-3. Set the title to `ClaimReady, the insurer's page hands your agent its policy rules`.
+3. Set the title to `ClaimReady: what your car insurance covers, answered while you report the
+   crash`, which is the title the owner selected and the one `docs/submission/description.md`
+   opens with.
 4. Put the live page URL and the repository URL in the description.
 5. Upload `captions.vtt` from the same artifact as the subtitle track. It was derived from the
    narration that was actually rendered, so it cannot drift from what is spoken.

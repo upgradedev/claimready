@@ -226,6 +226,47 @@ test('a caller cannot inject a cover decision into the packet', () => {
   assert.match(view, /\*\*Clause:\*\* [A-Z]{2}-\d+\.\d+/);
 });
 
+// THE BINDING, AT THE ONLY LEVEL THAT SETTLES WHETHER THE PAGE STILL WORKS.
+//
+// The packet used to trust the rule pack, the home pack id and the completed human actions it was
+// handed on its own call, so a separately valid pack carrying the same id sealed its insurer, its
+// clause and its excess under the digest. Measured on the shipped fixture, against a claim filed
+// under Northwind Mutual, clause OD-4.1, excess 250:
+//
+//   COUNTERFEIT PACKET ok: true code: null
+//   sealed coverage: {"covered":true,"clause":"ALT-9.9","deductible":999, ...}
+//   INJECTED ok: true human_actions_completed: ["date_of_loss","roadside_collection"]
+//
+// The filing now records what it was decided under and the packet refuses anything else. The
+// adversarial half is asserted in tests/unit/filing_receipt.test.js and in the store's own file.
+// This is the half neither of those can prove: that the page's own journey passes its own check.
+// The page builds the packet from `context.pack` and `ui.humanActions`, which are the same values
+// its File button dispatched a line earlier, so a packet appearing here at all is the binding
+// holding on the route a visitor actually walks. If it did not hold, this panel would be empty and
+// the refusal would be painted under the button instead.
+test('the packet the page builds is the filing the page performed', () => {
+  assert.equal(doc.el('packet-panel').hidden, false, 'the page filed and then refused to describe it');
+  assert.equal(doc.el('file-reason').textContent.includes('not the rules this claim was filed under'), false,
+    'the page was refused its own filing context');
+
+  const view = doc.el('packet-view').textContent;
+
+  // The insurer sealed is the insurer whose pack the picker has loaded, rather than whatever the
+  // packet was handed.
+  const loaded = doc.el('insurer-select').value;
+  assert.match(view, /\*\*Rule pack:\*\* ([a-z]+) \(/);
+  assert.equal(view.match(/\*\*Rule pack:\*\* ([a-z]+) \(/)[1], loaded,
+    'the packet named a pack the page is not reading against');
+
+  // And no requirement in the packet is reported as answered by a person, because nobody on this
+  // journey pressed a control that answers one. That is the row a caller supplied action would
+  // have turned over, and it is the one the markdown lets a reader see.
+  const byPerson = view.split('\n').filter((line) => line.includes('a person, no tool reaches it'));
+  assert.deepEqual(byPerson.filter((line) => line.startsWith('- answered:')), [],
+    `the packet reported a step nobody carried out on this page: ${byPerson.join(' | ')}`);
+  assert.match(view, /## What the intake asked for/, 'and the section this reads is actually drawn');
+});
+
 test('a reset withdraws the packet with the draft it described', () => {
   fireEvent(doc.el('reset-btn'), 'click');
   assert.equal(doc.el('packet-panel').hidden, true, 'nothing filed, nothing to describe');

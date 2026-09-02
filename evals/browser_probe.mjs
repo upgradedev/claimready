@@ -24,7 +24,7 @@
  * WHAT CHANGED AND WHY IT MATTERED. This used to print what it saw and exit 0 whatever that was.
  * Pointed at a browser with no WebMCP it printed `api: null` and reported success, so a run that
  * proved nothing looked exactly like a run that proved the lifecycle. The judgement now lives in
- * evals/probe_assertions.mjs, which tests/unit/probe_assertions.test.js breaks with 68 mutations,
+ * evals/probe_assertions.mjs, which tests/unit/probe_assertions.test.js breaks with 83 mutations,
  * requiring a failure each time, and this file exits 1 when that judgement says so.
  *
  * WHAT THE JOURNEY GAINED. It records which page it ran against and which commit that page was, so
