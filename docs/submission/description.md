@@ -43,8 +43,8 @@ Now set **Still drivable** to no on the page yourself, and press **Pin** on that
 
 That note is a planted instruction inside third party evidence, and it asks for the row you just
 pinned, so the answer is PATCH_REJECTED_LOCKED. Every answer also carries the route it arrived on:
-on file, via page, via tool. That names a surface, not a person: the page cannot see who is
-at the keyboard.
+on file, via page, via tool or derived. That names a surface, not a person: the page cannot see who
+is at the keyboard.
 
 **Filing is human only.** No tool files, dispatches, pins or unlocks, and a test reads the source to
 keep it that way. Filing leaves a handler packet from that exact revision, with the clause, the
@@ -65,9 +65,13 @@ roadside instead of a letter a week later.
 Tools register on document.modelContext, falling back to navigator.modelContext, over a pure core, no
 dependencies, no build step. Page and tools share one store, so an agent action shows on
 screen. Read tools carry readOnlyHint and text the insurer did not write carries
-untrustedContentHint. Both halves of the API ship: nine tools come from JavaScript, and a tenth is
-an ordinary form carrying toolname and toolautosubmit, so an insurer adopts WebMCP
-by adding attributes.
+untrustedContentHint. Both halves of the standard ship: nine tools come from JavaScript, eight from
+the moment the page loads and a ninth that appears when the claim says the car cannot be driven,
+which is why the narration at 0:20 of the video counts eight. The
+tenth is an ordinary HTML form carrying four attributes, toolname, tooldescription,
+toolparamdescription and toolautosubmit, and the browser builds the JSON Schema and the tool from
+that markup on its own. toolautosubmit is the one that makes an agent's call actually submit the
+form rather than only fill it. So an insurer adopts WebMCP by adding attributes.
 
 ## Challenges, and the honest limits
 
@@ -85,3 +89,16 @@ One number, for domain scale only. In a first notice system I run in production,
 records carried all five attributes I asked about. I expected gaps and found none, so the pitch that
 claimants forget things is not one I can make. Something still has to decide which fields a policy
 needs, and whether ClaimReady does is not measured here.
+
+---
+
+**Not part of the text that gets pasted.** The published entry is
+<https://devpost.com/software/claimready-fy4toi>, and that page, not this file, is what a judge
+reads. This file is the source it was written from, and on 2026-09-03 the two had drifted apart in
+three places, all corrected above: this file named two of the declared form's four attributes where
+the published page named four, it listed three of the page's four route words where
+`src/ui/render.js` defines four, and neither surface said that eight of the nine registered tools
+are there at load and the ninth arrives with the answer, which is the count the narration says out
+loud at 0:20. Two sections also exist on the published page and not here,
+**Evidence** and **What the demo video shows**, because they were written straight into the form.
+Nothing in CI compares the two, so an edit to either one has to be made twice by hand.
