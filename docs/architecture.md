@@ -192,9 +192,16 @@ Three consequences worth naming, because they are the ones a reviewer should che
    attributes, which the parser keeps and ignores. A person fills the boxes and presses the button
    and nothing about the page depends on an agent being there.
 
-What has not been verified is in the README, in the table under `The declarative half`: the form has
-been driven by hand and the agent branch has been driven by a constructed `SubmitEvent`, and no
-browser has yet been watched synthesising a tool from the attributes.
+What has and has not been verified is in the README, in the table under `The declarative half`. The
+form has been driven by hand, and the agent branch has been driven by a constructed `SubmitEvent`. A
+browser has also been watched synthesising the tool from the attributes: Chrome `151.0.7922.174`, the
+stable channel, returned `record_supporting_details` from `getTools()` carrying our own description
+and a JSON Schema with a description on each of its three parameters, and executing it moved the
+draft. **This paragraph said no browser had yet been watched doing that until 2026-09-03**, while the
+README table it sends the reader to already said the opposite. The fix was applied to the README on
+2026-09-02 and not here, which is how a file whose only job is to point at another file ended up
+contradicting it. What is still open is the ChatGPT desktop browser, where the declared form has not
+been seen working and no runner drives it.
 
 ### `src/ui`, rendering and the human only controls
 
