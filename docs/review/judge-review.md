@@ -22,7 +22,18 @@ is the same class as the run attributed to a commit it did not drive, recorded b
 2026-09-01 against `ab2db69`, and again on 2026-09-02 against `b5a43e8`, which was not a released
 commit and was the weaker footing this line used to apologise for.
 
-**This revision reads `ead5077`, which is `origin/main` and is the commit the host serves.** Checked
+**SUPERSEDED ON 2026-09-03. The commit the host serves is `61b4d8b`, not `ead5077`.** `ead5077` was
+lifted the morning of 2026-09-03 for a defect this file records below: the sealed handler packet
+reported a filing revision the filing did not happen at. `61b4d8b` closed it, was deployed, and was
+verified over all 27 files the page loads, with a native Chrome run at the same commit,
+[run 33724024167](https://github.com/upgradedev/claimready/actions/runs/33724024167), printing
+`probe: PASS. 178 checks against the deployed page, none failed.`
+
+The block below is kept in its original wording, because a review that quietly rewrites what it
+checked is worth less than one that says what it checked and when. Read it as a reading taken at
+`ead5077`, and read the paragraph above as the current state.
+
+**This revision reads `ead5077`, which was `origin/main` and the commit the host served.** Checked
 here at 19:11 UTC on 2026-09-02:
 
 ```sh
@@ -212,8 +223,8 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 ## 2. Execution, 25 percent
 
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
-serves and it can be proved in one command. **939 unit tests, 939 passing, 0 failing**, taken from
-the green CI run at `ead5077`,
+serves and it can be proved in one command. **953 unit tests, 953 passing, 0 failing**, from `node --test tests/unit`, measured 2026-09-03
+at `61b4d8b`. It read 939 at `ead5077`, and the filing integrity work added fourteen,
 [run 33670779453](https://github.com/upgradedev/claimready/actions/runs/33670779453), whose unit
 test job on an Ubuntu runner printed `# tests 939`, `# pass 939` and `# fail 0`. Read back with
 

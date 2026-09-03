@@ -195,7 +195,25 @@ for, and `roadside_collection`, a requirement no field can answer at all.
 
 ## How it fits together
 
-![ClaimReady Architecture and Protocol Flow](assets/architecture.jpg)
+<!-- THE RENDERED INFOGRAPHIC THAT SAT HERE IS GONE, AND IT IS NOT A TASTE DECISION.
+     docs/assets/architecture.jpg asserted, in rendered pixels nobody can diff, three tool names
+     this build has never had: `describe_claim_surface`, `read_policy_requirements` and
+     `estimate_repair`. The real nine are describe_claim, read_claim_state, get_requirements,
+     apply_claim_patch, validate_claim, check_coverage, get_repair_estimate, read_evidence_notes
+     and get_assistance_options, from `grep -hoE "name: '[a-z_]+'" src/webmcp/tools/*.js`. It also
+     carried two different test counts in one picture, `930 / 930 TESTS PASSED` in the badge and
+     `939 Passing` in the footer, against the 953 that `node --test tests/unit` prints.
+     A judge reading it and then opening the page looks for a tool that is not there.
+     The Mermaid diagram below says the same thing in text this repository can check, correct and
+     diff, so it stays and the picture does not. The file is left on disk rather than deleted, so
+     the claim above can be verified against it.
+
+     AND THE IMAGES LIVE UNDER docs/assets AND NOT UNDER assets, WHICH IS A SECOND GATE.
+     CAMERA_PATHS in video/build_video.py is index.html, src, assets and fixtures: the files the
+     page loads and the set the freeze is verified over. Two README images landed in assets/ on
+     2026-09-03 and took the on camera set from 27 files to 29, which broke the declared freeze
+     at 61b4d8b even though neither image is referenced by index.html and neither changes a
+     rendered pixel. Documentation art belongs outside that path. -->
 
 ```mermaid
 flowchart TB
