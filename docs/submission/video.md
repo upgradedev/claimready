@@ -12,7 +12,7 @@ and the path to save to.
 
 | Field | Value |
 | --- | --- |
-| Public video URL | **NOT YET UPLOADED** |
+| Public video URL | **https://youtu.be/cazdzwy2qKU** Published 2026-09-03. Checked from outside any account with `curl -s -L "https://www.youtube.com/watch?v=cazdzwy2qKU"`, which returns `"isPrivate":false`, `"isUnlisted":false` and `"lengthSeconds":"169"`, so it is Public rather than Unlisted, which the rules require, and it is 2:49 against the three minute cap. The title as published is `ClaimReady : What your car insurance covers, answered while you report the crash`, read back with the oEmbed endpoint. That is the title this file asked for, with a space before the colon and a capital W, and the difference is recorded rather than corrected because the wording is what carries and re-titling a live video costs more than it buys. The cut is the one built by [run 33780012606](https://github.com/upgradedev/claimready/actions/runs/33780012606), 169.30s of a 170s cap, sync gate PASS |
 | Visibility required | Public. Not unlisted, not private. The rules ask for a public video |
 | Length cap | less than three minutes. The pipeline caps the cut at 170 seconds |
 | Length of the finished cut | **not measured.** The cut does not exist. No owner take exists in this repository, so nothing has been assembled and no gate has read a cut. `ls video/beats/*/take.mp4` answers `No such file or directory`, and `python video/build_video.py --check-takes` names all six owner takes as still to record |
@@ -372,7 +372,8 @@ The targets are deliberately a little longer than the narration in every beat, a
 length is the narration, so the cut comes in under the sum. That is a design property, not a
 measurement, and it stays unmeasured until row G of the sync gate prints a duration for a real cut.
 
-When the cut is uploaded, replace **NOT YET UPLOADED** above with the full watch link copied from
+DONE on 2026-09-03. The record row above carries the watch link and the anonymous check that
+proved it Public. The instruction is kept for the next cut: replace the record row with the link from
 the browser address bar, scheme included. The readiness gate looks for a YouTube link in this file
 and fails until it finds one, so nothing here pretends the video exists before it does.
 
@@ -975,5 +976,7 @@ so the three cannot quietly disagree again.
 4. Put the live page URL and the repository URL in the description.
 5. Upload `captions.vtt` from the same artifact as the subtitle track. It was derived from the
    narration that was actually rendered, so it cannot drift from what is spoken.
-6. Copy the watch link from the address bar and replace **NOT YET UPLOADED** at the top of this file.
+6. Copy the watch link from the address bar into the record row at the top of this file, with the
+   anonymous check that proves it Public rather than Unlisted. Done 2026-09-03 for
+   https://youtu.be/cazdzwy2qKU.
 7. Run `node scripts/readiness.mjs --ci` and confirm row D4 has gone green.
