@@ -54,10 +54,27 @@ everything operational here comes from the repository and the registry rather th
 It said smoke mode was unproven, and it named three specific risks that only a run could settle. The
 run happened, and all three are settled below.
 
-### The run of record: 33671018277, at the declared freeze commit `ead5077`
+### The run of record: 33724024167, at the declared freeze commit `61b4d8b`
 
-[33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277) is the newest run
-and the one to quote. `gh run view 33671018277 --repo upgradedev/claimready --json
+**This heading named 33671018277 at `ead5077` until 2026-09-03.** `ead5077` was lifted that morning
+for a defect written up in [docs/submission/video.md](../docs/submission/video.md), `61b4d8b`
+replaced it, and the workflow was dispatched again against the new runtime. So the run below is
+still true about the commit it drove, and it is no longer the newest.
+
+[33724024167](https://github.com/upgradedev/claimready/actions/runs/33724024167) is the run at the
+declared freeze. `gh run view 33724024167 --repo upgradedev/claimready --json
+conclusion,headSha` prints `success` and
+`61b4d8b3ad8d4365bbd926a9e81647c2faf2d477`. Both jobs concluded `success`: `100548952985`,
+`Browser probe against the live page`, which printed
+`the deployed page is 61b4d8b3ad8d, on every one of those files` and then
+`probe: PASS. 178 checks against the deployed page, none failed.`, and `100548953386`,
+`Smoke evals against the live page`, which printed `Passed steps: 16/16 across 3 case(s).` with the
+negative control at `Passed steps: 7/8 across 1 case(s).`
+
+### The run before it: 33671018277, at `ead5077`
+
+[33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277) was the newest run
+and the one to quote, until `61b4d8b` replaced the runtime it drove. `gh run view 33671018277 --repo upgradedev/claimready --json
 conclusion,event,headSha,workflowName` prints:
 
 ```json
