@@ -65,7 +65,9 @@ roadside instead of a letter a week later.
 Tools register on document.modelContext, falling back to navigator.modelContext, over a pure core, no
 dependencies, no build step. Page and tools share one store, so an agent action shows on
 screen. Read tools carry readOnlyHint and text the insurer did not write carries
-untrustedContentHint. Both halves of the standard ship: nine tools come from JavaScript, and the
+untrustedContentHint. Both halves of the standard ship: nine tools come from JavaScript, eight from
+the moment the page loads and a ninth that appears when the claim says the car cannot be driven,
+which is why the narration at 0:20 of the video counts eight. The
 tenth is an ordinary HTML form carrying four attributes, toolname, tooldescription,
 toolparamdescription and toolautosubmit, and the browser builds the JSON Schema and the tool from
 that markup on its own. toolautosubmit is the one that makes an agent's call actually submit the
@@ -94,7 +96,9 @@ needs, and whether ClaimReady does is not measured here.
 <https://devpost.com/software/claimready-fy4toi>, and that page, not this file, is what a judge
 reads. This file is the source it was written from, and on 2026-09-03 the two had drifted apart in
 three places, all corrected above: this file named two of the declared form's four attributes where
-the published page named four, and it listed three of the page's four route words where
-`src/ui/render.js` defines four. Two sections also exist on the published page and not here,
+the published page named four, it listed three of the page's four route words where
+`src/ui/render.js` defines four, and neither surface said that eight of the nine registered tools
+are there at load and the ninth arrives with the answer, which is the count the narration says out
+loud at 0:20. Two sections also exist on the published page and not here,
 **Evidence** and **What the demo video shows**, because they were written straight into the form.
 Nothing in CI compares the two, so an edit to either one has to be made twice by hand.
