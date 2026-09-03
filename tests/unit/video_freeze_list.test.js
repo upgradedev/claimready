@@ -60,6 +60,19 @@ export function readFreezeLists(markdown) {
   const rowTail = rowLine.slice(anchor);
   const row = [...rowTail.matchAll(new RegExp('`(' + SHA + ')`', 'g'))].map((m) => m[1]);
 
+  // THE ROW COUNTS IN A WORD TOO, AND THIS CHECK USED TO READ ONLY ITS SHAS.
+  //
+  // On 2026-09-03 the row was edited to read "The six superseded declarations are" and left naming
+  // five, while the heading still read "Five" over five entries. Every assertion in this file
+  // passed: the row list and the section list agreed with each other and with the heading, and the
+  // row's own number word was the one thing nothing read. So the gate written to stop the two
+  // statements drifting apart went green over a row that contradicted itself in the same sentence.
+  // The word is optional, because a row may name the list without counting it, but when it is there
+  // it is held to the list beside it.
+  const rowWordMatch = rowLine.slice(0, anchor).match(/(\w+)\s+$/);
+  const rowWord = rowWordMatch ? rowWordMatch[1].toLowerCase() : null;
+  const rowCount = rowWord && NUMBER_WORDS.has(rowWord) ? NUMBER_WORDS.get(rowWord) : null;
+
   const headingAt = lines.findIndex((line) => SECTION_HEADING.test(line));
   assert.ok(headingAt >= 0, 'no "### <count> superseded declarations" heading was found');
   const headingWord = lines[headingAt].match(/^###\s+(\w+)/)[1].toLowerCase();
@@ -76,7 +89,7 @@ export function readFreezeLists(markdown) {
     if (entry) section.push(entry[1]);
   }
 
-  return { row, section, headingCount: NUMBER_WORDS.get(headingWord) };
+  return { row, section, headingCount: NUMBER_WORDS.get(headingWord), rowCount };
 }
 
 /** True only when the row, the section and the heading count all say the same thing. */
@@ -85,6 +98,7 @@ export function listsAgree(lists) {
   const section = [...lists.section].sort();
   if (row.length !== section.length) return false;
   if (row.some((sha, i) => sha !== section[i])) return false;
+  if (lists.rowCount !== null && lists.rowCount !== undefined && lists.rowCount !== row.length) return false;
   return lists.headingCount === row.length;
 }
 
@@ -157,6 +171,19 @@ test('the heading counts the entries it introduces, and the row agrees with the 
     'the number word in the superseded heading disagrees with the record row',
   );
   assert.ok(lists.row.length > 0, 'the record row named no superseded declaration at all');
+
+  // AND THE ROW'S OWN NUMBER WORD, WHICH NOTHING READ UNTIL A ROW CONTRADICTED ITSELF.
+  //
+  // On 2026-09-03 the row was edited to read "The six superseded declarations are" and left naming
+  // five, while the heading still read "Five" over five entries. Every assertion above passed,
+  // because all three of them compare the row's SHA LIST, and the sentence introducing that list
+  // was the one thing no check read. A row that miscounts the list in its own sentence is the same
+  // defect this file exists for, one clause to the left.
+  assert.equal(
+    lists.rowCount,
+    lists.row.length,
+    'the number word in the record row disagrees with the list of commits in the same sentence',
+  );
 });
 
 test('agreement is reported when a foreign runbook says the same thing in both places', () => {

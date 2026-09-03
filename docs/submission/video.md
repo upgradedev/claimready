@@ -21,7 +21,7 @@ and the path to save to.
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
-| Freeze commit | `ead5077`, declared 2026-09-02 once the release step had served the new runtime and the host had been verified over every file the page loads. The verify command under [The freeze](#the-freeze) printed `checking 27 on camera source(s)` and `the deployed page is ead5077, on every one of those files`, and exited 0. That is 27 files and not 26, because `src/core/canonical.js` is new in this commit and the page loads it. All six owner takes must be shot against `ead5077`, and no take exists yet. The five superseded declarations are `9450d70`, `357410e`, `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
+| Freeze commit | **LIFTED 2026-09-03, NOT YET RE-DECLARED.** `ead5077` was declared on 2026-09-02 and lifted the next morning for a defect written out under [The freeze](#the-freeze): the sealed handler packet reported a filing revision the filing did not happen at. That is one of the three things this project allows an unfreeze for, a judge-facing statement that is false, and it is the sharpest of them because the statement sits inside a document under a digest. Closing it changes `src/core/claim.js` and `src/core/packet.js`, two of the files the page loads, so no take may be shot until the release step has served the new runtime and verified it. `FRZ` reads `PASS` off the old SHA while this cell still names one, which is the row's own weakness recorded in [docs/review/judge-review.md](../review/judge-review.md), not a second opinion about the freeze. The cell below records what `ead5077` was, and it stays true about that commit. `ead5077`, declared 2026-09-02 once the release step had served the new runtime and the host had been verified over every file the page loads. The verify command under [The freeze](#the-freeze) printed `checking 27 on camera source(s)` and `the deployed page is ead5077, on every one of those files`, and exited 0. That is 27 files and not 26, because `src/core/canonical.js` is new in this commit and the page loads it. No take was ever shot against `ead5077`, so nothing needs re-cutting: the unfreeze costs a deploy and not a re-shoot. The six superseded declarations are `ead5077`, `9450d70`, `357410e`, `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
 
 ## The freeze
 
@@ -214,7 +214,7 @@ disqualification. Not making something better. To unfreeze, write the defect her
 it invalidates, then re-freeze at the new commit and record the new SHA beside the old ones rather
 than replacing them.
 
-### Five superseded declarations, each named with its reason
+### Six superseded declarations, each named with its reason
 
 **How this list was decided, because copying the row above would have proved nothing.** A commit is
 on this list only if the freeze commit cell of this file named it while it stood. That is a
@@ -234,6 +234,15 @@ places out of this file and fails when they stop agreeing.
 `b5a43e8` the heading read four, the entries named `39690d4`, which was never declared, and omitted
 `357410e`, which was, while the record row named `357410e` and said it was named below. Neither list
 is derived from the other, so each unfreeze updated one by hand and the drift went unread.
+
+**`ead5077`, declared 2026-09-02 and superseded on 2026-09-03.** The sealed handler packet
+reported a filing revision the filing did not happen at. On a claim filed at revision 4 and then
+given two ordinary context changes, the document read `reference CR-MTR-2026-0417-R6` and
+`filed.revision 6`. The receipt held the right number the whole time and the packet serialised
+the live counter instead. It is closed by building the document from the filing record, so one
+filing is one document with one digest however long afterwards it is exported. It changes
+`src/core/claim.js` and `src/core/packet.js`, which the page loads, so the freeze had to go with
+it. **No take had been shot against it**, so this unfreeze cost a deploy and not a re-cut.
 
 **`9450d70`, declared and superseded on 2026-09-02.** Declared once the release was served and
 verified over all 26 files the page loaded at that commit, the three insurer and demo JSON fixtures
