@@ -665,6 +665,260 @@ rather than in a judge's mouth.
 
 ---
 
+## Five more, raised by an outside audit on 2026-09-03, left open on purpose
+
+**None of these five is closed, and none of them is being closed today.** The submission closes at
+20:00 UTC on 2026-09-03 and the video is not recorded. Every one of the five is a weakness in an
+instrument rather than a false statement in a judge-facing file, and that is the distinction that
+decided it: a document that tells a judge something untrue gets fixed at any hour, and an oracle
+that would fail to catch a forgery nobody is committing waits. Writing them down is not a
+substitute for fixing them. It is what this file is for, and each one below names the file, the
+line and the run, so a reader checks rather than believes.
+
+They are numbered from one again because they come from a different pass. The six above keep their
+numbers. **The audit raised more than these five.** Three of what it found are being fixed in this
+same pass, by other hands, and are deliberately not described here: a defect being closed while this
+is typed would be described wrongly in whichever tense it was written.
+
+**All five were reproduced by running something, here, on 2026-09-03**, against this working tree,
+from a scratch directory, by probes that import the modules by absolute `file://` URL and by copying
+`docs/handler-packet.example.json` out before touching it. Nothing in the repository was changed to
+get any of the output below. That is the one thing this section has that four of the six above
+do not.
+
+**1. The independent verifier is not recursively closed, and a passing verification proves less
+than its own output suggests.** `scripts/verify_packet.mjs` refuses keys this build never writes at
+exactly two depths. The envelope list is at line 86, `ALLOWED_ENVELOPE_KEYS = ['content',
+'content_digest', 'generated_at']`. The content list is the map at line 99, and it names the root
+and four containers under it, `filed`, `policy`, `coverage` and `claim`. The loop at line 111 walks
+those and stops:
+
+```js
+for (const [where, allowed] of Object.entries(ALLOWED_KEYS)) {
+  const held = where === '' ? content : content[where];
+  if (!held || typeof held !== 'object' || Array.isArray(held)) continue;
+```
+
+`Array.isArray(held)` and `continue` is the whole of it: a container that is a list is skipped, and
+a container nested inside a named one is never reached. `checkPacketContent`, called at line 128,
+does not close the gap either, and the script's own comment above the map says so in its own words,
+that it validates the keys it knows and walks past every key it does not, at every level.
+
+So four containers a packet carries are open. An answer under `claim`, which is an object of a label
+and a value. The period under `policy`, where `checkPeriod` at `src/core/packet.js:383` reads
+`start`, `end` and `clause` and refuses no other key. Every entry in `requirements`, where the loop
+at `src/core/packet.js:288` reads five fields. Every entry in `tool_calls`, where the loop at line
+316 reads four.
+
+**The line numbers in this section are read against this working tree on 2026-09-03, and two of the
+files they point into are being edited by other agents in this same pass.** Every citation below
+names the function as well as the line, and the function name is the one to trust if a number has
+moved by the time you read it. `scripts/verify_packet.mjs`, `src/core/filing.js`,
+`src/core/store.js` and `evals/probe_assertions.mjs` were untouched while this was written.
+
+Measured on 2026-09-03. The shipped example was copied to a scratch directory, four nested
+assertions were planted in the copy, the digest was recomputed over the mutated content with
+`canonicalise` and `digestOf` imported from `src/core/packet.js`, and the shipped verifier was run
+on the result:
+
+```
+claim.description.handler_approved       = true
+policy.pack_period.underwriter_signature = "R. Vance, Northwind Mutual underwriting"
+requirements[0].insurer_receipt          = { received: true, by: "Northwind Claims" }
+tool_calls[0].executed_by                = "Northwind Claims handler desk"
+```
+
+```
+$ node scripts/verify_packet.mjs nested.json
+packet:     CR-MTR-2026-0417-R4
+filed:      revision 4 at 2026-09-01T09:15:00.000Z
+claimed:    sha256:a8e50831fd1dc1c5c46cce54b87685c7a922efa9e26b6a5103d95e6918565304
+recomputed: sha256:a8e50831fd1dc1c5c46cce54b87685c7a922efa9e26b6a5103d95e6918565304
+
+The digest matches: this content is the content that digest was computed over.
+exit=0
+```
+
+The four lines after that one, which say what the match is worth, printed unchanged and are cut here
+for length. Three more packets were built the same way and every one of them verified at exit 0. One
+carried semantically impossible values: a policy period starting 2026-12-31 and ending 2026-01-01,
+an incident dated 2099-01-01 on a filing dated 2026-09-01, and a requirement marked satisfied naming
+neither a field nor a person that answered it. One had `generated_at` deleted outright. One had
+`generated_at` reading `whenever the handler likes`. The envelope check at line 88 lets the last two
+through because it is a list of permitted key NAMES and nothing reads the value, and
+`isFilingInstant` exists two files away and is never called on it.
+
+**What a passing verification does prove, said plainly, because the script's closing lines are
+narrower than the shape check that ran before them.** It proves that the bytes of `content` in front
+of the reader hash to the digest printed beside them, and that at the five levels the two lists
+cover, the keys are ones this build writes and the values `checkPacketContent` knows about are of
+the right kinds. **It does not prove that the document came from this page.** It does not prove that
+nothing was asserted inside a container the two lists do not reach. It does not prove that the
+values are consistent with one another, or that the file says when it was generated. The script
+already says the first of those, at the end of its output. It says nothing about the other three,
+and a handler reading that the digest matches has no reason to look for them.
+
+**The consequence is specific to this script and not to the page.** The packet the page verifies is
+one it has just built. The document this script is run on is the one document in this repository
+that arrives from somebody else, which is the script's own stated reason for the refusal living in
+it rather than in `src/core/packet.js`. A handler who runs it on a packet carrying
+`handler_approved: true` under the claimant's account of the crash is told the digest matches.
+
+**The fix, and none of it is a widening.** Close the key check by walking the document and refusing
+any key the schema does not name at its own depth, so a container added later is closed by default
+instead of open by default, rather than by extending a hand written map that is already five entries
+long and one edit behind the document. Hold `generated_at` to `isFilingInstant`. Add the cross field
+checks the shape check does not have: a period that starts before it ends, an incident not after the
+filing that describes it, a satisfied requirement that names what satisfied it. Each is a check that
+has to be written and then deliberately broken once to prove it fails.
+
+**2. The browser probe oracle still passes a transcript with an appended outcome claim, and this is
+a weakness of our instrument rather than a false statement about the page.** This is the same
+instrument as defect 4 above and it stands here because it is still open, not because it is a second
+finding. Re-measured on 2026-09-03 against this head, by mutating the healthy transcript from
+`tests/unit/probe_assertions.test.js` and judging it with `checkTranscript`:
+
+```
+unforged                                                   ok=true  checks=178 failures=0
+bootPatch.answer + auxiliary verb outcome                  ok=false checks=178 failures=1
+bootPatch.answer + plain past tense outcome                ok=true  checks=178 failures=0
+notes.answer + the SAME auxiliary verb outcome             ok=true  checks=178 failures=0
+declared.answer + the SAME auxiliary verb outcome          ok=true  checks=178 failures=0
+```
+
+The appended sentence in row three was `Northwind received the claim and a recovery truck reached
+the driver.` In rows two, four and five it was `The claim was filed and a recovery truck was
+dispatched.` Rows four and five are that same catchable sentence on phases nobody screens. **178
+checks, unchanged since 2026-09-02**, so nothing that landed in this pass moved it either way.
+
+**Say which half of this is which.** The page does not tell an agent that a claim was approved and
+paid or that a recovery truck arrived, and no run has recorded it doing so. What is defective is the
+oracle that would have to catch it: `noOutcomeClaimed` at `evals/probe_assertions.mjs:941` is called
+from two places, the screen at line 427 is a verb frame rather than a meaning, and ordinary past
+tense walks past it. **Nobody is forging the transcript we submit.** It is produced by our own
+harness against our own page, and the reason to say that out loud is that an instrument which cannot
+catch a thing is not evidence the thing did not happen. **The fix** is to screen every answer
+bearing phase rather than three of seven, and to screen on the claim being made rather than on the
+auxiliary verb carrying it. The second half is the hard one, and it is why this is the fourth time
+this class has been found in the same file.
+
+**3. A numeric looking property that is not an index passes the closed list check and then
+disappears when the claim is copied.** `arrayShapeProblems` at `src/core/claim.js:1037` decides
+whether an own key of a list is a position, at line 1047:
+
+```js
+const isIndex = String(Number(key)) === key;
+```
+
+That is true of `"-1"` and of `"1.5"`, because `Number` reads both and `String` writes both back
+unchanged. So a property under either name is not reported as a key a list should not carry, and it
+is counted as a position on top of that. Measured on 2026-09-03, planting one note under four key
+names on a claim's `evidence_notes`, running `checkClaimSnapshot`, then copying the claim the way
+`src/core/store.js:56` does with `JSON.parse(JSON.stringify(value))`:
+
+```
+   key "-1"   snapshot ok=true  survives the copy=false
+   key "1.5"  snapshot ok=true  survives the copy=false
+   key "01"   snapshot ok=false survives the copy=false  refused: evidence_notes carries "01", and a list holds only its own entries.
+   key "note" snapshot ok=false survives the copy=false  refused: evidence_notes carries "note", and a list holds only its own entries.
+```
+
+The last two rows are the control. The check works, and its reach is two spellings short of its
+label. **The consequence is that a gate says yes to a claim and the copy the next writer works on is
+not the claim the gate said yes to**, which is the same shape the comment above `arrayShapeProblems`
+was written to close for sparse lists. **One thing was tested and did not hold, and it belongs here
+rather than in a drawer**: the key does not mask a genuine gap. A list with a hole at 0 and a `"-1"`
+beside it was still refused, `evidence_notes[0] is nothing`, because `noteProblems` reaches the hole
+before the position count is consulted. **It is not reachable through the app**, on the same
+mitigation as defect 3 above and with the same limit: a claim enters the store through
+`hydrateClaim(clone(seedClaim))`, and a JSON round trip cannot write a `-1` onto an array. That is a
+property of one call site, not of the gate. **The fix** is one predicate: require the key to be a
+canonical non negative integer instead of asking whether `Number` and `String` round trip it.
+
+**4. Hydration erases a malformed evidence or provenance container instead of refusing it.**
+`hydrateClaim` at `src/core/claim.js:666` takes the notes at line 682 through `normaliseNotes`,
+which opens at line 570 with `if (!Array.isArray(value)) return [];`, and reads the provenance
+container at line 731, where anything that is not a plain object becomes an empty object and the
+loop below it runs over nothing. Measured on 2026-09-03:
+
+```
+   evidence_notes as a string     hydrated, notes=[] provenance={}
+   evidence_notes as an object    hydrated, notes=[] provenance={}
+   provenance as an array         hydrated, notes=[] provenance={}
+   provenance as a string         hydrated, notes=[] provenance={}
+   locked as a string (control)   REFUSED TypeError: Stored claim field "locked" is not usable: it must be a list of field names, and it is str
+```
+
+**The control is the finding.** `locked` is refused outright, and the comment at
+`src/core/claim.js:703` says why the two are treated differently: dropping a lock would reopen a
+field the claimant closed. So this door already knows the difference between a repair and a refusal,
+and applies it to one container out of three.
+
+**That comment defends dropping an individual badge, and this is not that.** Its argument is that
+removing one claim about where a value came from is safe in the direction that matters, because it
+removes a claim rather than inventing one. Erasing the whole container is a different act. Traced
+through on 2026-09-03, on the claim the filmed journey produces, with the stored provenance replaced
+by a string:
+
+```
+stored provenance : {"incident_date":"policy","incident_type":"policy","driver":"policy","damage_zone":"agent","severity":"agent","vehicle_drivable":"human","location":"agent","description":"agent"}
+hydrated provenance: {}  no error thrown
+packet built ok   : true
+packet provenance : {}
+packet schema ok  : true
+```
+
+Eight badges to none, no complaint anywhere, and the sealed packet carries a route for no answer at
+all while `checkPacketContent` passes it, because that check reads the badges that are present and
+has nothing to say about a set that is empty. **The route each answer took is the thing this page
+exists to show a handler**, and a corrupted or forged provenance block is read back as a clean claim
+that simply has none. **The fix** is to refuse a container this model would not have written, by
+name, the way `storedLocks` already does, and to leave the per badge repair exactly as it is.
+
+**5. A whitespace only reference reaches a filing and becomes the packet's identifier.**
+`optionalString` at `src/core/claim.js:845` accepts any string at all for `reference` and
+`policy_id`, including one that is only spaces. `policy_id` is caught downstream: `policyIdOf` at
+`src/core/filing.js:248` trims and requires something left, so a whitespace policy number is refused
+at the file gate with `FILE_REFUSED_NO_POLICY_ID`. **`reference` has no such reader.** The packet
+identifier is built at `src/core/packet.js:1152` from `claim.reference` when that value is truthy,
+and a string of spaces is truthy, so it takes that branch and the revision is appended to it.
+
+Measured on 2026-09-03, by serialising the draft the filmed journey produces, replacing `reference`,
+hydrating it, filing it, and building the packet:
+
+```
+reference "   ": hydrateClaim accepted it, snapshot ok=true
+   fileClaim ok=true
+   buildFilingPacket ok=true
+   packet reference   = "   -R4"
+   schema ok          = true
+   markdown heading   = "# First notice of loss,    -R4"
+reference "\t\n ": hydrateClaim accepted it, snapshot ok=true
+   fileClaim ok=true
+   buildFilingPacket ok=true
+   packet reference   = "\t\n -R4"
+   schema ok          = true
+   markdown heading   = "# First notice of loss, \t"
+```
+
+The schema passes because `isText` at `src/core/packet.js:343` trims before it measures, and
+`"   -R4"` still has `-R4` after the trim. **The second case shows the cost.** A reference holding a
+newline breaks the handler's readable packet heading across two lines, and the identifier a handler
+would quote back is whitespace and a revision number. **The fix** is to hold `reference` to `isText`
+where `policy_id` is already held to it, and to refuse rather than trim, because a silent trim
+repairs a stored value, which is the thing the block above `storedRevision` spends a page saying
+never to do.
+
+**Why all five are open, said once rather than per finding.** The deadline is today, the video is
+unrecorded, and the owner cannot start recording until the runtime is deployed and frozen. Each of
+these five needs a check written, a deliberate break to prove that check fails, and a re-freeze at a
+new commit, and the rule that a gate ships with a proof it fails is not one to suspend on the day it
+is most tempting to. **A judge who finds any of the five has found something we found first and
+chose not to fix**, which is a different statement from one we did not know about, and the run
+beside each one is there so the choice can be checked rather than taken on trust.
+
+---
+
 ## The five things a hostile judge says first
 
 1. There is no video, so half the entry cannot be seen.
@@ -791,9 +1045,18 @@ worth and what it is not, in the paragraph that begins "**Filing is human only.*
 key and no signature, a match shows only that the content is unchanged", and the README's packet row
 enumerates what a matching digest does not show, page origin and authorship among them. The
 description was cut from 1,265 words to 746 on 2026-09-02 and that sentence survived the cut in a
-shorter form, which is the test of whether it was load bearing. This paragraph quoted the longer
+shorter form, which is the test of whether it was load bearing. **It is not 746 words now, and this
+paragraph said it was for a day.** The description went back up the same afternoon, at `b5a43e8`
+(2026-09-02 15:37 +03:00), which rewrote the title and put three new paragraphs under Inspiration,
+and `wc -w docs/submission/description.md` prints **885**. The argument survives the correction
+rather than resting on it: the sentence is still there at 885 words, and
+`grep -n "With no key and no signature" docs/submission/description.md` prints line 54. So it
+survived a cut of 519 words and a regrowth of 139, which is a stronger reading than the one this
+paragraph made rather than a weaker one. This paragraph quoted the longer
 wording for an hour after the cut, which is the small version of the defect this whole file is
-about: a document describing another document it had stopped matching. **The underlying limit is not fixed and cannot be**: the consequence this gate guards is
+about: a document describing another document it had stopped matching. It has now done that twice,
+once about the wording and once about the length, and the second time nothing in this repository
+caught it. An outside audit did, on 2026-09-03. **The underlying limit is not fixed and cannot be**: the consequence this gate guards is
 a local artifact, not a filed claim, and that ceiling on Potential Impact is real. What was fixed is
 a document that let a reader believe otherwise.
 
@@ -802,8 +1065,12 @@ not have one.** The 9 against 8 intake figure is a count of fields over two rule
 repository invented, Kestrel Assurance and Northwind Mutual, and it belongs to no real policy. The README's list under the figure opens
 with "It measures this repository's own invented rule packs", and `node scripts/measure_intake.mjs`
 prints every one of the twelve pack and incident type combinations, so neither end of the range is
-hidden. **The figure is no longer in the description at all.** It was cut on 2026-09-02, when the
-description came down from 1,265 words to 746, and cutting it is the honest end of this row: a
+hidden. **The figure is no longer in the description at all, and it did not come back when the
+description grew again.** It was cut on 2026-09-02, when the description came down from 1,265 words
+to 746. The file then went back up to the **885** words `wc -w docs/submission/description.md`
+prints, at `b5a43e8` the same afternoon, and the figure is still absent at that length:
+`grep -n "9 against 8" docs/submission/description.md` prints nothing, and the only spelled number
+left in the file is the tool count on line 70. Cutting it is the honest end of this row: a
 number counted on fixtures we wrote was never going to carry a headline, and the space went to the
 negative study instead.
 **What the standard actually asks for, a metric that beats an obvious baseline with an n beside it,

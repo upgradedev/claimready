@@ -39,6 +39,7 @@ import {
   applyPatch,
   createClaim,
   fileClaim,
+  filedRevisionOf,
   FILING_CONTEXT_MISMATCHES,
   hydrateClaim,
   lockField,
@@ -169,6 +170,7 @@ test('no module exports a way to put a claim in the receipt', () => {
     .map((match) => match[1]);
   assert.equal(exported.includes('wasFiledHere'), true, 'the reading half has to be reachable');
   assert.equal(exported.includes('verifyFilingContext'), true, 'the second reading half too');
+  assert.equal(exported.includes('filedRevisionOf'), true, 'and the third, which the packet reads');
   assert.equal(
     exported.some((name) => /^(markFiled|addFilingReceipt|sealAndReceipt|FILING_RECORDS|FILED_HERE|filingRecordOf)$/.test(name)),
     false,
@@ -182,14 +184,32 @@ test('no module exports a way to put a claim in the receipt', () => {
   const writes = source.split('\n').filter((line) => /FILING_RECORDS\.set\(/.test(line));
   assert.equal(writes.length, 1, `the receipt is written in ${writes.length} places`);
 
-  // NEITHER READER HANDS THE RECORD BACK. A record handed back is the exact set of values a caller
+  // NO READER HANDS THE RECORD BACK. A record handed back is the exact set of values a caller
   // would need to replay at packet time, which is the thing the binding exists to stop. So the
   // verifier answers with a verdict and the boolean answers with a boolean.
-  const verdict = verifyFilingContext(fileClaim(settledDraft(), {
+  const filed = fileClaim(settledDraft(), {
     at: AT, pack: northwind, completedHumanActions: DONE, homePackId: HOME,
-  }).claim, { pack: northwind, homePackId: HOME, completedHumanActions: DONE });
+  }).claim;
+  const verdict = verifyFilingContext(filed, {
+    pack: northwind, homePackId: HOME, completedHumanActions: DONE,
+  });
   assert.deepEqual(Object.keys(verdict).sort(), ['mismatch', 'ok', 'reason']);
   assert.equal(verdict.ok, true, verdict.reason);
+
+  // AND THE THIRD READER HANDS BACK ONE NUMBER, WHICH IS NOT THE SAME THING. The packet has to
+  // print the revision the filing landed on, and before `filedRevisionOf` existed it had no source
+  // for it and read the live counter beside it instead. What comes back is a plain integer, not the
+  // record and not a slice of it, so the pack, its canonical writing, the home pack id and the
+  // completed actions all stay where they are. Those four are what `verifyFilingContext` compares
+  // for equality, and they are what a substitution would have to guess.
+  const revision = filedRevisionOf(filed);
+  assert.equal(typeof revision, 'number', 'the packet has no source for the revision it prints');
+  assert.equal(revision, filed.revision, 'the filing landed on the revision the claim came back at');
+  assert.equal(filedRevisionOf({ ...filed }), null, 'a copy was assembled rather than filed here');
+  for (const value of [null, undefined, 'filed', 42, [], {}]) {
+    assert.equal(filedRevisionOf(value), null,
+      `${JSON.stringify(value ?? null)} was treated as carrying a filing`);
+  }
 });
 
 /* ------------------------------------------- the receipt binds the pack the filing happened under */

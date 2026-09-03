@@ -1548,7 +1548,17 @@ export function applyPatch(claim, changes, options = {}) {
       return refusal(
         claim,
         PATCH_CODES.locked,
-        `"${field}" was pinned by the person on the page, so no patch can move it. A person has to unpin it on the page before this value can change. Nothing was changed.`,
+        // THE BADGE BESIDE THE FIELD NAMES A SURFACE AND THIS NAMED AN AUTHOR.
+        //
+        // It read `was pinned by the person on the page`. `PIN_HINT` in src/ui/render.js
+        // reads `Pinned via the page. No patch can move this field, from an agent or from
+        // this page, until it is unpinned here.` So the row said surface and the refusal an
+        // agent is handed said author, about the same pin. This repository already ruled
+        // that wording out for itself, at src/webmcp/tools/read_claim_state.js: a control
+        // moved by an agent driving this page records as human too, so the page cannot know
+        // a person pressed it. This is the same claim one file over, and it is the refusal
+        // the filmed refusal beat puts on screen.
+        `"${field}" was pinned via the page, so no patch can move it, from an agent or from this page. It has to be unpinned on the page before this value can change. Nothing was changed.`,
       );
     }
 
@@ -1912,10 +1922,21 @@ export function provenanceOf(claim, field) {
  * rule pack, and the reasoning is the same one written out at `isUsablePack` in src/core/filing.js.
  * A public marker such as `filed_here: true` proves only that somebody wrote it, because the forgery
  * above would carry it too. Membership of a map held privately in this module is not a property: it
- * cannot be typed out, spread, cloned, serialised or restored from storage. `wasFiledHere` and
- * `verifyFilingContext` below are the reading halves and there is no exported writing half, so no
- * tool, no page and no test can put a claim in here without going through the file gate. Neither
- * reader hands the record back, because a record handed back is the exact set of values to replay.
+ * cannot be typed out, spread, cloned, serialised or restored from storage. `wasFiledHere`,
+ * `filedRevisionOf` and `verifyFilingContext` below are the reading halves and there is no exported
+ * writing half, so no tool, no page and no test can put a claim in here without going through the
+ * file gate.
+ *
+ * NO READER HANDS THE RECORD BACK, because a record handed back is the exact set of values to
+ * replay. `filedRevisionOf` hands back one integer out of it and stops, and that is not the same
+ * thing. What a substitution has to guess is the pack, the canonical writing of that pack, the home
+ * pack id and the completed actions, because those are the four `verifyFilingContext` compares for
+ * equality. The revision is the one value it does not: it is compared in a single direction, for
+ * being BELOW the filing, so a caller who knows it is no closer to getting into this map than one
+ * who does not. It is also the number the packet prints in its own reference, so it is already on
+ * the face of every packet this page exports. Without a reader for it the packet had no source for
+ * the filed revision at all and read the live counter beside it instead, which is the defect
+ * measured at `filedRevisionOf`.
  *
  * A COPY IS NOT THE CLAIM. `{ ...filed }` produces a different object and is not a key, and that
  * is the intended reading rather than a rough edge. A copied filed claim was assembled by somebody
@@ -1983,6 +2004,51 @@ function normaliseCompletedActions(completedHumanActions) {
  */
 export function wasFiledHere(claim) {
   return Boolean(claim) && typeof claim === 'object' && FILING_RECORDS.has(claim);
+}
+
+/**
+ * The revision the filing on this claim landed on, or null where there is no filing.
+ *
+ * WHY IT EXISTS, AND IT IS THE WORST DEFECT THIS FILE HAS CARRIED. A filed claim goes on moving its
+ * counter after it is filed. `noteContextChange` hands back a copy with the number advanced and the
+ * receipt carried across, which is deliberate and is written out above it: loading another
+ * insurer's rules changes what every read tool answers, so the number an agent quotes has to move.
+ * src/core/packet.js had no way to ask what the filing itself landed on, so it read `claim.revision`
+ * off the claim in front of it and wrote that into the packet reference and into the packet's own
+ * `filed` block. Measured on this tree before this reader existed, filing at revision 4 and then
+ * dispatching two context changes through `noteContextChange`:
+ *
+ *   FILED at revision: 4
+ *     control packet ok = true | reference CR-MTR-2026-0417-R4
+ *     context change 1 ok= true  -> revision 5
+ *     context change 2 ok= true  -> revision 6
+ *   packet ok = true code = null
+ *     reference : CR-MTR-2026-0417-R6
+ *     filed     : {"at":"2026-09-01T09:15:00.000Z","revision":6, ...}
+ *     >>> filing happened at revision 4 <<<
+ *
+ * So a file under a SHA-256 digest stated, in the block whose whole job is to say when the filing
+ * happened, that it happened at a revision it did not happen at. Everything else in that block was
+ * right, which is what made it bad: `filed.at` is compared against the record by
+ * `verifyFilingContext` below and a packet is not built until it matches.
+ *
+ * THE COUNTER IS THE ONLY THING THAT CAN DRIFT, and that is why one integer closes this. A filed
+ * claim is frozen top to bottom by `sealFiledState`, only two functions ever write to the map, and
+ * `noteContextChange` moves the counter and nothing else. Every other value the packet reads off
+ * the claim is either frozen at the filing or compared against the record before the packet is
+ * built. A third writer would be the thing that changes that, and
+ * tests/unit/packet_seals_the_filing.test.js walks the built packet for every field carrying a
+ * revision or a reference rather than naming the two that exist today.
+ *
+ * READ THE LIMIT AT FILING_RECORDS BEFORE RELYING ON THIS, and the paragraph there about why
+ * handing this one number back is not handing the record back.
+ *
+ * @param {*} claim
+ * @returns {(number|null)} the revision the filing landed on, or null where nothing was filed here
+ */
+export function filedRevisionOf(claim) {
+  const record = Boolean(claim) && typeof claim === 'object' ? FILING_RECORDS.get(claim) : undefined;
+  return record ? record.revision : null;
 }
 
 /**

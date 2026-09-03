@@ -361,7 +361,7 @@ export function makeScenario(seed, number) {
           [{ field, value }],
           PATCH_CODES.locked,
           `A person pinned ${field} on the page, so no patch may move it, however fresh the revision is.`,
-          'was pinned by the person on the page',
+          'was pinned via the page',
         ),
         setup: { ...setup, locked: [field] },
       };

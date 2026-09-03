@@ -690,7 +690,7 @@ test('a pinned field refuses every patch until a person unpins it', () => {
   assert.equal(refused.ok, false);
   assert.equal(refused.code, PATCH_CODES.locked);
   assert.match(refused.error, /vehicle_drivable/);
-  assert.match(refused.error, /person has to unpin it/);
+  assert.match(refused.error, /has to be unpinned on the page/);
   assert.equal(refused.claim.vehicle_drivable, false);
 
   const released = unlockField(pinned.claim, 'vehicle_drivable');
