@@ -195,6 +195,8 @@ for, and `roadside_collection`, a requirement no field can answer at all.
 
 ## How it fits together
 
+![ClaimReady Architecture and Business Flow](assets/architecture.jpg)
+
 ```mermaid
 flowchart TB
   subgraph outside["The visitor's own agent"]
