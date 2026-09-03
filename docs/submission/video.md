@@ -384,6 +384,7 @@ and fails until it finds one, so nothing here pretends the video exists before i
 
 | Beat | Kind | Target | What is on screen |
 | --- | --- | --- | --- |
+| `00-context` | generated | 12s | three cards of type: the crash, what a first notice of loss is, and what one missing field costs. Written by `python video/make_slides.py` |
 | `01-problem` | machine | 12s | the page as it boots, three rows answered and seven reading `not set`, the panel reading ten published tools, and the list of what this policy needs |
 | `02-publishes` | machine | 15s | the strip reading `8 tools registered`, and the tool names |
 | `03-agent-fills` | owner | 29s | the agent reading the policy and writing the draft, field by field |
@@ -393,6 +394,12 @@ and fails until it finds one, so nothing here pretends the video exists before i
 | `06b-declared-form` | owner | 13s | the declarative half: an ordinary form, filled and submitted by hand |
 | `07-human-files` | owner | 16s | a hand pressing Request roadside assistance, then File this claim |
 | `08-close` | machine | 15s | the one sentence, and the architecture line |
+| `09-closing` | generated | 6s | the name, the flagship sentence, and the two URLs. Written by `python video/make_slides.py` |
+
+**This table listed nine beats until 2026-09-03**, after the deliverable record above had already
+been corrected to eleven, so one file said both numbers. The two generated beats are the ones it
+was missing, and they are marked `generated` rather than `machine` or `owner` because nobody
+records them and no browser is involved: `video/make_slides.py` draws them with ffmpeg.
 
 Beat order is the directory order under `video/beats`, sorted. Nothing else decides it. That is why
 the declarative beat is `06b-declared-form`: it must come after `06-refusal` and before

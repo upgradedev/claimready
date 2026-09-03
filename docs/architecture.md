@@ -61,7 +61,11 @@ than in review.
 
 ### `src/core`, the domain
 
-Pure, browser free, unit tested. Four modules with fixed signatures.
+Pure, browser free, unit tested. **Nine modules**, from `ls src/core/*.js`: canonical, claim,
+coverage, estimate, filing, packet, policy, requirements and store. The block below draws the
+four the rest of the build imports directly and is not the whole directory. This line said "Four
+modules" until 2026-09-03, when the count and the drawing were the same number by accident and
+stopped being when `canonical.js` was split out of `packet.js`.
 
 ```
 store.js     createStore(initialState) -> { getState, dispatch, subscribe }
