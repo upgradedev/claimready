@@ -6,8 +6,11 @@ are covered for while still describing the crash.
 Live, no account: https://upgradedev.github.io/claimready/
 Code: https://github.com/upgradedev/claimready
 
-Tools appear in the ChatGPT desktop browser, or in Chrome 149+ with
-chrome://flags/#enable-webmcp-testing on. Anywhere else the page works by hand.
+Tools appear in Chrome with chrome://flags/#enable-webmcp-testing on, verified on Chrome 151
+stable, and in the ChatGPT desktop browser on a Work or Codex plan with GPT-5.6 Sol or Terra,
+where site tools are still rolling out and are off in Enterprise and Edu workspaces. The form
+declared tool is the browser's to build, and we have only watched an agent call it in Chrome.
+Anywhere else the page works by hand.
 
 ## Inspiration
 
@@ -21,11 +24,6 @@ notice arrives wrong about what the policy needed rather than about what happene
 waits days to learn what they are covered for, and a handler spends the interval asking for the
 field nobody told anyone to fill in.
 
-That is a description of a role rather than of one person, and our own framing rule says a named
-person scores and a role does not. The rule is right and this entry does not meet it. Inventing a
-name to satisfy it would be the one fabricated thing in a submission that has published every
-result that went against it, so the row stays red.
-
 ## What it does
 
 Describe the crash to your own agent. It reads the insurer's typed tools and tells you what this
@@ -33,11 +31,11 @@ policy still needs while you are talking. Then the surface moves: answer that th
 driven and get_assistance_options registers live, a capability the agent lacked a moment earlier and
 loses when that answer changes.
 
-Three prompts to paste, with one page click between the second and the third:
+Three prompts to paste, with two page steps between the second and the third:
 
     Read this claim page and tell me what it still needs from me.
 
-    A delivery van reversed into my car while it was parked on Harbour Road. It caught the left front wing and left a dent. Fill that in and write the description.
+    A delivery van reversed into my car while it was parked in the car park on Harbour Road. It caught the left front wing and left a dent. The car still drives, and it is still there in the Harbour Road car park. Fill that in for me and write the description.
 
 Now set **Still drivable** to no on the page yourself, and press **Pin** on that row. Then:
 
@@ -59,8 +57,8 @@ the content is unchanged.
 A REST endpoint with an OpenAPI file carries the same answers, once somebody builds that integration
 for this insurer. This is browser native and same origin, with zero integration work: an
 agent meeting this insurer for the first time discovers the tools at runtime. That is what was
-difficult or impossible before, and it is why the driver hears their cover at the roadside,
-not a week later in a letter.
+difficult or impossible before, and it is what the page is built for: the cover answer at the
+roadside instead of a letter a week later.
 
 ## How it was built and implemented
 
