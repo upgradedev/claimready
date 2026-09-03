@@ -15,82 +15,198 @@ and the path to save to.
 | Public video URL | **NOT YET UPLOADED** |
 | Visibility required | Public. Not unlisted, not private. The rules ask for a public video |
 | Length cap | less than three minutes. The pipeline caps the cut at 170 seconds |
-| Length of the finished cut | **not measured.** The cut does not exist. Six owner takes have not been recorded, so nothing has been assembled and no gate has read a cut |
+| Length of the finished cut | **not measured.** The cut does not exist. No owner take exists in this repository, so nothing has been assembled and no gate has read a cut. `ls video/beats/*/take.mp4` answers `No such file or directory`, and `python video/build_video.py --check-takes` names all six owner takes as still to record |
 | Beats | nine. Three captured in CI, six recorded by the owner |
 | Targets, as the tool prints them | `python video/build_video.py --plan` prints `9 beats, targets adding to 166s, cap 170s` |
 | Built by | `video/build_video.py`, gated by `video/sync_gate.py` |
 | Built in | `.github/workflows/video.yml`, workflow dispatch |
 | Filmed against | the repository variable `CLAIMREADY_URL`, at a commit the build verifies and writes into `manifest.json` as `deployed_sha` |
-| Freeze commit | **NOT YET DECLARED.** `9450d70` was declared on 2026-09-02 and lifted the same day, for the defect written out under [The freeze](#the-freeze). The work that closes it changes `src/core/claim.js`, one of the 26 files the page loads, so no commit the host serves today is a commit a take may be shot in. This cell opens with a SHA again when the release step has served the new runtime and verified it over all 26 files, and `FRZ` is red until it does. The five superseded declarations are `9450d70`, `357410e`, `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
+| Freeze commit | `ead5077`, declared 2026-09-02 once the release step had served the new runtime and the host had been verified over every file the page loads. The verify command under [The freeze](#the-freeze) printed `checking 27 on camera source(s)` and `the deployed page is ead5077, on every one of those files`, and exited 0. That is 27 files and not 26, because `src/core/canonical.js` is new in this commit and the page loads it. All six owner takes must be shot against `ead5077`, and no take exists yet. The five superseded declarations are `9450d70`, `357410e`, `e942ee3`, `c93b138` and `9b64fb2`, all named below with their reasons |
 
 ## The freeze
 
-**There is no freeze commit right now.** `9450d70` held it for part of 2026-09-02 and was lifted
-the same day. The record row above is in the shape `FRZ` refuses, on purpose, and the row is red
-until the release step fills it.
+**The freeze commit is `ead5077`, declared on 2026-09-02.** `9450d70` held the freeze for part of
+the same day and was lifted, for the defect written out below. The work that closed that defect is
+what `ead5077` is, and it is now the runtime the host serves.
 
-**Why it was lifted, and it is the first of the three reasons this file allows.** The filing receipt
-recorded the frozen claim and nothing about the context that claim was filed in. `buildFilingPacket`
-then believed whatever rule pack, home insurer and completed steps its own caller handed it. So a
-packet sealed under a sentence saying the claim was filed through a control on this page could name
-an insurer, a clause and an excess the claim was never decided under, and a ledger row could name a
-tool this page does not publish. That is a judge-facing statement that is false, sealed inside a
-SHA-256 digest, which is exactly what this file says may break a freeze.
-
-**What it costs the runtime.** The fix changes `src/core/claim.js` and `src/core/packet.js`, and
-`src/core/claim.js` is one of the 26 files the page loads. So the bytes the host serves today are
-not the bytes a take may be shot against. The release step deploys the new runtime, verifies it over
-all 26 files with the command below, dispatches one native run against it, and only then writes that
-SHA into the record row:
+**This is the command that let the declaration be written, and it is the command anyone re-runs to
+check it:**
 
 ```sh
-python video/build_video.py --verify-deployed   --url https://upgradedev.github.io/claimready/ --deployed-sha <the commit the release serves>
+python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha ead5077
 ```
 
-That is how `9450d70` was checked while it held, over all 26 files, the three insurer and demo JSON
-fixtures among them. It printed `the deployed page is 9450d70, on every one of those files` and
-exited 0. That is history now rather than a current claim.
+Run on 2026-09-02 it printed, and exited 0:
 
-**The last native run drove `9450d70`, so it is a true statement about a superseded runtime**:
-[run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683),
-workflow `WebMCP evals`, conclusion success, `headSha` `9450d70`, on
-`Google Chrome 154.0.8025.0 dev`. It reported `Passed steps: 16/16 across 3 case(s)`, the negative
-control `Passed steps: 7/8 across 1 case(s)` with the verdict `PROVEN`, and our own probe
-`probe: PASS. 110 checks against the deployed page, none failed`.
+```
+checking 27 on camera source(s) at https://upgradedev.github.io/claimready/ against ead5077
+the deployed page is ead5077, on every one of those files
+the host, this checkout and that commit are the same bytes on every file the page loads.
+```
 
-**That run and that freeze named one commit**, which is the state this file spent the day
-reaching. The unfreeze above ended it, so the release has to reach it again: one native run
-dispatched against `main` after the new runtime is served, at the commit the record row will name.
-Every earlier run in this file names an earlier runtime and is kept for that reason rather than
-quoted as current.
+**It is 27 files now, not 26, and this is not a rounding of the old number.** `src/core/canonical.js`
+is new in `ead5077` and the page loads it. `git log --oneline --diff-filter=A -- src/core/canonical.js`
+prints one line and it opens with `ead5077`, and
+`git diff --stat 9450d70 ead5077 -- index.html src assets fixtures` names four changed on camera
+files, `src/core/canonical.js`, `src/core/claim.js`, `src/core/filing.js` and `src/core/packet.js`,
+of which only the first is an addition. **Counts elsewhere in this file that describe an
+earlier commit still read 26, on purpose**, because 26 is what that commit served. Do not sweep
+them to 27. Run the command above and quote what it prints rather than carrying any number forward.
 
-**Read 110 as the size of the judgement rather than a score for the page.** It was 53, then 71, then
-81, then 110, and the page did not improve between them. Each rise is a class of forged transcript
-that used to pass: first the schema and the origin, then the note read and the declarative write,
-then three calls that had no reading of the draft either side of them. **The judgement now runs
-178,** after three more forged transcripts passed at 110 on 2026-09-02: an accepted patch claiming
-the claim was filed and a truck dispatched, an assistance read claiming a booking, and an invented
-intake rule authorising a settlement. That is a change to the ruler and not to the runtime that
-run drove, and **no browser run has been made at 178**, so the line above stays as the true record
-of what run 33627149683 printed at `9450d70`. An earlier
-[run 33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) printed 81 at
-`357410e`, which is a different runtime. This sentence used to say 81 was printed against these
-same bytes, and the diff refuses that:
+**The takes are shot against `ead5077` and no take exists yet.** All six owner takes,
+`03-agent-fills` through `07-human-files`, are still to be recorded, and they must be recorded
+against this commit. `ls video/beats/*/take.mp4` answers `No such file or directory`.
+
+A rehearsal session was recorded on 2026-09-02, between 18:59 and 19:10 local time, against
+`b5a43e8`. That is the commit before this one, so it is a different runtime and nothing shot in that
+session can ship. Eight captures were made. Two of them recorded the wrong window, so five of the
+six owner beats came out with a usable capture and one, `06b-declared-form`, has none. The set was
+never complete, and `ls video/beats/*/take.mp4` still answers `No such file or directory`. What the
+session taught the next recorder is written into preflight items 1, 7, 11 and 12, and into take 5,
+rather than kept as a story here.
+
+**The live page went down and came back on the day this was declared.** The repository had been made
+private by a settings change, which disabled GitHub Pages, and the judge URL answered 404 for part
+of the afternoon. It was made public again and Pages re-enabled from `main` at root. Measured after
+that, on 2026-09-02:
+
+```sh
+curl -s -o /dev/null -w "%{http_code}" https://upgradedev.github.io/claimready/
+```
+
+prints `200`, and the title served is `ClaimReady, the policy aware claim desk`. The outage window
+itself is our note rather than something re-measured here. The reason it belongs in this file is
+that it is the failure a recorder meets first, and preflight item 1 is where it is caught.
+
+**The native run at this freeze**:
+[run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277), workflow
+`WebMCP evals`. `gh run view 33671018277 --json status,conclusion,headSha` prints
+`"conclusion":"success"`, `"status":"completed"` and
+`"headSha":"ead507724a7881409dffc15a67f1e1ae41327a16"`. The browser probe, job `100384363765`,
+printed:
+
+```
+probe: judged against https://upgradedev.github.io/claimready/, deployed commit ead507724a7881409dffc15a67f1e1ae41327a16
+probe: PASS. 178 checks against the deployed page, none failed.
+```
+
+**The smoke job, `100384364189`, runs each half twice, and the order is what those lines mean, so
+they are given here in log order with the timestamps the log carries.** Read both back with the
+colour codes stripped:
+
+```sh
+gh api repos/upgradedev/claimready/actions/jobs/100384363765/logs | sed "s/\x1b\[[0-9;]*m//g"
+gh api repos/upgradedev/claimready/actions/jobs/100384364189/logs | sed "s/\x1b\[[0-9;]*m//g"
+```
+
+```
+19:03:54.149  Passed steps: 16/16 across 3 case(s).
+19:03:54.149  VERDICT: every journey replayed clean against the fake host.
+19:03:54.973  Passed steps: 7/8 across 1 case(s).
+19:03:54.974  VERDICT: PROVEN. The lifecycle answered a patch that was applied.
+19:04:30.833  Google Chrome 154.0.8025.0 dev
+19:04:35.171  Passed steps: 16/16 across 3 case(s).
+19:04:42.260  Passed steps: 7/8 across 1 case(s).
+19:04:42.260  Negative control held. The tool surface moved because a patch was applied.
+```
+
+The times are UTC, from the `Z` the job log stamps on every line.
+
+**The first four lines are the offline replay, and they say nothing about the deployment.** The step
+that produced them runs `node evals/replay.mjs --quiet` and
+`node evals/replay.mjs --negative-control --quiet`, which drive this repository's own fake host.
+The run says so in its own verdict line.
+
+**The three lines after the Chrome version are the browser half, and those are the deployed page.**
+The version line is the last output of the step that installs the browser, which ends with
+`google-chrome-unstable --version` at `19:04:30.833`; the smoke step's own group opens at
+`19:04:30.842`, so everything printed after it belongs to the browser. That step runs
+`node "${EVALS_BIN}" smoke -u "${CLAIMREADY_URL}" -e evals/evals.json --chrome-channel
+"${CHROME_CHANNEL}"`, with `EVALS_BIN` set earlier in the same job to
+`/tmp/webmcp-tools/webmcp-evals/dist/bin/webmcp-evals.js`, cloned from
+`https://github.com/GoogleChromeLabs/webmcp-tools.git` at
+`d39eae4bd51e8c12736b8cae840bd98f190f3179`. The step's own comment in the log reads
+`The harness launches Chrome itself with --enable-features=WebMCP, so the tools are registered
+against the browser's OWN implementation.`
+
+**An earlier version of this file listed six of these lines with the Chrome version last.** Read in
+that order the step counts look as though they came from the fake host, which is the opposite of
+what they are offered as evidence for.
+
+The `7/8` line is the negative control, and the step it loses is the one it exists to produce: step
+8 finds `get_assistance_options` withdrawn after the patch at step 5 set the car drivable again.
+
+**Read 178 as the size of the judgement rather than a score for the page.** It was 53, then 71, then
+81, then 110. Each rise is a class of forged transcript that used to pass: first the schema and the
+origin, then the note read and the declarative write, then three calls that had no reading of the
+draft either side of them. **A rising check count is a bigger ruler and it is not a mark for the
+page.** That is the whole of what those four numbers support here.
+
+**What the numbers do not support is the opposite claim either, and this file used to make it.** An
+earlier version of this paragraph said the page did not improve between any of those four. The on
+camera bytes changed at every step these diffs cover:
+
+```sh
+git diff --shortstat c93b138 e942ee3 -- index.html src assets fixtures
+git diff --shortstat e942ee3 357410e -- index.html src assets fixtures
+git diff --shortstat 357410e 9450d70 -- index.html src assets fixtures
+```
+
+print `9 files changed, 1084 insertions(+), 63 deletions(-)`, `1 file changed, 62 insertions(+)` and
+`1 file changed, 77 insertions(+), 8 deletions(-)`. A shortstat proves the runtime moved. It does
+not by itself prove the page got better. What supports that is the commit subjects:
+`git log --oneline --first-parent origin/main` prints `e942ee3`, `357410e` and `9450d70` as `fix:`
+commits, and each of the three is named again under the superseded declarations below. The 53 to 71
+step has no diff here because this file names no commit for 53.
+
+**The judgement then went to 178** on 2026-09-02, after three more forged transcripts passed at 110:
+an accepted patch claiming the claim was filed and a truck dispatched, an assistance read claiming a
+booking, and an invented intake rule authorising a settlement.
+
+**The ruler and the runtime moved in the same commit, and an earlier version of this paragraph said
+they had not.** It said those three were added to the oracle while the runtime was still the one
+that had scored 110. The history refuses that:
+
+```sh
+git log --oneline -- evals/probe_assertions.mjs
+git show ead5077 --stat --format="" -- evals
+```
+
+The first names `ead5077` as the most recent commit to touch the oracle, and the second lists
+`evals/probe_assertions.mjs` at 411 changed lines among the three files `ead5077` touched under
+`evals`. That is the same commit that rewrote `src/core/claim.js`, `src/core/filing.js` and
+`src/core/packet.js` and added `src/core/canonical.js`. So there is no
+commit at which a 178 check oracle stood over the runtime that scored 110, and no run named in this
+file gives 178 against any commit but `ead5077`.
+
+**What the diff does record is the order the work was authored in, and it is worth keeping.** The
+comment added to `evals/probe_assertions.mjs` in that same commit says
+`Three forged transcripts were built first and every one of them was judged ok=true, 110 checks, 0
+failures before a line here changed.` That is a statement about three hand built transcripts and the
+old oracle. A forged transcript is not produced by the page, so judging one says nothing about any
+runtime, and nothing here turns it into a run of 178 against an earlier one.
+
+**Do not read 178 against 110 as a page that got better.** Between the run that printed 110 and the
+run that printed 178, the ruler grew by three classes of forged transcript and the runtime changed
+too: `ead5077` rewrote `src/core/claim.js`, `src/core/filing.js` and `src/core/packet.js` and added
+`src/core/canonical.js`. Nothing in this file separates the two effects, and no measurement here
+tries to. **An earlier version of this paragraph said no browser run had been made at 178.** That
+was true when it was written and it is not true now: run 33671018277 above is 178 against the
+deployed page at `ead5077`.
+
+Every run named in this file is given with the commit it drove. A run quoted next to a commit that
+did not produce it is the shape of the error this paragraph used to carry: it once gave 81 as a
+reading of the same bytes that scored 110, and the diff refuses that.
 `git diff --stat 357410e 9450d70 -- index.html src assets fixtures` prints
-`src/core/claim.js | 85 +++`, 77 insertions and 8 deletions, in one of the 26 files the page loads.
-So 81 is history about an earlier runtime rather than a second reading of this one, and it is kept
-under the history heading below with its own commit beside it. Every run named in this file is given
-with the commit it drove, because a run and a commit that did not produce it is the shape of the
-error this paragraph carried.
+`src/core/claim.js | 85 +++`, 77 insertions and 8 deletions, in one of the 26 files that commit
+loaded. So 81 is history about an earlier runtime, and it is kept under the history heading below
+with its own commit beside it.
 
-**What may change while the record row is empty, and what may not.** Everything may change now,
-because nothing is declared and nothing has been recorded. This paragraph used to name `357410e`
-here, under a heading declaring `9450d70`, so it promised nothing at all: the anchor and the freeze
-were two different commits. Once the row names a SHA, commits after it may touch documentation,
-evidence and this runbook, and they may NOT touch `index.html`, `src/`, `assets/` or `fixtures/`,
-because those are the 26 files the page serves and the takes are shot against them. The command
-above is how anyone checks that promise was kept: run it with the declared SHA after any later
-commit and it still has to exit 0.
+**What may change now that the row names a SHA, and what may not.** Commits after `ead5077` may
+touch documentation, evidence and this runbook. They may NOT touch `index.html`, `src/`, `assets/`
+or `fixtures/`, because those are the 27 files the page serves and the takes are shot against them.
+The verify command above is how anyone checks that promise was kept: run it with `ead5077` after any
+later commit and it still has to exit 0.
 
 **Unfreezing after that needs a stated reason and only three of them count**: a judge-facing
 statement that is false, a mandatory deliverable that is broken, or a rule violation that risks
@@ -119,14 +235,22 @@ places out of this file and fails when they stop agreeing.
 `357410e`, which was, while the record row named `357410e` and said it was named below. Neither list
 is derived from the other, so each unfreeze updated one by hand and the drift went unread.
 
-**`9450d70`, declared and superseded on 2026-09-02.** The filing receipt bound the claim object and
-not the context it was filed in, so a separately validated pack carrying the same id sealed its own
-insurer, clause and excess into the digest. Reproduced against a real Northwind filing, which sealed
-`Counterfeit Northwind`, clause `ALT-9.9` and excess `999`. A judge-facing statement that is false,
-which is the first of the three.
+**`9450d70`, declared and superseded on 2026-09-02.** Declared once the release was served and
+verified over all 26 files the page loaded at that commit, the three insurer and demo JSON fixtures
+among them, printing `the deployed page is 9450d70, on every one of those files` and exiting 0.
+Superseded by `ead5077`. The defect was the filing receipt: it recorded the frozen claim and nothing
+about the context that claim was filed in. `buildFilingPacket` then believed whatever rule pack,
+home insurer and completed steps its own caller handed it, so a separately validated pack carrying
+the same id sealed its own insurer, clause and excess into the digest, and a ledger row could name a
+tool this page does not publish. A packet could therefore say the claim was filed through a control
+on this page while naming an insurer, a clause and an excess the claim was never decided under.
+Reproduced against a real Northwind filing, which sealed `Counterfeit Northwind`, clause `ALT-9.9`
+and excess `999`. A judge-facing statement that is false, sealed inside a SHA-256 digest, which is
+the first of the three reasons this file allows.
 
 **`357410e`, declared and superseded on 2026-09-02.** Declared at `6883bb5` once the release was
-served and verified over all 26 files the page loads. It was superseded by `9450d70`, which changed
+served and verified over all 26 files the page loaded at that commit. It was superseded by
+`9450d70`, which changed
 `src/core/claim.js`, one of those 26 files, so the bytes under the declaration stopped being the
 bytes the host served. What that commit closed was two known residuals, a pin that advanced the
 revision on a claim every writing door refuses and a context change that threw the filing receipt
@@ -154,6 +278,12 @@ here, under a heading counting it as one of the declarations.
 
 ### Native runs kept as history, and not quoted as current
 
+[Run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683) at `9450d70`
+printed `probe: PASS. 110 checks against the deployed page, none failed`, with
+`Passed steps: 16/16 across 3 case(s)` and the negative control `Passed steps: 7/8 across 1 case(s)`.
+It was the current run until `ead5077` was served, and it is a true statement about a superseded
+runtime.
+
 [Run 33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935`
 and [run 33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at
 `e942ee3` reported the same three numbers, each about its own runtime and about nothing later than
@@ -162,7 +292,11 @@ it. A sentence here used to give both of them `e942ee3`, which is only the secon
 81 as well. [Run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732)
 at `c93b138` reported `probe: PASS. 71 checks`, and the probe's judgement has grown since: the note
 phase and the declarative phase were each found passing a forged transcript, so both compare a whole
-claim state now. Ten checks were added to the oracle, not to the product.
+claim state now. Ten checks were added to the oracle. **They were not added to the oracle alone, and
+an earlier version of this sentence said they were.** The runtime moved in the same step:
+`git diff --shortstat c93b138 e942ee3 -- index.html src assets fixtures` prints
+`9 files changed, 1084 insertions(+), 63 deletions(-)`. So 71 and 81 sit at two different runtimes
+as well as two different rulers, and nothing here says how much of the rise belongs to which.
 
 **The record row is what the gate reads, and it reads only that row.** `FRZ` used to take the first
 line anywhere in this file that said freeze commit and carried a backticked hex string, which meant
@@ -187,15 +321,14 @@ the page it came from, and the digest made it look settled.
 authoritative home insurer was missing, so a policy the file says is with one insurer could be filed
 under another's rules.
 
-**Which takes any of this invalidates: none.** No take has been recorded. All six owner takes are
-still to be shot, and they will be shot against whatever commit the record row ends up naming.
+**Which takes any of this invalidates: none.** No take existed when it happened, and none exists in
+this repository now. All six owner takes are still to be shot, and the record row above names the
+commit they are shot against.
 
-**What may change before that row is filled, and what may not.** Everything may change now, because
-nothing has been recorded. Once the row names a SHA, later commits may touch documentation, evidence
-and this runbook, and they may NOT touch `index.html`, `src/`, `assets/` or `fixtures/`, because
-those are the 26 files the page serves and the takes are shot against them. The verify command above
-is how anyone checks that promise was kept: run it with the declared SHA after any later commit and
-it still has to exit 0.
+**What may change and what may not is stated once, above, under the declared freeze.** It is not
+restated here. When this paragraph was written the record row held no SHA and it said everything
+could change, which was true then. The row now names `ead5077`, so the paragraph above is the one
+that binds, and its file count is the current one.
 
 **Unfreezing after that needs a stated reason and only three of them count**: a judge-facing
 statement that is false, a mandatory deliverable that is broken, or a rule violation that risks
@@ -248,12 +381,26 @@ the declarative beat is `06b-declared-form`: it must come after `06-refusal` and
 ## Preflight, before you record anything
 
 Work down this list. Every line is either a thing that has wasted a take before, or a recorder
-setting a take below depends on.
+setting a take below depends on. Items 1, 7, 11 and 12 come from the rehearsal on 2026-09-02, which
+left five of the six owner beats with a usable capture, `06b-declared-form` with none, and no
+shippable footage at all.
 
 1. **The live page is up and is the commit the build will name.** Open `CLAIMREADY_URL` in an
    ordinary browser first and confirm it loads. The build refuses to film a page that is not the
    commit it is about to write into the manifest, so a stale deployment stops the build later
    rather than sooner.
+
+   A 404 here is worth thirty seconds of checking before you blame the URL. On 2026-09-02 the page
+   answered 404 for part of the afternoon because the repository had been made private, which
+   disables GitHub Pages with no other warning. The fix was to make it public again and re-enable
+   Pages from `main` at root. Check the repository's visibility and its Pages setting before you
+   change anything else, then:
+
+   ```sh
+   curl -s -o /dev/null -w "%{http_code}" https://upgradedev.github.io/claimready/
+   ```
+
+   It has to print `200`. Anything else and you are not recording today.
 2. **Open the page in the ChatGPT desktop built in browser, signed in to your own account.** The
    menu path, on the Windows app: **View, Browser, Open Browser Tab**, or `Ctrl+T`. It is not
    `Ctrl+Shift+B`, which is what an earlier version of this file said. Paste the judge URL into the
@@ -273,9 +420,29 @@ setting a take below depends on.
    turn on that number moving.
 6. **Record at 1920 by 1080 if the machine can.** Everything is scaled and padded to that, so a
    smaller window is safe, it is just softer.
-7. **Record a few seconds longer than the target.** The picture is trimmed to the narration, so a
-   long take costs nothing. A take shorter than its narration is held on its last frame, which
-   reads as a freeze, and the build refuses a hold longer than 1.5 seconds.
+7. **Record a little longer than the narration target, and not much longer.** The picture is fitted
+   to the narration by `fit_picture` in `video/build_video.py`. It seeks `trim_head` seconds into
+   the take, `argv += ["-ss", f"{trim_head:.3f}"]`, and then keeps a fixed number of frames,
+   `"-frames:v", str(frames)`, where `frames = max(1, int(math.ceil(audio_seconds * FPS - 1e-9)))`.
+   It keeps the FIRST frames after the trim and discards everything after them. So a take that runs
+   several times its narration ships its dead opening and throws away whatever you did at the end,
+   which on most of these beats is the button press.
+
+   **The pipeline refuses only the other error.** A take shorter than its narration is held on its
+   last frame, and the builder raises when that hold is longer than `MAX_HOLD_SECONDS`, which is
+   `1.5` in `video/build_video.py`. Nothing in the pipeline warns about a take that runs long. It
+   builds, it passes every gate, and the beat is somebody waiting.
+
+   **Aim for the narration target plus three seconds.** Three is the number the code names, not a
+   range: the `BuildError` above tells you to `Aim for {audio_seconds + 3:.0f} seconds or more: a
+   long take is trimmed and costs nothing.` The number it enforces is a different one, the `1.5` of
+   `MAX_HOLD_SECONDS` at line 103, so do not read the two as the same. This runbook used to say two
+   or three seconds, which is neither.
+
+   If a take still comes out long, the lever is `trim_head_seconds` at the top level of that beat's
+   `beat.json`. For an owner beat the builder reads
+   `trim_head = float(spec.get("trim_head_seconds", 0.0))`, so it defaults to nothing, and no owner
+   beat sets it today.
 8. **No system audio and no voice on the take.** The narration is rendered separately and the
    take's own audio is discarded.
 9. **Do not press Load synthetic incident again** once take 1 has started. It advances the
@@ -288,13 +455,27 @@ setting a take below depends on.
    after the confirmation. The takes that involve the assistant are 20 to 33 seconds long, so the
    thinking cannot be in them.
 
-   **Pause the recording while it thinks. Resume the moment the answer starts to appear.** That
-   keeps one continuous session, changes nothing about what happened, and leaves a take that is
+   **Stop the recorder while it thinks. Start it again the moment the answer begins to appear.**
+   That keeps one continuous session, changes nothing about what happened, and leaves a take that is
    mostly the thing worth watching: the ledger filling, the rows moving, the revision stepping.
    Do not fake the wait away by cutting mid sentence, and do not speed the picture up.
 
+   **This is the rule the rehearsal broke.** On 2026-09-02 the recorder was left rolling through the
+   thinking, and every take came out two to four times the length of its narration. Item 7 says what
+   the builder does with those minutes: it keeps the first frames and discards the rest, so the
+   waiting would ship and the button press at the end would not.
+
    A faster answer is worth trying before you record: the model picker at the bottom of the
    composer offers builds with less thinking, and the session above was on the slowest one.
+12. **Check which window your recorder is capturing, and check it on every clip.** Most screen
+   recorders capture whichever window is in front. On 2026-09-02 the operator had the instructions
+   in front, and two of the eight captures from that session contain no ClaimReady footage at all.
+   One whole beat, `06b-declared-form`, was lost with them, and that one is the expensive one to
+   lose: see take 5 below for why it cannot be picked up later in the same session.
+
+   Two habits fix it. Capture the ClaimReady window by name rather than by whatever is frontmost,
+   if your recorder offers that. And play the first five seconds of each clip back before you shoot
+   the next one, while the session is still live and a re-shoot is still cheap.
 
 Save every take as `video/beats/<beat id>/take.mp4`. That exact path, that exact name. To see what
 is still missing, and the recording instructions for each:
@@ -315,8 +496,13 @@ The order is forced by the product, not by preference:
 
 - `06-refusal` needs the row `04-human-corrects` pinned. On a fresh page the planted note asks for
   something nothing is protecting and the beat has nothing to show.
-- `06b-declared-form` needs the draft still open. `renderDeclaredForm` in `src/ui/render.js`
-  disables every control on that form once the claim is filed.
+- `06b-declared-form` needs the draft still open, and this one is a door that only closes.
+  `renderDeclaredForm` in `src/ui/render.js` sets `control.disabled = filed || busy` on the witness,
+  police and revision boxes, sets `els.declaredSubmit.disabled = filed || busy` on the button, and
+  replaces the hint under the revision box with `The claim is filed, so this form is closed along
+  with the rows above it.` So once `07-human-files` has filed, there is nothing left on that form to
+  record. A missed `06b` cannot be picked up later in the same session, and reloading to get the
+  form back ends the session every other take depends on.
 - Inside `07-human-files`, Request roadside assistance must be pressed before File this claim.
   `assistanceApplies` in `src/ui/app.js` requires `claim.status !== 'filed'`, so filing closes the
   assistance control. Press it first or it cannot be pressed at all.
@@ -415,8 +601,8 @@ alone. This beat is a person using the page directly.
 - the badge on that row reading `via page`
 - the **Draft revision** number in the header stepping up
 - the pin control on that row reading as pinned
-- the status strip count stepping from `8 tools registered` to `9`, the instant **Still drivable**
-  becomes `No`
+- the status strip count stepping from `8 tools registered` to `9`, which follows **Still drivable**
+  becoming `No` on its own, with nothing else pressed. It is not instant: see the note below
 
 **Stop on:** the pinned **Still drivable** row reading `No`, with the new revision number in the
 header.
@@ -425,11 +611,25 @@ header.
 claim one. The refusal is produced in `06-refusal`, against the row that gets pinned here. That is
 why this take matters: without the pin, `06` has nothing to refuse.
 
-**The ninth tool registers here, not in take 3.** `registerToolSurface` in `src/webmcp/register.js`
-subscribes to the store, so `get_assistance_options` registers synchronously the moment this edit
-lands. The `8` to `9` transition belongs to this take and cannot appear in one that starts
-afterwards. Keep the strip in frame. Take 3 shows the strip already reading `9` and the agent
-explaining it, and its narration is written that way.
+**The ninth tool registers here, not in take 3, and that instruction is unchanged.** What decides it
+is the rule the tool is published by. `CONDITIONAL_TOOLS` in `src/webmcp/register.js` carries
+`get_assistance_options` with `present: (claim) => Boolean(claim) && claim.vehicle_drivable ===
+false`, and this take is where that becomes true. So the `8` to `9` transition belongs here and
+cannot appear in a take that starts afterwards. Keep the strip in frame.
+
+**The symbol is `startToolSurface`, at line 554, and only half of this is synchronous.** An earlier
+version of this paragraph named `registerToolSurface`, which `grep -rn registerToolSurface src
+tests evals` does not find, and said the tool registers synchronously. The store notification is
+the synchronous half. The registration is not, and the module says both in its own words: lines 542
+and 543 read
+`Reconciles are queued behind one another because registering is asynchronous and the store is
+not`, and the comment on the subscription at line 644 reads `The store notifies synchronously and
+nobody awaits this`. The subscription itself is at line 646, `context.store.subscribe(...)`, calling
+`reconcile('claim changed')`. So the edit fires the reconcile at once and the count follows a moment
+later, with nothing else pressed. How long that moment is has not been measured here.
+
+Take 3 shows the strip already reading `9` and the agent explaining it, and its narration is written
+that way.
 
 **Do not go looking for the spoken announcement.** The page does announce why a tool was
 published, but it announces it into the live region, which `assets` clips to one pixel so screen
@@ -468,9 +668,13 @@ I have just corrected the drivable answer on the page myself. Read the claim aga
 
 **Stop on:** the strip reading `9 tools registered`, with the recomputed requirements list on screen.
 
-**The count is asked for here as a state, `9`, not as a change from `8`.** That change happened in
-take 2, the instant the drivable answer was corrected, because the tool surface is subscribed to the
-store. A take that starts afterwards cannot contain it, so the narration says the correction has
+**The count is asked for here as a state, `9`, not as a change from `8`.** That change belongs to
+take 2, because `startToolSurface` in `src/webmcp/register.js` is subscribed to the store and the
+correction is what publishes the tool. **It is not instant, and an earlier version of this paragraph
+said it was.** The store notification is synchronous; the registration is not, and
+`src/webmcp/register.js:542` says so: `Reconciles are queued behind one another because registering
+is asynchronous and the store is not`. Either way a take that starts afterwards cannot contain the
+transition, so the narration says the correction has
 already published the tool rather than claiming the registration happens here. What is new in this
 take is the agent reading the claim again, finding the tool, and reading out a requirement that no
 tool on the page can close.
@@ -542,6 +746,14 @@ the code reads `PATCH_REJECTED_LOCKED`.
 **In frame the whole time:** the same page and the same session, scrolled so the **Supporting
 details** form and the **Draft revision** number in the header are both visible.
 
+**Get this one right the first time, because there is no second one in this session.** The
+rehearsal on 2026-09-02 lost this beat: its clip captured the wrong window, and by the time anyone
+looked the claim had been filed in take 6. `renderDeclaredForm` in `src/ui/render.js` sets
+`control.disabled = filed || busy` on the three boxes and `els.declaredSubmit.disabled = filed ||
+busy` on the button, and the hint under the revision box becomes `The claim is filed, so this form
+is closed along with the rows above it.` A filed claim leaves nothing on this form to record.
+Before you move on to take 6, play this clip back and check that ClaimReady is in it.
+
 **No prompt. This one is you, using the form.** Do this:
 
 1. Note the **Draft revision** number before you type anything, and keep the header in frame.
@@ -565,7 +777,13 @@ details** form and the **Draft revision** number in the header are both visible.
 **Stop on:** that result line under the button, with the new revision visible in the header.
 
 **Why this take exists, and what it does not claim.** Both halves of WebMCP ship on this page. The
-imperative half is the nine registered tools every other take shows. The declarative half is this
+imperative half is the registered tools the other takes show, and the count is not nine throughout:
+`ALWAYS_ON_TOOLS` in `src/webmcp/register.js` holds eight entries and `CONDITIONAL_TOOLS` holds one,
+`get_assistance_options`, published only while
+`(claim) => Boolean(claim) && claim.vehicle_drivable === false`. So take 1 asks for
+`8 tools registered` on camera, take 2 is where the count steps to `9`, and take 3 asks for `9`. The
+beat narration matches: `02-publishes` says the page `registers eight tools`, and `05-reconcile`
+says the correction `has already published a ninth tool`. The declarative half is this
 form: an ordinary HTML form in `index.html` with four extra attributes on it, `toolname`,
 `tooldescription`, `toolautosubmit` and `toolparamdescription`. The browser builds the input schema
 from the form itself, so nothing on this page writes one, and that is the migration path an insurer

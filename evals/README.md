@@ -54,15 +54,77 @@ everything operational here comes from the repository and the registry rather th
 It said smoke mode was unproven, and it named three specific risks that only a run could settle. The
 run happened, and all three are settled below.
 
+### The run of record: 33671018277, at the declared freeze commit `ead5077`
+
+[33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277) is the newest run
+and the one to quote. `gh run view 33671018277 --repo upgradedev/claimready --json
+conclusion,event,headSha,workflowName` prints:
+
+```json
+{"conclusion":"success","event":"workflow_dispatch","headSha":"ead507724a7881409dffc15a67f1e1ae41327a16","workflowName":"WebMCP evals"}
+```
+
+It has two jobs and both concluded `success`, from `gh run view 33671018277 --repo
+upgradedev/claimready --json jobs`: job `100384363765`, `Browser probe against the live page`, and
+job `100384364189`, `Smoke evals against the live page`. Every line quoted below was read from
+`gh api repos/upgradedev/claimready/actions/jobs/<id>/logs | sed "s/\x1b\[[0-9;]*m//g"` and carries
+the timestamp the log gives it, because **the smoke job runs each half twice** and the order is the
+only thing that tells the two apart.
+
+**Smoke job `100384364189`, in log order.** Its step 4 is `Replay the journeys and the negative
+control offline`, against a fake host. Its step 9 installs Chrome. Steps 10 and 11 are the real
+browser. So everything above the install line here is the fake host and everything below it is the
+browser.
+
+| Time, UTC | Half | Line |
+|---|---|---|
+| 19:03:54.1494354 | offline replay, fake host | `Passed steps: 16/16 across 3 case(s).` |
+| 19:03:54.1496913 | offline replay, fake host | `VERDICT: every journey replayed clean against the fake host.` |
+| 19:03:54.9730455 | offline replay, fake host | `Passed steps: 7/8 across 1 case(s).` |
+| 19:03:54.9744652 | offline replay, fake host | `VERDICT: PROVEN. The lifecycle answered a patch that was applied.` |
+| 19:04:30.8331137 | the Chrome install line | `Google Chrome 154.0.8025.0 dev` |
+| 19:04:35.1718592 | real browser, the three journeys | `Passed steps: 16/16 across 3 case(s).` |
+| 19:04:42.2596988 | real browser, negative control | step 8 of the harness's own result table reads `ERROR` and names `tool "get_assistance_options" is not available.` |
+| 19:04:42.2600161 | real browser, negative control | `Passed steps: 7/8 across 1 case(s).` |
+| 19:04:42.2600570 | real browser, negative control | `ASSERTION 1 passed: the harness exited 1.` |
+| 19:04:42.2601159 | real browser, negative control | `ASSERTION 2 passed: seven of eight steps passed, so the patch at step 5 landed.` |
+| 19:04:42.2601797 | real browser, negative control | `ASSERTION 3 passed: step 8 found the ninth tool withdrawn.` |
+| 19:04:42.2602400 | real browser, negative control | `Negative control held. The tool surface moved because a patch was applied.` |
+
+**The browser half printed no `VERDICT` line.** Both `VERDICT` lines above belong to the fake host
+and they run first. Quoting either of them as a browser result reads the replay as if it were the
+browser.
+
+**Browser probe job `100384363765`, in log order.** This job has no offline replay in it. Its step 4
+is `The judgement must still refuse what it is supposed to refuse`, the mutation and note phase unit
+tests, and they run before any browser is opened.
+
+| Time, UTC | Line |
+|---|---|
+| 19:03:56.5441928 | `HTTP 200` |
+| 19:03:59.3835812 | `checking 27 on camera source(s) at https://upgradedev.github.io/claimready/ against ead507724a78` |
+| 19:03:59.3836608 | `the deployed page is ead507724a78, on every one of those files` |
+| 19:04:19.2606469 | `Google Chrome 154.0.8025.0 dev` |
+| 19:04:25.1813441 | `probe: judged against https://upgradedev.github.io/claimready/, deployed commit ead507724a7881409dffc15a67f1e1ae41327a16` |
+| 19:04:25.1814971 | `probe: PASS. 178 checks against the deployed page, none failed.` |
+
+The two Chrome install lines belong to different jobs: 19:04:19.26 is the probe job's and
+19:04:30.83 is the smoke job's. Both printed `Google Chrome 154.0.8025.0 dev`.
+
+### The previous run: 33627149683, at `9450d70`
+
+The table below describes that run. It is kept as history and it is not a statement about what the
+host serves now.
+
 | | Observed |
 |---|---|
 | Run | [33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683), workflow `WebMCP evals`, conclusion success, run 2026-09-02, dispatched against `main` after the release was served so the run and the deployment name one runtime. This row named [33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) until 2026-09-02 and gave it the commit below, which it did not drive: its `headSha` is `357410e` |
-| Commit under test | `9450d70`, **and that is the commit the host serves. It is no longer the commit the recording is frozen at**: it held the freeze for part of 2026-09-02 and the freeze was lifted the same day, so the record row in [docs/submission/video.md](../docs/submission/video.md) names no commit and `FRZ` is red. Checked, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 9450d70` fetches all 26 files the page loads and printed `the deployed page is 9450d70, on every one of those files`, exit 0. The workflow runs on a daily schedule and on dispatch rather than on push, so the gap opens again on the next commit that touches one of those files |
+| Commit under test | `9450d70`, which is the commit this run drove. **It is no longer the commit the host serves, and it is no longer the commit the recording is frozen at.** `ead5077` is both. `sed -n 24p docs/submission/video.md` prints a record row naming `ead5077`, and `node scripts/readiness.mjs \| grep "^FRZ"` prints `FRZ   PASS          recommended   deliverable  a freeze commit is declared for the recording, before the takes are shot`. This cell asserted the opposite of both until 2026-09-02. Checked at the time, not asserted: `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 9450d70` fetched the 26 files the page loaded at that commit and printed `the deployed page is 9450d70, on every one of those files`, exit 0. It is 27 files at `ead5077`, because `src/core/canonical.js` is new there: `git cat-file -e 9450d70:src/core/canonical.js` fails and the same command against `ead5077` succeeds. The workflow runs on a daily schedule and on dispatch rather than on push, so the gap opens again on the next commit that touches one of those files |
 | Target | `https://upgradedev.github.io/claimready/`, the deployed judge URL |
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step. That string was read from the log of 33588857520; the dev channel moves, so re-read it from the run you are quoting |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179`, which is pinned in the workflow and so is the same in both runs |
-| Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`: its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road |
-| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 110 checks against the deployed page, none failed`. The run before it, 33616908770 at `357410e`, printed 81. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle, not to the product. **That run's 81 is now history too.** Later on 2026-09-02 the two accepted patches and the read between them were found to have no reading of the draft either side of them, so a collateral write by any of the three was recorded by nothing. Closing that took the matrix to 110, which is what this run printed. The page did not change between it and the run before it. The judgement did, and 29 checks that did not exist before pass against the same bytes. The judgement has since grown again, to 178, and no browser run has been made at that size |
+| Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).`, then `ASSERTION 1 passed: the harness exited 1.`, `ASSERTION 2 passed: seven of eight steps passed, so the patch at step 5 landed.` and `ASSERTION 3 passed: step 8 found the ninth tool withdrawn.` Its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road. **This cell gave that half the verdict `PROVEN` until 2026-09-02, and the browser half never printed one.** In this run's smoke job log, read with `gh api repos/upgradedev/claimready/actions/jobs/100237645110/logs`, `VERDICT: PROVEN. The lifecycle answered a patch that was applied.` is at 11:56:29.9085720, before the `Google Chrome 154.0.8025.0 dev` line at 11:57:04.8711262, so it is the offline replay. The browser half printed the three `ASSERTION` lines at 11:57:16.53 and no verdict |
+| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 110 checks against the deployed page, none failed`. The run before it, 33616908770 at `357410e`, printed 81. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle. **That run's 81 is now history too.** Later on 2026-09-02 the two accepted patches and the read between them were found to have no reading of the draft either side of them, so a collateral write by any of the three was recorded by nothing. Closing that took the matrix to 110, which is what this run printed. **This cell used to say the page did not change between it and the run before it, and that the 29 new checks passed against the same bytes. Both are false, and so is the same shape of claim about the step before.** The runtime moved under every one of these rises: `git diff --shortstat 357410e 9450d70 -- index.html src assets fixtures` prints `1 file changed, 77 insertions(+), 8 deletions(-)` for this step, and `git diff --shortstat c93b138 e942ee3 -- index.html src assets fixtures` prints `9 files changed, 1084 insertions(+), 63 deletions(-)` for the 71 to 81 step. So a rise here is a bigger ruler over a different page, and nothing recorded anywhere separates the two. The judgement has since grown again, to 178, and the first browser run at that size is 33671018277 at the top of this section, which printed `probe: PASS. 178 checks against the deployed page, none failed.` against `ead5077` |
 
 Earlier runs were green as well:
 [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
@@ -79,10 +141,16 @@ re-run rather than left pointing at the old number. Read it for yourself with
 spliced onto the tail of 33616908770's real head, `357410e3e0664c13f223ce4dfa28310fbb10e97a`. Two
 SHAs read as one is the failure to watch for, because the string still looks like a commit.
 
-**The negative control HAS now run in a browser, seven times.** This paragraph used to say it had
-not, at any commit, and then said twice while listing six runs. In runs 33334936720, 33458929502,
-33560224732, 33588857520, 33600367240, 33616908770 and 33627149683 its own job reported `Passed steps: 7/8 across 1
-case(s).` and named the step that had to fail: `step 8 (get_assistance_options): tool
+**The negative control HAS now run in a browser, eighteen times.** This paragraph used to say it
+had not, at any commit, and then said twice while listing six runs. Eighteen is counted over every
+run of this workflow rather than over a list kept by hand. `gh run list --workflow "WebMCP evals"
+--repo upgradedev/claimready --limit 60 --json databaseId,headSha,createdAt,conclusion` returns 23
+runs, and in eighteen of them the smoke job printed `Passed steps: 7/8 across 1 case(s).` below the
+line where that job installs Chrome, which is the browser half rather than the offline replay. Those
+eighteen are 33159504999, 33213498244, 33238864709, 33297329944, 33334936720, 33365884758,
+33383186852, 33399284806, 33458929502, 33478855275, 33512549120, 33560224732, 33588857520,
+33600367240, 33616908770, 33623166901, 33627149683 and 33671018277. Each of the eighteen also named
+the step that had to fail, below that same install line: `step 8 (get_assistance_options): tool
 "get_assistance_options" is not available.` The workflow asserts both the summary and that sentence,
 so a browser that quietly kept the tool would have turned the job green and failed the assertion
 instead.
@@ -188,30 +256,40 @@ checks, 0 failures`: a patch answering `Applied. The claim is filed and roadside
 dispatched automatically.`, an assistance read answering `Roadside assistance is booked. No action
 from the claimant is needed.`, and the real roadside rule replaced throughout by
 `- settlement_authorisation, send location: The claim is authorised for settlement`. Closing those
-took the matrix from 110 to 178. So no number recorded against any
-run above can be reproduced by re-running the probe as it is now. **Where the 178 comes from,
+took the matrix from 110 to 178. So no number recorded against any run above **except 178** can be
+reproduced by re-running the probe as it is now. That carve out is new: when this sentence was
+written the largest number any run had printed was 110, and the run of record now sits at the top of
+this section. [Run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277),
+at `ead5077`, printed `probe: PASS. 178 checks against the deployed page, none failed.`, so 178 is
+the one figure here that a re-run reproduces. **Where the 178 comes from,
 because a count needs its command.** `tests/unit/probe_assertions.test.js` holds a floor at
 `verdict.checks >= 178` over the healthy transcript, and the judgement runs exactly that many: raise
 the floor above it and the assertion message prints the count it actually ran. Measured that way on
 2026-09-02, on Windows, it printed `expected a real matrix, ran 178 checks`. The earlier lines are
 kept because they are true about the runs they name, and 178 is the number to quote now.
-**No browser run has been made at 178.** The probe has run on a runner four times since 71: at 81 in
+**The first browser run at 178 is [33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277),
+at `ead5077`**, recorded at the top of this file's status section, which printed
+`probe: PASS. 178 checks against the deployed page, none failed.` This paragraph said no browser run
+had been made at 178, which was true when it was written. Before that run the probe had run on a
+runner four times since 71: at 81 in
 [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at `e942ee3`,
 [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935` and
 [33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) at `357410e`, then
 at 110 in [33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683) at
 `9450d70`. Every one of those four commits comes from `gh run view <id> --json headSha` rather than
 from memory. An earlier version of this sentence gave the first two runs one shared commit, and it
-was not either of their own. **None of the four describes the runtime this entry will record**:
-filing integrity work in the working tree changes `src/core/claim.js`, which is one of the 26 files
-the page loads, so the workflow has to be dispatched against `main` once more after the release is
-served.
+was not either of their own. **None of the four describes the runtime this entry records.** The
+dispatch this paragraph was waiting on has happened, and it is 33671018277 above. The count of files
+compared moved with it: the verify step in that run printed `checking 27 on camera source(s)`, where
+the record kept in this file for `9450d70` is 26, because `src/core/canonical.js` is new in
+`ead5077`. `git cat-file -e 9450d70:src/core/canonical.js` fails and the same command against
+`ead5077` succeeds.
 
 **What stops a green run here from going stale, now that it runs unattended.** This workflow runs
 daily and on dispatch rather than on push, so `main` moves under it. Before the browser is opened,
 the job runs `python3 video/build_video.py --verify-deployed --url "$CLAIMREADY_URL" --deployed-sha
-"$GITHUB_SHA"`, which fetches every one of the 26 files the page loads and refuses unless the host,
-this checkout and that commit are the same bytes on all of them. Only if that passes is the commit
+"$GITHUB_SHA"`, which fetches every one of the files the page loads, 27 of them at `ead5077`, and
+refuses unless the host, this checkout and that commit are the same bytes on all of them. Only if that passes is the commit
 handed to the probe, which carries it into the transcript, and `evals/probe_assertions.mjs` refuses
 a transcript that cannot name one. So a pass is always a statement about bytes compared moments
 earlier, and a runtime change that has not reached the host stops the job rather than passing
@@ -220,20 +298,24 @@ working tree one commit ahead of the host, it printed `the deployed page is not 
 over `assets/styles.css` and exited 1, which is the check doing its job rather than a broken
 deployment.
 
-**Still owed on the probe, and one dispatch settles both of them.**
+**Two things were owed on the probe, and one dispatch settled both of them on 2026-09-02.**
 
-Its *passing* branch has never run anywhere. The verifier above has only ever been watched refusing,
-from a working tree ahead of the host. The second of its two comparisons, this checkout against the
-same 26 files at the named commit, has therefore never executed, and this workflow does not fire on
-push, so the first execution will be the 06:17 cron or a manual dispatch.
+The verifier's *passing* branch had never run anywhere. It had only ever been watched refusing, from
+a working tree ahead of the host, so the second of its two comparisons, this checkout against the
+same files at the named commit, had never executed. In 33671018277 it did. That run's probe job step
+`The host must be serving this exact commit, on every file the page loads` concluded `success` and
+printed `checking 27 on camera source(s) at https://upgradedev.github.io/claimready/ against
+ead507724a78` and `the deployed page is ead507724a78, on every one of those files` at 19:03:59.
 
 And the schema contract in `evals/probe_assertions.mjs` was measured on Chrome **stable** 152, while
-the probe job installs `google-chrome-unstable`, the Dev channel. The runner run that passed did so
-under the older judgement, which searched the serialised schema for two property names and would
-have passed whatever Dev put in it. If the two channels build a different schema from the same
-markup, the first unattended run goes red for a reason that is not a defect in the page. Dispatch
-the workflow once after this commit is deployed and read the probe job's transcript. A difference is
-recorded with both channels named. It is not a reason to loosen the comparison.
+the probe job installs `google-chrome-unstable`, the Dev channel. The earlier runner runs passed
+under an older judgement, which searched the serialised schema for two property names and would have
+passed whatever Dev put in it, so they did not settle it. 33671018277 ran the judgement as it stands
+in this file, 178 checks, on `Google Chrome 154.0.8025.0 dev`, and printed
+`probe: PASS. 178 checks against the deployed page, none failed.` That is one Dev build on one day.
+It does not say the two channels build the same schema from the same markup in general. If a later
+run goes red here, record the difference with both channels named. It is not a reason to loosen the
+comparison.
 
 **The honest limit, and it is the same one as everywhere else on this page: the caller was a script,
 not a model.** This shows that a real browser publishes, executes and withdraws the tools this page
@@ -686,7 +768,8 @@ one shape described above, and uploads both logs and any `.evals` report as an a
 
 The `probe` job, in order, runs the 83 mutations and the note phase tests before any browser is
 opened, fails when `CLAIMREADY_URL` is empty, fails when that URL does not answer 200, fails unless
-the host is serving this checkout at this commit on all 26 files the page loads, hands that commit
+the host is serving this checkout at this commit on every file the page loads, 27 of them at
+`ead5077`, hands that commit
 to the probe, starts Chrome with the WebMCP flag, runs `evals/browser_probe.mjs` and fails when the
 judgement refuses the transcript, and uploads the transcript and the browser's own log.
 
@@ -856,13 +939,20 @@ node scripts/gen_scenarios.mjs --count 180 --json
    gh workflow run evals.yml --repo upgradedev/claimready --ref <the branch>
    ```
 
-   Until that output is in this file, the honest statement is the one made above: the pair is
-   proven against the domain and the registration path, and the browser half is proven for journey 2
-   only. Do not write that the pair has been observed in a browser before it has.
+   The paragraph above is kept in its original wording because it is what this file said before the
+   sightings below, and the correction is worth more than a tidy page. It is superseded. Do not read
+   `Do not write that the pair has been observed in a browser before it has` as current: it has been.
 
    **Settled, 2026-08-30 and 2026-08-31. This paragraph used to say the withdrawal half had never
-   been seen in a browser, and that is no longer true.** It has now been seen twice, and the two
-   sightings are on different Chrome builds:
+   been seen in a browser, and that is no longer true.** It then said it had been seen **twice**,
+   which undercounted it. Counted rather than remembered, from the logs:
+   `gh run list --workflow "WebMCP evals" --limit 60` returns 23 runs, and in **18** of them the
+   browser half of the smoke job, meaning everything below the `Google Chrome` install line, prints a
+   real `Passed steps: 7/8 across 1 case(s).` together with
+   `step 8 (get_assistance_options): tool "get_assistance_options" is not available.` The five that
+   do not are 33069947791, 33070316906, 33074580188, 33151418595 and the cancelled 33627136266. The
+   newest of the 18 is 33671018277, at the declared freeze `ead5077`. Read the two below as the
+   first sighting on each Chrome build rather than as the whole count:
 
    - In CI, run 33334936720, the negative control job reported `Passed steps: 7/8` and named the
      reason: `step 8 (get_assistance_options): tool "get_assistance_options" is not available.`
