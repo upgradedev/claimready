@@ -195,7 +195,14 @@ for, and `roadside_collection`, a requirement no field can answer at all.
 
 ## How it fits together
 
-![ClaimReady Architecture and Protocol Flow](assets/architecture.jpg)
+![ClaimReady Architecture and Protocol Flow](docs/assets/architecture.jpg)
+
+<!-- THESE TWO IMAGES LIVE UNDER docs/assets AND NOT UNDER assets, AND THE REASON IS A GATE.
+     CAMERA_PATHS in video/build_video.py is index.html, src, assets and fixtures: the files the
+     page loads and the set the freeze is verified over. Two README images landed in assets/ on
+     2026-09-03 and took the on camera set from 27 files to 29, which broke the declared freeze
+     at 61b4d8b even though neither image is referenced by index.html and neither changes a
+     rendered pixel. Documentation art belongs outside that path. -->
 
 ```mermaid
 flowchart TB
