@@ -10,7 +10,7 @@ are covered for while still describing the crash.
 
 Two of those badges answer two different questions and it is worth knowing which is which. **CI** is
 the engineering: secret scan, style gate, unit tests. **Readiness** is the submission: one table of
-deliverable rows, and it is red on purpose while the public video is missing and while no commit is declared for the recording. The readiness gate
+deliverable rows, and it is red on purpose while any mandatory deliverable is missing. The public video is one, and it was missing when this was written. The readiness gate
 refuses to let a mandatory deliverable pass in any mode, `--ci` included, and a badge that hid that
 would be the wrong badge. Until 2026-08-28 the two were one workflow, so the engineering badge read
 red on every branch for a missing video, which told a reader the build was broken when nothing about
@@ -380,7 +380,7 @@ different evidence behind them.
 | Surface | State |
 |---|---|
 | Any browser, no agent | Verified. It is an ordinary form. A person types in either box, presses **Add these details**, and the draft moves one revision with both rows marked `via page`. Driven by hand in Chromium 148 over a local server: no navigation, no console output, no CSP violation, and no horizontal overflow at 375px |
-| Chrome with WebMCP on | **Verified, 2026-08-31**, on Chrome `151.0.7922.174`, the stable channel, against the page as deployed on that date, which was `21fc9f2` and is not what the host serves now. `getTools()` returned ten entries, and one of them is `record_supporting_details`: a tool this page never registered, built by the browser out of those four attributes, carrying our own description and a JSON Schema with a description on each of the three parameters. Executing it answered `Recorded the name of the witness on the draft, submitted through the WebMCP tool call. The draft is now at revision 3.` and a following `read_claim_state` agreed. Reproduce with `node evals/browser_probe.mjs`, whose header gives the Chrome command line. The probe has since gained an evidence note phase, and its two clicks on the page's own pin control were watched in a browser for the first time on 2026-09-01, in [run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732): `probe: PASS. 71 checks against the deployed page, none failed`, judged against the deployed URL at `c93b138`. That number describes the judgement as it stood on 2026-09-01. On 2026-09-02 the note phase and the declarative phase were each found to pass a forged transcript, closing them took the matrix from 71 checks to 81, and the transcript shape changed with it, so a run of the probe as it is now prints 81 and cannot reproduce 71. The run is kept because it is true about the runtime it drove. The 81 has since run twice on a runner, in [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at `e942ee3` and [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935`. Those are their `headSha` values, from `gh run view <id> --json headSha`. This sentence used to give both of them `9450d70`, which neither drove. The run that did drive `9450d70` is [33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683), and it printed 110. None of the three is evidence about the runtime this entry will record, because filing integrity work in the working tree changes `src/core/claim.js`, one of the 26 files the page loads, so the workflow has to be dispatched against `main` once more after the release. |
+| Chrome with WebMCP on | **Verified, 2026-08-31**, on Chrome `151.0.7922.174`, the stable channel, against the page as deployed on that date, which was `21fc9f2` and is not what the host serves now. `getTools()` returned ten entries, and one of them is `record_supporting_details`: a tool this page never registered, built by the browser out of those four attributes, carrying our own description and a JSON Schema with a description on each of the three parameters. Executing it answered `Recorded the name of the witness on the draft, submitted through the WebMCP tool call. The draft is now at revision 3.` and a following `read_claim_state` agreed. Reproduce with `node evals/browser_probe.mjs`, whose header gives the Chrome command line. The probe has since gained an evidence note phase, and its two clicks on the page's own pin control were watched in a browser for the first time on 2026-09-01, in [run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732): `probe: PASS. 71 checks against the deployed page, none failed`, judged against the deployed URL at `c93b138`. That number describes the judgement as it stood on 2026-09-01. On 2026-09-02 the note phase and the declarative phase were each found to pass a forged transcript, closing them took the matrix from 71 checks to 81, and the transcript shape changed with it, so a run of the probe as it is now prints 81 and cannot reproduce 71. The run is kept because it is true about the runtime it drove. The 81 has since run three times on a runner: [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at `e942ee3`, [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935` and [33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) at `357410e`. Those are their `headSha` values, from `gh run view <id> --json headSha`, and every check count named here is read with `gh api repos/upgradedev/claimready/actions/jobs/<job id>/logs | grep -oE "probe: PASS\. [0-9]+ checks"`. This sentence used to name only the first two of those three, and used to give both of them `9450d70`, which neither drove. The run that did drive `9450d70` is [33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683), and it printed 110. None of those four describes the runtime the host serves now. That filing integrity work landed as `ead5077`, which added `src/core/canonical.js` and took the page from 26 loaded files to 27, and the workflow was dispatched against `main` at it: [run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277), workflow `WebMCP evals`, conclusion `success`, `headSha` `ead507724a7881409dffc15a67f1e1ae41327a16`, read with `gh run view 33671018277 --json status,conclusion,headSha`. Its browser probe job printed `probe: PASS. 178 checks against the deployed page, none failed.` on `Google Chrome 154.0.8025.0 dev`, against a page the same job had just checked with `checking 27 on camera source(s) at https://upgradedev.github.io/claimready/ against ead507724a78` and `the deployed page is ead507724a78, on every one of those files`. **That 178 is a single total and the log does not break it down by phase**, so read it as the whole matrix passing rather than as a per phase count. The declared half is not left to that total, though. The same job's report names `record_supporting_details` five times, which is what `gh api repos/upgradedev/claimready/actions/jobs/100384363765/logs | grep -c record_supporting_details` prints: once in each of `bootTools`, `toolsWhenStuck`, `toolsAfterNotes` and `toolsAfterRecovery`, and once as the `name` of a `declared` block. That block carries `"origin": "https://upgradedev.github.io"`, a JSON Schema with a description on each of `witness_name`, `police_report_ref` and `base_revision`, and the answer the tool returned when the probe executed it, `Recorded the name of the witness on the draft, submitted through the WebMCP tool call. The draft is now at revision 5.`, with `revisionBefore` 4 and `revisionAfter` 5. Every line of that report is timestamped 19:04:25, after the `Google Chrome 154.0.8025.0 dev` line at 19:04:19 and in the same second as the `probe: PASS` line, so it was printed by the browser run rather than before it. The probe drives that tool at `evals/browser_probe.mjs:267`. What that run does not cover at all is the ChatGPT desktop browser, which no runner drives. |
 | The agent branch of the submit handler | Verified, but by us rather than by a browser. A `SubmitEvent` carrying `agentInvoked` and `respondWith` was constructed and dispatched at the form. Quoting no revision came back `Refused. PATCH_REJECTED_STALE:` naming the number to send, with the draft unmoved and a ledger row flagged `refused`. Quoting the current revision came back `Recorded the name of the witness on the draft, written by your agent`, with the badge reading `via tool` |
 | The ChatGPT desktop browser | **The registered half is verified, 2026-08-31**: an assistant in that app's built in browser read, patched and validated this claim through the page's own tools, and the ledger recorded every call. **The declared form is still unverified there**, and this page makes no claim either way: the documentation for that surface does not mention declarative forms, and the page's own counters cannot see what the browser synthesised |
 | The Chrome eval harness in CI | Does not cover it. `evals/evals.json` and the negative control drive the nine registered tools only |
@@ -464,28 +464,35 @@ run one command. It needs Python 3 and nothing else: no account, no token, no np
 
 ```sh
 python video/build_video.py --verify-deployed \
-  --url https://upgradedev.github.io/claimready/ --deployed-sha 9450d70
+  --url https://upgradedev.github.io/claimready/ --deployed-sha ead5077
 ```
 
-It fetches all 26 files the page loads from the host, the three insurer and demo JSON fixtures among them, compares each to this checkout, and compares
-that to the commit you named. Observed on 2026-09-02, against the live host: it printed
-`the deployed page is 9450d70, on every one of those files` and exited 0.
+It fetches every file the page loads from the host, the three insurer and demo JSON fixtures among them, compares each to this checkout, and compares
+that to the commit you named. **It prints the number of files it checked, so read that line rather
+than a count written here.** Observed on 2026-09-02, against the live host, it printed
+`checking 27 on camera source(s) at https://upgradedev.github.io/claimready/ against ead5077`, then
+`the deployed page is ead5077, on every one of those files`, and exited 0. That count was 26 until
+`ead5077` added `src/core/canonical.js`, and it moves again the next time a file is added under
+`index.html`, `src`, `assets` or `fixtures`, which is the whole list. Count it at any commit with
+`git ls-tree -r --name-only <sha> -- index.html src assets fixtures | wc -l`: it prints 27 at
+`ead5077` and 26 at `9450d70`.
 Name a commit the tree is not and it refuses instead, which you can see for yourself by putting
 `21fc9f2` in that flag. That is not an invented example. It is the commit this paragraph named
-until 2026-09-01, and five commits that changed files the page loads have landed since, so it now
-prints `what is on disk is not the SHA you named` and exits 1. Run it in a clone rather than in a
+until 2026-09-01, and commits that changed files the page loads have landed since, so on 2026-09-02
+it printed `what is on disk is not the SHA you named. assets/styles.css in this checkout does not
+match assets/styles.css at 21fc9f2.` and exited 1. Run it in a clone rather than in a
 working copy you have edited: the check compares the host against the files on disk as well as
 against the commit, so an uncommitted edit of your own makes it refuse for a reason that has
 nothing to do with the host.
 
 **Read the SHA in that command as a date rather than as a permanent answer.** It is the reading
-taken on 2026-09-02, and `9450d70` is what the host serves as this is written. The commit to name is
+taken on 2026-09-02, when the host served `ead5077`. The commit to name is
 always whichever one the record row at the top of
 [docs/submission/video.md](docs/submission/video.md) declares, and that row moves whenever a file the
-page loads changes. **It names no commit right now**, for the third time on 2026-09-02, because filing
-integrity work in the tree changes `src/core/claim.js`, and the readiness row `FRZ` is red until the
-release fills it in. So until it is filled, `9450d70` is what the host serves and it is not what a
-take will show. The gate saying so is the gate working.
+page loads changes. **Read that row, and the readiness row `FRZ`, rather than this paragraph.** Both
+were being written at the same time as this sentence, so anything said here about what they say
+would be our guess and not a reading. If the row and this command disagree, the command is the one
+that looked at the host.
 
 That is the check behind the evals row in the Status table, and it is why the row names the commit
 that run drove rather than the head of `main`. A green check against a commit the host is no longer serving proves
@@ -494,15 +501,17 @@ two green eval runs named a commit that two later commits had superseded. The se
 on 2026-09-01, the newest run drove `a9c3ba4` while the host served a commit five changes later.
 Both gaps were closed on 2026-09-01: [run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732) ran at
 `c93b138` at 13:18 UTC, which was the commit the host served, checked by the command
-above over all 26 files. Two more opened on 2026-09-02, when the correctness work package and then the filing integrity work
+above over the 26 files that commit had. Two more opened on 2026-09-02, when the correctness work package and then the filing integrity work
 changed files the page loads. Both were closed the same way, by dispatching the workflow against
 `main` once each release was served, one run each: [run 33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) at
 `357410e`, then [run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683) at `9450d70`. This sentence used to
-name only the first of them and give it the second one's commit. The next one closes the same way, after the release is served and before the
-video is uploaded. Read this paragraph for the shape of the problem rather than as a current
+name only the first of them and give it the second one's commit. Another gap opened later that day, when `ead5077` landed and added
+`src/core/canonical.js`, and it closed the same way: [run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277),
+conclusion `success`, `headSha` `ead507724a7881409dffc15a67f1e1ae41327a16`, read with
+`gh run view 33671018277 --json status,conclusion,headSha`. Read this paragraph for the shape of the problem rather than as a current
 complaint, because the gap opens again on the next push. The evals workflow runs on a daily schedule at 06:17
 UTC and on manual dispatch, not on push, so it lags `main` by up to a day by design. Commits that
-touch only documentation or the video tooling leave every one of those 26 files alone, so a run
+touch only documentation or the video tooling leave every one of those files alone, so a run
 keeps its standing across those, and the command above is what settles it rather than a sentence
 here.
 
@@ -532,9 +541,9 @@ Enterprise or Edu workspaces**. Availability also follows a rollout, in their wo
 **2. Chrome 149 or later, with WebMCP on.** Either turn on `chrome://flags/#enable-webmcp-testing`
 and relaunch, or start Chrome with `--enable-features=WebMCP`. The second was **observed working on
 Chrome 151.0.7922.174, stable channel, on 2026-08-31**, against the page as deployed on that date,
-which was `21fc9f2` rather than the `9450d70` the host serves on 2026-09-02: the tools were
+which was `21fc9f2` rather than the `ead5077` the host served when this was checked on 2026-09-02: the tools were
 published, executed, and one of them was withdrawn when the claim changed under it. Reproduce with
-`node evals/browser_probe.mjs`, whose header carries the exact command line. That same probe then ran on a CI runner against the deployed page, on 2026-09-01, in [run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732) at `c93b138`, and printed `probe: PASS. 71 checks against the deployed page, none failed`. That number describes the judgement as it stood on 2026-09-01. On 2026-09-02 the note phase and the declarative phase were each found to pass a forged transcript, closing them took the matrix from 71 checks to 81, and the transcript shape changed with it, so a run of the probe as it is now prints 81 and cannot reproduce 71. The run is kept because it is true about the runtime it drove. The 81 has since run twice on a runner, in [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at `e942ee3` and [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935`. Those are their `headSha` values, from `gh run view <id> --json headSha`. This sentence used to give both of them `9450d70`, which neither drove. The run that did drive `9450d70` is [33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683), and it printed 110. None of the three is evidence about the runtime this entry will record, because filing integrity work in the working tree changes `src/core/claim.js`, one of the 26 files the page loads, so the workflow has to be dispatched against `main` once more after the release. Install the WebMCP
+`node evals/browser_probe.mjs`, whose header carries the exact command line. That same probe then ran on a CI runner against the deployed page, on 2026-09-01, in [run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732) at `c93b138`, and printed `probe: PASS. 71 checks against the deployed page, none failed`. That number describes the judgement as it stood on 2026-09-01. On 2026-09-02 the note phase and the declarative phase were each found to pass a forged transcript, closing them took the matrix from 71 checks to 81, and the transcript shape changed with it, so a run of the probe as it is now prints 81 and cannot reproduce 71. The run is kept because it is true about the runtime it drove. The 81 has since run three times on a runner: [33588857520](https://github.com/upgradedev/claimready/actions/runs/33588857520) at `e942ee3`, [33600367240](https://github.com/upgradedev/claimready/actions/runs/33600367240) at `12f7935` and [33616908770](https://github.com/upgradedev/claimready/actions/runs/33616908770) at `357410e`. Those are their `headSha` values, from `gh run view <id> --json headSha`, and every check count named here is read with `gh api repos/upgradedev/claimready/actions/jobs/<job id>/logs | grep -oE "probe: PASS\. [0-9]+ checks"`. This sentence used to name only the first two of those three, and used to give both of them `9450d70`, which neither drove. The run that did drive `9450d70` is [33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683), and it printed 110. None of those four describes the runtime the host serves now. That filing integrity work landed as `ead5077`, which added `src/core/canonical.js` and took the page from 26 loaded files to 27, and the workflow was dispatched against `main` at it: [run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277), workflow `WebMCP evals`, conclusion `success`, `headSha` `ead507724a7881409dffc15a67f1e1ae41327a16`, read with `gh run view 33671018277 --json status,conclusion,headSha`. Its browser probe job printed `probe: PASS. 178 checks against the deployed page, none failed.` on `Google Chrome 154.0.8025.0 dev`, against a page the same job had just checked with `checking 27 on camera source(s) at https://upgradedev.github.io/claimready/ against ead507724a78` and `the deployed page is ead507724a78, on every one of those files`. **That 178 is a single total and the log does not break it down by phase**, so read it as the whole matrix passing rather than as a per phase count. The declared half is not left to that total, though. The same job's report names `record_supporting_details` five times, which is what `gh api repos/upgradedev/claimready/actions/jobs/100384363765/logs | grep -c record_supporting_details` prints: once in each of `bootTools`, `toolsWhenStuck`, `toolsAfterNotes` and `toolsAfterRecovery`, and once as the `name` of a `declared` block. That block carries `"origin": "https://upgradedev.github.io"`, a JSON Schema with a description on each of `witness_name`, `police_report_ref` and `base_revision`, and the answer the tool returned when the probe executed it, `Recorded the name of the witness on the draft, submitted through the WebMCP tool call. The draft is now at revision 5.`, with `revisionBefore` 4 and `revisionAfter` 5. Every line of that report is timestamped 19:04:25, after the `Google Chrome 154.0.8025.0 dev` line at 19:04:19 and in the same second as the `probe: PASS` line, so it was printed by the browser run rather than before it. The probe drives that tool at `evals/browser_probe.mjs:267`. What that run does not cover at all is the ChatGPT desktop browser, which no runner drives. Install the WebMCP
 Model Context Tool Inspector extension if you would rather click than script: it shows the
 registered tools, their schemas and the result of each call.
 
@@ -607,8 +616,9 @@ there is nothing to lock.
 **Time to first result, measured rather than guessed.** On 2026-09-01, on a Windows laptop: **6.0
 seconds** from an empty directory to the page answering on localhost, and 3.0 seconds on a second
 clone once git's object cache was warm. Steps 1 and 2 are the whole of that. The unit tests in step
-3 take about 8 seconds, and the self test in step 8 takes about a minute and is the only slow
-thing in this section.
+3 took between 10 and 16 seconds over five readings on 2026-09-02, four of them on Windows and one
+on an Ubuntu runner, and step 3 quotes each one with the command that printed it. The self test in
+step 8 takes about a minute and is the only slow thing in this section.
 
 Read the steps in order. The prerequisites come first because two of the steps need something you
 may not have, and step 2 blocks forever by design, which is worth knowing before you run it rather
@@ -666,9 +676,26 @@ Everything from here runs in Terminal B, while Terminal A keeps serving.
 node --test tests/unit
 ```
 
-**Expected:** `# pass 872` and `# fail 0`, in about 8 seconds. Observed on 2026-09-02 in this tree,
-on Windows, where `node --version` printed `v20.20.2`.
-Any failure at all is a real failure: there is no flaky test here and nothing is skipped.
+**Expected:** `# fail 0`, `# skipped 0`, and a `# pass` equal to the `# tests` printed beside it.
+**Read it that way rather than against a number written here.** The pass count is the one thing in
+this quickstart that changes whenever anybody adds a test, and this line has carried 872, 885, 923,
+934 and 939 in turn, each of them true on the day it was written and stale within days. `# fail 0`
+is the promise and it does not move.
+
+The dated reading, so you can tell a surprise from a normal difference: the green CI run at the
+merged commit, [run 33670779453](https://github.com/upgradedev/claimready/actions/runs/33670779453),
+job `Unit tests` `100383570873`, `headSha` `ead507724a7881409dffc15a67f1e1ae41327a16`, printed
+`# tests 939`, `# pass 939`, `# fail 0` and `# skipped 0` on an Ubuntu runner on 2026-09-02. The
+same command in this tree on Windows the same day printed `# pass 939` and `# fail 0`, where
+`node --version` printed `v20.20.2`. A count above that means tests were added after this was
+written, which is fine. A count below it means you are on a different commit, or tests were
+removed, and either is worth a look before you read anything else. Any failure at all is a real
+failure: there is no flaky test here and nothing is skipped.
+
+**On how long it takes**, four readings on that Windows machine on 2026-09-02 printed
+`# duration_ms 15387.3931`, `12857.7878`, `10142.2237` and `10997.3592`, and the CI job above
+printed `# duration_ms 12621.395359`. Call it ten to sixteen seconds and read the number the run
+prints. This line used to say eight seconds, which no reading we have taken supports.
 
 ### Step 4. The style gate
 
@@ -677,8 +704,13 @@ Any failure at all is a real failure: there is no flaky test here and nothing is
 node scripts/check_style.mjs
 ```
 
-**Expected:** `style: PASS.` followed by the number of text files it scanned, 189 in this tree on 2026-09-02, and
-the four rules it applied. It exits 0 on a pass and non zero on any finding.
+**Expected:** `style: PASS.` followed by the number of text files it scanned and the four rules it
+applied. **That count moves with every file added to the repository, so read the one it prints.**
+The dated reading: it printed `style: PASS. 193 text files scanned` in this tree on 2026-09-02, and
+`style: PASS. 193 text files scanned under /home/runner/work/claimready/claimready.` in the `Style
+gate` job `100383571076` of [run 33670779453](https://github.com/upgradedev/claimready/actions/runs/33670779453)
+at the same commit. This line said 189 until 2026-09-02, for the same reason the pass count above
+kept going stale. It exits 0 on a pass and non zero on any finding.
 
 ### Step 5. What the intake actually asks for
 
@@ -698,15 +730,27 @@ names the fields it counts on neither side and says why, which is the part worth
 node scripts/readiness.mjs
 ```
 
-**Expected today:** the full table, then
-`MANDATORY, what the rules require:   4 of 5 PASS  (LIVE PASS, LIC PASS, D1 PASS, D3 PASS, D4 FAIL)`,
-`READY TO SUBMIT:  25 of 31 proven, 80.6 percent` and
+**Expected today:** the full table, then a `MANDATORY` line, a `READY TO SUBMIT` tally, and
 `NOT READY. A mandatory deliverable is missing: D4.` It exits 1. **That is the correct output
 and not a broken checkout.** `D4` is the public video, and a mandatory deliverable that does not
-exist turns this red in every mode. `FRZ` is red beside it, and on purpose: no commit is declared
-for the recording yet, because unreleased work in the tree changes files the page loads. The reason
-is written out in [docs/submission/video.md](docs/submission/video.md). Two deliverable rows are
-outstanding and no engineering row is. The `LIVE` row is the one to read first: it fetches
+exist turns this red in every mode.
+
+**The tallies move with the rows, so read the ones it prints rather than the ones written here**,
+and one row moves them on its own. `FRZ` reads
+[docs/submission/video.md](docs/submission/video.md), and that file is in one of two states: it
+declares a freeze commit, or it does not. While `FRZ` fails, both tallies read lower and
+`deliverable rows outstanding` reads higher. `node scripts/readiness.mjs` is the only thing that
+settles which state you are in, and `git show <sha>:docs/submission/video.md` is what tells you
+which state a given commit carries.
+
+**What follows is a reading, not a prediction of what your clone will print.** Run in this working
+tree on 2026-09-02, where `FRZ` passed, the gate printed
+`MANDATORY, what the rules require:   4 of 5 PASS  (LIVE PASS, LIC PASS, D1 PASS, D3 PASS, D4 FAIL)`,
+`automated rows:   26 of 27 PASS, 96.3 percent`, `READY TO SUBMIT:  26 of 31 proven, 83.9 percent`
+and `deliverable rows outstanding: 1`. A clone of `ead5077` starts in the other state:
+`git show ead5077:docs/submission/video.md | sed -n 24p` opens
+`| Freeze commit | **NOT YET DECLARED.**`, and that is the input `FRZ` reads there. We have not run
+the gate inside such a clone, so no tally is given for one. The `LIVE` row is the one to read first: it fetches
 <https://upgradedev.github.io/claimready/> and a red one means the page a judge opens is really
 down.
 
@@ -717,10 +761,17 @@ down.
 node scripts/readiness.mjs --ci --allow-undeployed
 ```
 
-**Expected:** the `LIVE` row reads `NOT DEPLOYED` rather than `PASS`, and the tally says
-`24 of 27 PASS, 88.9 percent (provisional, the live row proved nothing)`. It exits 1, for `D4` again.
+**Expected:** the `LIVE` row reads `NOT DEPLOYED` rather than `PASS`, the tally carries
+`(provisional, the live row proved nothing)`, and it exits 1 for `D4` again, printing `CI: FAIL. D4`.
 Nothing was fetched, so nothing about the live surface is claimed either way, which is the whole
-difference between this mode and step 6.
+difference between this mode and step 6. **The tally moves with the same rows step 6 names, `FRZ`
+among them.** A reading rather than a prediction, again: run in this working tree on 2026-09-02,
+where `FRZ` passed, it printed
+`automated rows:   25 of 27 PASS, 92.6 percent (provisional, the live row proved nothing)`,
+`READY TO SUBMIT:  25 of 31 proven, 80.6 percent` and `deliverable rows outstanding: 2`, one row
+behind the step 6 reading because an unfetched `LIVE` row is not counted as proven here, and one
+deliverable row ahead of it because `LIVE` is a deliverable row too. Read that second number as
+what an unfetched `LIVE` row does in this mode rather than as anything about `FRZ`.
 
 ### Step 8. Prove the gate can fail
 
@@ -808,15 +859,21 @@ go stale between commits.
 | Handler packet after a human files | built | `node --test tests/unit/packet.test.js` and `tests/unit/packet_is_not_a_tool.test.js`. A filed claim produces a canonical JSON packet and a readable view carrying the facts, the clause and excess, every intake requirement with what answered it, the pinned rows, the route each answer took and the tool calls, digested with SHA-256. `node scripts/verify_packet.mjs <file>` recomputes it and exits 1 when a character moved, which was demonstrated by changing one severity. That script imports the same module that produced the digest, so it shows the content in front of it matches the digest beside it and shows nothing about the algorithm: [docs/handler-verification.md](docs/handler-verification.md) gives two routes that use none of our code and shows all three agreeing on one worked example. Say what a bare SHA-256 is worth and no more. There is no key and no signature here, so a matching digest catches a packet that changed in transit and two copies that have drifted apart, and it does not show page origin, authorship, that nobody edited the content and recomputed the digest to match, immutable storage, or that any insurer received it. The verifier checks the SHAPE before the digest, against the same schema `src/core/packet.js` runs before it seals anything, and exits 2 on a document that is not a packet this build writes, and that now includes one carrying EXTRA keys. A reviewer got an `insurer_receipt` past it twice: once inside the digested region with the digest recomputed, and once as a sibling of `content`, where no recomputation was needed at all because the digest covers the content and nothing else. Both are refused now, by name, and `tests/unit/verify_packet_foreign_keys.test.js` rebuilds both forgeries and requires the refusal. The check lives in the script rather than in `src/core/packet.js`, because the script is what a handler runs on a document somebody else handed them, which is the only place a foreign document arrives: `tests/unit/packet_schema.test.js` walks 40 single value breaks, each of which used to verify with a correct digest. It refuses for a draft that was never filed, for no pack, for a half built pack, for another insurer's rules, for a filed status the gate could not have granted, and for a filed status written by hand: `fileClaim` records the claim objects it actually filed, and what each of them was filed under, in a map held privately in `src/core/claim.js`, and the packet will not describe a filing this page did not perform. It will not describe one under rules it was not decided under either: the pack, whose policy it is and the steps a person carried out arrive on the packet's own call rather than off the claim, so a pack carrying the right id and the wrong rules used to seal its own insurer, clause and excess, and a ledger row naming `file_claim` used to seal a call to a tool this page does not publish. Both are refused now, in `tests/unit/filing_receipt.test.js` and `tests/unit/filing_receipt_state.test.js`. That record lives in one browser tab and dies with it, so it stops this page overclaiming and proves nothing to a reader holding the file. `src/webmcp` never imports the module, so no registered tool builds it or hands it back |
 | Intake measurement, counted from the shipped rule packs | built | `node scripts/measure_intake.mjs`. It counts fields in `fixtures/insurers/` and `src/core/claim.js` and extrapolates nothing. See [One number you can reproduce](#one-number-you-can-reproduce) |
 | Tests over the WebMCP layer | built | `node --test tests/unit/webmcp.test.js` prints the count. They drive the real registration path against a fake host object, named as a fake, so they prove the descriptors and the lifecycle and say nothing about any browser. This row used to hardcode a number and the number was wrong, so it now names the command instead, which is what the paragraph above this table promises |
-| The tool surface running in a real browser's own WebMCP implementation | proven in CI on 2026-09-02, against the runtime the host serves today, which is not the one a take will show | [run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683), workflow `WebMCP evals`, conclusion success, `headSha` `9450d70`, on `Google Chrome 154.0.8025.0 dev`. `9450d70` held the freeze for part of 2026-09-02 and the freeze was lifted the same day, for the reason written into [docs/submission/video.md](docs/submission/video.md), so this run describes the live page and not the recording. It is still the newest native run, and `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha 9450d70` says so over all 26 files the page loads. It reported `Passed steps: 16/16 across 3 case(s)`, the negative control `Passed steps: 7/8 across 1 case(s)` with the verdict `PROVEN`, and our own probe `probe: PASS. 110 checks against the deployed page, none failed`. **Read the number as a size of the judgement rather than a score for the page.** It was 53, then 71, then 81, then 110, and the page did not improve between them: each rise is a class of forged transcript that used to pass. The judgement has since grown to 178 checks, after three more forged transcripts were found passing at 110, and **no browser run has been made at 178**, so 110 is what that run printed and 178 is the size of the ruler now. Both numbers come from a command rather than from this sentence: `node --test tests/unit/probe_assertions.test.js` holds the floor and prints the count it ran when the floor is raised past it. The workflow runs on a daily schedule and on dispatch rather than on push, so this row goes stale on the next commit that touches one of those 26 files, and the way to check is the command above rather than this sentence |
+| The tool surface running in a real browser's own WebMCP implementation | proven in CI on 2026-09-02, against the commit the host serves | [run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277), workflow `WebMCP evals`, conclusion `success`, `headSha` `ead507724a7881409dffc15a67f1e1ae41327a16`, on `Google Chrome 154.0.8025.0 dev`. Read with `gh run view 33671018277 --json status,conclusion,headSha`. That run drove the deployed page after checking it: its probe job printed `checking 27 on camera source(s) at https://upgradedev.github.io/claimready/ against ead507724a78` and `the deployed page is ead507724a78, on every one of those files`, and then `probe: PASS. 178 checks against the deployed page, none failed.` In the smoke job, after the same Chrome was installed, the journeys reported `Passed steps: 16/16 across 3 case(s).` and the negative control reported `Passed steps: 7/8 across 1 case(s).`, naming `Smoke test "NEGATIVE CONTROL, a patch that IS applied withdraws the ninth tool" step 8 (get_assistance_options): tool "get_assistance_options" is not available.`, on which the job printed `ASSERTION 1 passed: the harness exited 1.`, `ASSERTION 2 passed: seven of eight steps passed, so the patch at step 5 landed.` and `ASSERTION 3 passed: step 8 found the ninth tool withdrawn.` **Be careful reading that job's log**, because it runs each half twice. The `VERDICT: PROVEN` line and an earlier `Passed steps: 16/16` belong to the offline replay against the fake host, which runs before Chrome is installed. The browser half printed the three `ASSERTION` lines and no verdict line, so this row quotes those. This row previously gave the browser negative control a `PROVEN` verdict it never printed. Both runs were read the same way to settle it, by taking the smoke job log and keeping only what follows the `Google Chrome 154.0.8025.0 dev` line: `gh api repos/upgradedev/claimready/actions/jobs/100384364189/logs` for this run, and `gh api repos/upgradedev/claimready/actions/jobs/100237645110/logs` for 33627149683, which is where the wrong attribution came from. Neither has a verdict line after that point. **Read 178 as a size of the judgement rather than a score for the page.** It was 53, then 71, then 81, then 110, then 178. A bigger number there is a bigger ruler and not a score, and this README does not separate the two effects, because the files the page loads changed across every rise it can pin to a pair of commits. `git diff --shortstat <before> <after> -- index.html src assets fixtures` prints `9 files changed, 1084 insertions(+), 63 deletions(-)` across `c93b138` to `e942ee3`, where the count became 81, `1 file changed, 77 insertions(+), 8 deletions(-)` across `357410e` to `9450d70`, where it became 110, and `4 files changed, 1075 insertions(+), 129 deletions(-)` across `9450d70` to `ead5077`, where it became 178. `e942ee3`, `9450d70` and `ead5077` are each a `fix:`, from `git log --oneline --first-parent origin/main`. This sentence used to say the page did not improve between those readings, which those diffs refute. What survives is the part it was reaching for: a rise in the count is not on its own evidence that the page got better, and nothing here says how much of any rise belongs to the ruler and how much to the page. This row also used to say **no browser run had been made at 178**, which was true when written and is not true now: run 33671018277 is that run. The number comes from a command rather than from this sentence: `node --test tests/unit/probe_assertions.test.js` holds the floor and prints the count it ran when the floor is raised past it. The workflow runs on a daily schedule and on dispatch rather than on push, so this row goes stale on the next commit that touches a file the page loads, and the way to check is `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha <sha>` rather than this sentence |
 | Evals against the tool surface | built and executed | Three journeys over the nine registered tools, and none over the declared form, plus a fourth case that is a negative control and is required to FAIL. The harness is cloned and built from a pinned commit rather than installed, because the published package has no deterministic mode: npm carries 0.0.1 to 0.0.3 and their CLI offers only `local` and `browser`, so the `smoke` command this needs has never been released. `cat evals/evals.json`, `cat evals/negative-control.json`, `cat .github/workflows/evals.yml` |
-| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not on their own assert that the refusals refused. What the negative control adds is the other direction: it applies a patch that is legal, requires the ninth tool to be WITHDRAWN, and fails the workflow unless the harness reports exactly seven of eight steps passed and names the last one. Read as a pair, the surface moves when a patch lands and holds still when one is refused, which is what makes journey 2 evidence rather than a no op. That pair has been replayed offline and made to fail three ways, **and it has now run in a browser**: in [run 33627149683](https://github.com/upgradedev/claimready/actions/runs/33627149683), the newest run above, the negative control job reported `Passed steps: 7/8 across 1 case(s).` with the verdict `PROVEN`, and named the reason, `step 8 (get_assistance_options): tool "get_assistance_options" is not available.` It reported the same thing in the earlier runs 33334936720, 33458929502, 33560224732, 33588857520, 33600367240 and 33616908770, which are history rather than evidence about the live page, because each was driven against a commit later work superseded. This row has twice been left naming a run after it stopped being the newest: first 33334936720, then 33600367240, which it called the run of record while the row above it named 33627149683. This file also used to say the withdrawal half had never been seen in a browser. It has been seen twice: there, and on a desktop, where `node evals/browser_probe.mjs` watched `getTools()` go from nine entries to ten when the car could not be driven and back to nine when it could, on Chrome `151.0.7922.174` stable against the page as deployed on 2026-08-31, which was `21fc9f2`. A second limit lives there too: smoke mode gathers the page's browser console errors and never reports or gates on them, so a green run says nothing at all about the console |
-| Public video | not yet built. It is the only row that blocks the readiness **exit code**, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows. It is **not** the only thing between this repository and a finished submission: `node scripts/readiness.mjs` prints a `READY TO SUBMIT` tally that counts the owner gated rows too, so the number a reader should trust is lower than the automated one. Run it rather than quoting a figure from here: the deliverable rows outstanding are `D4` and `FRZ`, the freeze commit, and beside them sit the owner gated rows, including `O3`, whether the form reads Submitted | `node scripts/readiness.mjs` row `D4` |
+| **The honest limit on the run above** | stated, not hidden | The harness marks a step passed when the expected call is made and returns output. A refusal travels back inside an ordinary result envelope, so those 16 steps do not on their own assert that the refusals refused. What the negative control adds is the other direction: it applies a patch that is legal, requires the ninth tool to be WITHDRAWN, and fails the workflow unless the harness reports exactly seven of eight steps passed and names the last one. Read as a pair, the surface moves when a patch lands and holds still when one is refused, which is what makes journey 2 evidence rather than a no op. That pair has been replayed offline and made to fail three ways, **and it has now run in a browser**: in [run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277), the newest run above, the negative control reported `Passed steps: 7/8 across 1 case(s).` and named the reason, `step 8 (get_assistance_options): tool "get_assistance_options" is not available.` It reported the same thing in the earlier runs 33334936720, 33458929502, 33560224732, 33588857520, 33600367240, 33616908770 and 33627149683, which are history rather than evidence about the live page, because each was driven against a commit later work superseded. This row has now three times been left naming a run after it stopped being the newest: first 33334936720, then 33600367240, then 33627149683, each of which it called the run of record while a later run existed. It also gave the browser negative control a `PROVEN` verdict, which that half of the job does not print: the verdict line comes from the offline replay that runs before Chrome is installed, and the browser half prints the three `ASSERTION` lines quoted in the row above. That was checked in this run's log and in 33627149683's, with the commands named in that row. This file also used to say the withdrawal half had never been seen in a browser. It has been seen twice: there, and on a desktop, where `node evals/browser_probe.mjs` watched `getTools()` go from nine entries to ten when the car could not be driven and back to nine when it could, on Chrome `151.0.7922.174` stable against the page as deployed on 2026-08-31, which was `21fc9f2`. A second limit lives there too: smoke mode gathers the page's browser console errors and never reports or gates on them, so a green run says nothing at all about the console |
+| Public video | not yet built. It is the only row that blocks the readiness **exit code**, and it turns the **Readiness** badge red on every branch until a public link lands in `docs/submission/video.md`. It no longer turns the engineering **CI** badge red, because the two are separate workflows. It is **not** the only thing between this repository and a finished submission: `node scripts/readiness.mjs` prints a `READY TO SUBMIT` tally that counts the owner gated rows too, so the number a reader should trust is lower than the automated one. Run it rather than quoting a figure from here. `D4` is outstanding and blocks the exit code. Whether `FRZ`, the freeze commit, is outstanding beside it is a thing to read from the gate and not from this table: it reads `docs/submission/video.md`, which was being edited on this branch while this row was written, and a reading taken on 2026-09-02 in that state printed `deliverable rows outstanding: 1`. Beside those sit the owner gated rows, including `O3`, whether the form reads Submitted | `node scripts/readiness.mjs` row `D4` |
 | Written description | drafted, not yet pasted into the submission form | `docs/submission/description.md`, and `node scripts/readiness.mjs` row `D3` |
 
-Every count in this README comes with the command that produces it, so no number here has to be
-believed. The readiness gate is the live version of this table, and it is the one to trust when the
-two disagree.
+Nearly every count in this README comes with the command that produces it, so it does not have to
+be believed. The exceptions, found by reading this file once and not by any check that would catch
+a new one: the `6.0 seconds` and `3.0 seconds` clone timings and the `about a minute` self test in
+[Quickstart](#quickstart-with-nothing-installed), which are stopwatch readings on one Windows laptop
+that no command prints; `Driven by hand in Chromium 148` in the declarative table, which was a
+session at a keyboard and left no run to cite; the `53` that opens the check count sequence in the
+table above, which no run named in this file printed; and `npm carries 0.0.1 to 0.0.3` in the evals
+row, which is a reading of an external registry taken on a date we did not record. The readiness
+gate is the live version of this table, and it is the one to trust when the two disagree.
 
 ## Repository layout
 

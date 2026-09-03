@@ -12,15 +12,110 @@ What this file is: an adversarial read of our own submission against the organiz
 kept because it is where the entry's own defects get written down before a judge finds them.
 
 First written against `7b50d4a`, a working commit that reached the public repository squashed as
-`c93b138`. Revised 2026-09-01 against `ab2db69`. **Revised again 2026-09-02, and again not against
-a released commit**, which is a weaker footing and is said rather than hidden: `origin/main` is
-`b5a43e8`, the deployed runtime is `9450d70`, and filing integrity work is sitting in the working
-tree unreleased. That line named `12f7935` until 2026-09-02 and two commits had landed on `main`
-since. It changes `src/core/claim.js`, one of the 26 files the page loads, so the live
-page no longer serves what this review read. Every count below was taken from a command run in that
-working tree on 2026-09-02, on Windows, and every one has to be taken again from a fresh clone at
-the released commit. Reviewed one day before the deadline, with the video still unrecorded and no
-freeze commit declared.
+`9b64fb2`. **This line said `c93b138` until now, and an earlier version of this file had it right.**
+`gh pr view 22 --json number,mergeCommit` prints
+`{"mergeCommit":{"oid":"9b64fb22c9fe8069aa2cf5d58e65628ab54d9367"},"number":22}`, and the same
+command with `24` returns `c93b138`, which is a different pull request.
+`git show c93b138:docs/review/judge-review.md | sed -n '9,10p'` prints this file naming `9b64fb2`
+where this line now names it again, so a later pass broke a sentence an earlier pass had right. That
+is the same class as the run attributed to a commit it did not drive, recorded below. Revised
+2026-09-01 against `ab2db69`, and again on 2026-09-02 against `b5a43e8`, which was not a released
+commit and was the weaker footing this line used to apologise for.
+
+**This revision reads `ead5077`, which is `origin/main` and is the commit the host serves.** Checked
+here at 19:11 UTC on 2026-09-02:
+
+```sh
+python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha ead5077
+```
+
+It printed `checking 27 on camera source(s) at https://upgradedev.github.io/claimready/ against
+ead5077` and `the deployed page is ead5077, on every one of those files`, and exited 0. **It is 27
+files and not 26.** `src/core/canonical.js` is new in `ead5077` and the page loads it.
+
+**This file used to say that every sentence in this repository naming 26 files describes an earlier
+commit. That universal is false.** Read against the released commit rather than against a working
+tree four agents are editing, `git grep -c "26 files" ead5077 -- '*.md' '*.mjs' '*.js'` prints
+
+```
+ead5077:README.md:6
+ead5077:docs/review/judge-review.md:3
+ead5077:docs/submission/video.md:9
+ead5077:evals/README.md:5
+ead5077:evals/browser_probe.mjs:2
+```
+
+25 lines at the commit a judge clones. Some of them name the commit they describe, and
+`README.md:497` is one, inside a sentence that names run 33560224732 at `c93b138`. Others are
+general standing statements with no commit attached, and `README.md:505` is one of those; those are
+simply stale at 27. This pass did not read all 25, so it does not say which line every one of them
+is.
+
+**The live URL was a 404 for part of today.** A settings change made the repository private, which
+disabled GitHub Pages, and the judge URL answered 404 from about 16:16 UTC on 2026-09-02 until the
+repository was made public again and Pages re-enabled from `main` at root. The start of that window
+is our record. The end of it is pinned by CI rather than by our note: the `pages build and
+deployment` run for `b5a43e8` is `success` at 18:58:12Z, from
+`gh run list --limit 40 --json name,createdAt,headSha,conclusion,event`. What was measured here at
+19:11 UTC on 2026-09-02 is the state after it:
+`curl -s -o /dev/null -w "%{http_code}" https://upgradedev.github.io/claimready/` printed `200`, and
+the page served `<title>ClaimReady, the policy aware claim desk</title>`. The outage is ours and not
+the host's.
+
+**This file used to say that no gate ran during the window, and that nobody ran the `LIVE` row for
+those two and three quarter hours. Both are false.** The gate ran six times inside the window, and
+what happened to those six runs is one story with defect 6 below, the readiness purity check that
+reads a string literal as code, which this file had been filing as an unrelated item.
+
+`gh variable list` shows `CLAIMREADY_URL` set to the judge URL on 2026-08-27, so the `LIVE` row was
+armed and would fetch. From the run list command above, and from `gh run view <id> --json jobs` on
+each run:
+
+**Nothing fired for most of the window.** The Readiness workflow runs on push, on pull request and
+on dispatch, and there is no Readiness run at all between 12:37:41Z and 18:43:56Z. Nothing was
+pushed, so there was nothing to blind. The blindness below is confined to five minutes, not to two
+and three quarter hours, and this file is not going to trade one overstatement for another.
+
+**Then four runs fired and reported nothing.** Runs 33669011890 at 18:43:56Z and 33669052847 at
+18:44:20Z over commit `985953d`, and 33669304136 at 18:46:45Z and 33669314838 at 18:46:51Z over
+`2c485dc`. In all four the step `Prove the gate can fail before trusting it` is `failure` and the
+step `Readiness table` is `skipped`, so the table that holds the `LIVE` row never ran. The failing
+case is one row, and it is not the live one. Job 100377701906 printed, at 18:45:31Z:
+
+```
+  BAD  PUR   intact FAIL     broken FAIL     a core module reaches for the browser
+        refusal said: packet.js uses document, zz_selftest_break.js uses window
+```
+
+read back with `gh api repos/upgradedev/claimready/actions/jobs/100377701906/logs`. The same one
+case failed in the other three, each printing `selftest FAILED. 1 case(s) did not behave`.
+
+**Then two runs fired with the selftest green, and the live row did catch it.** Runs 33670094219 at
+18:54:30Z and 33670098201 at 18:54:32Z, over `a431553`, ran the table and printed
+
+```
+LIVE  FAIL          mandatory     engineering  judge URL https://upgradedev.github.io/claimready/
+                                               HTTP 404, expected 200
+```
+
+at 18:56:48Z and 18:56:45Z, with `READY TO SUBMIT:  24 of 31 proven, 77.4 percent`. That is about
+ninety seconds before Pages redeployed.
+
+**So the gate caught it in the end, and for four runs it was blind to a 404 because an unrelated row
+had gone red.** A gate that refuses to report because one of its other rows failed is a gate that
+goes blind exactly when something is wrong, and the row it stopped printing was a mandatory one.
+**The remedy is not that somebody should have run it. It is that the live row has to be reachable
+independently of the selftest, and that is open.** In `.github/workflows/readiness.yml` at `ead5077`
+the `Readiness table` step follows `Prove the gate can fail before trusting it` with no condition on
+it, so a failing selftest still skips the table. Nothing about that has changed.
+
+On the day before the deadline, a repository visibility setting that can take the whole entry off
+the internet is a submission risk and not a footnote.
+
+Every count below carries the command that produced it and the time it was taken. Two files were
+being edited by other agents while this was written, `README.md` and `docs/submission/video.md`, so
+a reading taken here may already have moved. Reviewed one day before the deadline, with the video
+still unrecorded.
 
 ## What the criteria actually are
 
@@ -100,15 +195,15 @@ What a judge marks down.
   made and output comes back, and a refusal travels inside an ordinary result envelope. Only the
   negative control tests the other direction. A judge who reads the row carefully finds this stated;
   a judge who reads the headline finds a number that means less than it looks like.
-- **The browser evidence goes stale on every push, and did twice.** When this review was written
-  the newest eval run drove `a9c3ba4` while the page served a commit five changes later. It was
-  closed the same day by dispatching the workflow against `main`: run 33560224732 drove `c93b138`,
-  which was the commit the host served on 2026-09-01 and is not what a take will show. It is open
-  again on 2026-09-02, and this time because unreleased work in the tree changes files the page
-  loads. The workflow runs on a daily schedule and on dispatch rather
-  than on push, so the gap reappears on the next commit that touches a file the page loads. That is
-  written into the Status row instead of being smoothed over, and a judge should re-check it with
-  the `--verify-deployed` command rather than believe the row.
+- **The browser evidence goes stale on every push.** When this review was first written the newest
+  eval run drove `a9c3ba4` while the page served a commit five changes later. Each time it has been
+  closed by dispatching the workflow against `main`, and each time a later runtime commit reopened
+  it. It is closed at the commit this revision reads: run 33671018277
+  drove `ead5077`, which is what the host serves, and the detail is under **The five things a
+  hostile judge says first** below. The workflow runs on a daily schedule and on dispatch rather
+  than on push, so the gap reappears on the next commit that touches a file the page loads, and
+  nothing fires to say so. That is written into the Status row instead of being smoothed over, and a
+  judge should re-check it with the `--verify-deployed` command rather than believe the row.
 
 Cannot answer: whether a model, rather than a script, drives the declared form in any browser.
 
@@ -117,89 +212,138 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 ## 2. Execution, 25 percent
 
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
-serves and it can be proved in one command. 934 unit tests, from `node --test tests/unit` printing
-`# tests 934`, `# pass 934` and `# fail 0` on 2026-09-02, which is the command this file is required
-to carry rather than a number somebody typed. It read 885 until the filing receipt work added 38,
-and 923 until the freeze list check and the work beside it added 11 more. Read it as a reading with
-a date on it, not as a fixed property of the repository.
-A style gate over 193 text files, from `node scripts/check_style.mjs` on 2026-09-02. Coverage of
-`src` alone, from
-`node --test --experimental-test-coverage --test-reporter=./tests/support/coverage_report.mjs --test-reporter-destination=stdout tests/unit`,
-which printed `src, 22 files` at 98.23 percent of lines and 97.95 percent of functions, steady on
-every run, and a branch figure that is not steady and is therefore given as a range rather than a
-number: **between 88.83 and 89.08 over 15 consecutive runs**. The gate's floors are 97 for lines,
-86 for branches and 96 for functions, and the floors are the part that is a promise. Measured in
-this working tree on 2026-09-02, on Windows. The paragraph below carries every one of those 15
-readings and says what moves them.
+serves and it can be proved in one command. **939 unit tests, 939 passing, 0 failing**, taken from
+the green CI run at `ead5077`,
+[run 33670779453](https://github.com/upgradedev/claimready/actions/runs/33670779453), whose unit
+test job on an Ubuntu runner printed `# tests 939`, `# pass 939` and `# fail 0`. Read back with
 
-**Read the branch figure as a band with its floor beside it, never as a constant.** The floor is
-**86**, and the floor is the only part of it the gate enforces and the only part that is a promise.
-The reading above the floor moves, and this file has now quoted four different constants as though
-one of them were the answer: 88.53, then 88.75, then 89.08, then whatever the next run prints. Two
-things move it, and the second of them was deleted from this file on 2026-09-02 and is put back
-here, because deleting it is what let a fluctuating measurement be published as a constant again.
+```sh
+gh api repos/upgradedev/claimready/actions/jobs/100383570873/logs
+```
 
-**It moves with the tree, and that is the larger of the two.** The file count went from 21 to 22
-when `src/core/canonical.js` landed, and the branch figure went with it.
+**This file said 934 until now, and the command prints 939.** It has read 885, 923 and 934 in
+earlier passes, each against an earlier tree; those three are our note and none was rechecked today.
+The count is a reading against a named commit and never a property of the repository.
 
-**It also moves from one run to the next on one machine, with nothing changed at all.** Until
-2026-09-02 this file said the opposite: it said the movement was not run to run noise, on the
-strength of three consecutive runs each printing 89.08. Three runs is not enough to say that, and
-running the command more than three times refuses it. Fifteen consecutive runs of the coverage
-command named above, on 2026-09-02, on this Windows machine, with every file under `src` locked by
-`find src -type f -name '*.js' | sort | xargs sha256sum` before the series and checked again with
-`sha256sum -c` after it, printed **89.04, 89.08, 89.08, 89.08, 89.04, 89.08, 89.04, 89.04, 89.08,
-89.04, 89.08, 88.83, 89.04, 89.01 and 89.04**. Byte identical product, one machine, one afternoon:
-a floor of 88.83, a ceiling of 89.08, **a range of 0.25**, and no modal value that deserves to be
-quoted as the answer. Lines and functions did not move once across those 15 runs, at 98.23 and
-97.95 every time, which is what makes this a property of a few branches rather than of the
-instrument as a whole.
+A style gate over 193 text files. `node scripts/check_style.mjs`, run here at 19:29 UTC on
+2026-09-02, printed `style: PASS. 193 text files scanned under
+C:\dev\solutions\claimready-webmcp\repos\claimready.` The same gate ran green in job 100383571076
+of run 33670779453, on the Ubuntu runner, at `ead5077`.
 
-**The cause is timing, and it can be pointed at rather than left unnamed.** `src/ui/render.js`
-schedules work with `setTimeout` in three places, from
-`grep -cE 'setTimeout|setInterval|requestAnimationFrame' src/ui/render.js`, and it is one of exactly
-two files whose own branch column differs between two runs of the locked series. `diff` over the two
-saved per file reports returns one hunk, `16,17c16,17`, and no other row of the table differs at
-all: `src/ui/render.js` reads 89.91 in one run and 89.63 in the other, and `src/ui/app.js` reads
-77.83 and 78.18. So the whole swing in the total comes from two files that branch on when a timer
-fires, and an earlier version of this paragraph had that cause written down before it was replaced.
+### Coverage, and the paragraph that has now been wrong three times
 
-**What that does to the 0.04 this file used to puzzle over.** At `b5a43e8` Linux CI printed 88.68
-and this machine printed 88.72, and this file called the 0.04 gap unexplained while ruling out run
-to run noise as its explanation. The ruling out was the error. This machine's own run to run range
-is 0.25, six times the gap, so those two readings are not distinguishable from noise on one machine
-and there is nothing left to explain. Showing that the figure really does differ between machines
-needs a cross machine spread larger than the single machine spread, and nobody has measured one.
+**Three revisions of this file have published a coverage figure the next run refuted, and one of the
+corrections was worse than what it replaced**: it deleted a true explanation, that the figure moves
+from run to run on one machine, and put a denial of it in the same place. A later pass put the
+explanation back and the point value stayed. So this version states the rule before any reading. **The floors are the promise. Everything above them is a reading with a
+date, a machine and a commit attached.**
 
-**One further reading is reported separately, because its bytes were not locked.** A sixteenth run,
-taken before the hash lock was in place and while the working tree was still being written to,
-printed 88.76, with `src/core/coverage.js` at 75.58 rather than the 76.47 it held on all five runs
-whose per file table was kept. It is written down rather than dropped, and it is kept out of the
-range above, because nothing proves `src` held the same bytes at that moment.
+```sh
+grep -n "const FLOORS" tests/support/coverage_report.mjs
+62:const FLOORS = { line: 97, branch: 86, function: 96 };
+```
 
-So quote the floor, then a range with the number of runs, the date and the machine, and expect the
-next reader to get a different reading. A
-readiness gate that prints one row per deliverable and breaks every row it prints, in its own copy
-of the repository, to show that each one refuses. Numbers in the README come with the command that
-produces them.
+Line 97, branch 86, function 96, at `tests/support/coverage_report.mjs:62`. That is the whole of
+what the gate enforces, the whole of what a judge is owed, and the only part of this section that
+survives the next commit.
+
+**What eight runs printed here today.** The command is
+
+```sh
+node --test --experimental-test-coverage --test-reporter=./tests/support/coverage_report.mjs --test-reporter-destination=stdout tests/unit
+```
+
+Every file under `src` was hashed with `find src -type f -name '*.js' | sort | xargs sha256sum`
+before the first run, and `sha256sum -c` reported all 22 of them `OK` after the eighth, so the
+product did not move underneath the series. Nothing was changed between runs. Windows, Node
+`v20.20.2`, working tree clean at `ead5077`, 2026-09-02. The `src, 22 files` row read:
+
+| run | line % | branch % | funcs % |
+|---|---|---|---|
+| 1 | 98.22 | 89.16 | 97.96 |
+| 2 | 98.22 | 89.16 | 97.96 |
+| 3 | 98.22 | 89.12 | 97.96 |
+| 4 | 98.22 | 89.16 | 97.96 |
+| 5 | 98.22 | 89.19 | 97.96 |
+| 6 | 98.22 | 89.19 | 97.96 |
+| 7 | 98.22 | 89.19 | 97.96 |
+| 8 | 98.22 | 89.19 | 97.96 |
+
+**The branch figure moves run to run on one machine with nothing changed**, 89.12 to 89.19 across
+those eight. That is the finding the last revision deleted, and it is put back because deleting it
+is what let a moving measurement be published as a constant for the third time.
+
+**The cause is not established, and the explanation this file used to give is refuted.** It said the
+movement comes from files that branch on when a timer fires, and named `src/ui/render.js`. Three
+files moved across the eight runs above, and one of them contains no timer call at all:
+
+| file | branch % values over the 8 runs | `grep -cE "setTimeout\|setInterval\|requestAnimationFrame"` |
+|---|---|---|
+| `src/core/coverage.js` | 75.58, 76.47 | 0 |
+| `src/ui/render.js` | 89.63, 89.91 | 3 |
+| `src/ui/app.js` | 77.48, 77.83 | 1 |
+
+So timers in `render.js` do not explain it. **What actually makes those branches fall differently
+between two runs of identical bytes, we do not know, and this file is not going to name a third
+cause it has not established.** What can be said is that it is confined to a few files: 19 of the 22
+rows in the per file table printed the same three columns on all eight runs.
+
+**The set of files that moves is not stable either, which is the sharper finding.** An independent
+reviewer running the same command on a byte locked snapshot saw `src/ui/render.js`, `src/ui/app.js`
+and `src/webmcp/tools/apply_claim_patch.js` move. `apply_claim_patch.js` held at 77.27 on every one
+of the eight runs above and contains no timer call
+(`grep -cE "setTimeout|setInterval|requestAnimationFrame" src/webmcp/tools/apply_claim_patch.js`
+prints `0`), while `src/core/coverage.js`, which moved here, did not move for them. Two honest
+series, two different answers to which files wobble.
+
+**Lines has been recorded at two values and this pass did not reproduce the lower one.** All eight
+runs above printed 98.22, and the Ubuntu CI run at the same commit printed 98.22 as well, in job
+100383570873 of run 33670779453. A separate six run series on this machine recorded 98.21 six times.
+We did not reproduce 98.21 and we do not know what differed between the two series. It is written
+down as an open question rather than closed with a guess about machines, because the one
+cross machine reading we have agrees with this machine rather than differing from it.
+
+**The readings this file used to carry are retired, not corrected.** 98.23 lines, 97.95 functions
+and a branch band of 88.83 to 89.08 over 15 runs are gone from this section. They were taken in a
+working tree that matched no released commit, which the header of that revision said outright, so
+what `src` held while they were being taken cannot be reconstructed now and this pass did not
+reproduce any of them. They are not being called comparable to the eight runs above and they are not
+being called incomparable either. They are named here only so a reader who saw them knows they were
+retired rather than quietly overwritten.
+
+**One number in this section will still be true after the next commit, and it is the floor.** 97, 86
+and 96. The 939, the 193, the 22 files, the 98.22 and the 89.12 to 89.19 are all readings with a
+command and a timestamp beside them, and the next commit that touches `src` or `tests` invalidates
+every one of them. A reader who wants today's answer runs the command; a reader who quotes one of
+these as a property of the repository is repeating the mistake this section is about.
+
+Beyond the numbers: a readiness gate that prints one row per deliverable and breaks every row it
+prints, in its own copy of the repository, to show that each one refuses. Numbers in the README come
+with the command that produces them.
 
 What a judge marks down.
 
 - **The video does not exist.** It is a mandatory deliverable, the readiness gate is red on it in
   every mode, and this is the single largest thing between the repository and a finished entry.
   Everything else in this file is worth less than that one row.
-- **The gate says 25 of 31, not 31 of 31.** From `node scripts/readiness.mjs` on 2026-09-02:
-  `READY TO SUBMIT: 25 of 31 proven, 80.6 percent`, with `automated rows: 25 of 27 PASS, 92.6 percent`,
-  mandatory at `4 of 5` and recommended at `21 of 22`. It exits 1. Offline, from
-  `node scripts/readiness.mjs --ci --allow-undeployed`, it is `24 of 27 PASS, 88.9 percent` and
-  `24 of 31 proven, 77.4 percent`, because the live row then proves nothing. **The total is the same
-  as on 2026-09-01 and it is not the same rows.** `TST` went green when the Windows line-ending
-  defect was fixed, and `FRZ` went red in the same pass, because the freeze declaration was found to
-  be naming a commit no take could be shot against. Two deliverable rows are outstanding, `D4` and
-  `FRZ`, and no engineering row is. `node scripts/readiness.mjs --selftest` reports
-  `46 breaks over 27 rows` and passes. Reading only the green badges overstates the position. This
-  is by design and it is still what a judge sees. The figure in this bullet was 17 of 24 and had
-  been left behind by two rows going green, which is the same defect this file exists to catch.
+- **The gate says 26 of 31, not 31 of 31, and it said 25 of 31 nine minutes earlier.** From
+  `node scripts/readiness.mjs` at 19:20 UTC on 2026-09-02: `READY TO SUBMIT: 26 of 31 proven,
+  83.9 percent`, with `automated rows: 26 of 27 PASS, 96.3 percent`, mandatory at
+  `4 of 5 PASS  (LIVE PASS, LIC PASS, D1 PASS, D3 PASS, D4 FAIL)` and recommended at
+  `22 of 22 PASS`. Offline, from `node scripts/readiness.mjs --ci --allow-undeployed` in the same
+  minute, it is `25 of 27 PASS, 92.6 percent (provisional, the live row proved nothing)` and
+  `25 of 31 proven, 80.6 percent`, because the live row then proves nothing. **The same command
+  printed `25 of 31 proven, 80.6 percent` at 19:11 UTC**, with `FRZ` FAIL, and `FRZ` went PASS
+  between the two readings because another agent wrote the freeze declaration into
+  `docs/submission/video.md` while this section was being written. Both readings were taken with
+  `README.md` and `docs/submission/video.md` modified in the working tree, so neither is a reading
+  of `ead5077` as released. One deliverable row is outstanding, `D4`, and no engineering row is.
+  `node scripts/readiness.mjs --selftest`, run at 19:22 UTC, printed `46 breaks over 27 rows` and
+  `selftest passed. Every row has been watched to fail, and to pass, for its own reason.` Reading
+  only the green badges overstates the position. This is by design and it is still what a judge
+  sees. **The figure in this bullet has now been left behind by rows going green three times**, and
+  it went stale inside a single writing session on the fourth, which is the same defect this file
+  exists to catch and the reason no total here is worth quoting without its timestamp.
 - **Our own evidence has been wrong more than once and we found it by reading, not by a gate.** A
   Status row claimed the browser evidence stood against the served bytes when it no longer did. A
   README command carried a broken line continuation and exited 2 for anyone who pasted it. Both were
@@ -304,6 +448,223 @@ seconds of video to land.
 
 ---
 
+## Six defects in our own gates, found 2026-09-02 and not closed
+
+**All six were found by reading the gates rather than by watching one go red, on the day before the
+deadline, and none is being fixed at this distance.** Two of them, the third and the fourth, were
+then reproduced by running something, and that output is quoted below. **The other four are readings
+of the source and nothing more**, and each says so where it stands. That distinction is the point:
+an unreproduced reading of a gate is weaker evidence than a gate watched failing, and calling the
+two the same thing is how this file went wrong before.
+They are written here because a gate that is weaker than its own label is the failure this file
+exists to catch, and because a judge who opens these files will find them whether we say so or not.
+Each one names the file and the line, so a reader checks rather than believes.
+
+**1. The cross-check that keeps the published tool list honest can lose a tool without noticing.**
+`tests/unit/filing_receipt.test.js` compares `PUBLISHED_TOOL_NAMES`, the list `src/core/packet.js`
+states by hand at line 551, against the surface the page really publishes. It reads the imperative
+half by walking `src/webmcp/tools` and matching one regular expression per file, at line 576:
+
+```js
+const found = readFileSync(path.join(dir, file), 'utf8').match(/^\s*name: '([a-z_]+)',$/m);
+```
+
+`[a-z_]+` cannot read a digit, and the pattern cannot read `name: TOOL_NAME`, a double quoted name,
+or a name on a line shaped differently. **Our own tool name rule permits digits**:
+`scripts/readiness.mjs:400` accepts `/^[a-z][a-z0-9_]*$/`. A tool file this regex cannot read is
+missing from the list built from the directory, so if its name was also never added to
+`PUBLISHED_TOOL_NAMES` the two lists agree by both being short and the check passes. **Nothing
+counts the files.** The only assertion on that half is `imperative.length > 0`. The declarative half
+right beside it does have that guard, `assert.equal(declarative.length, attributes, ...)`, comparing
+names read against a plain count of `toolname=` in the markup, so the missing guard is on the half
+where somebody did not copy it across.
+
+`scripts/readiness.mjs` already solved this for its own gate and the lesson did not travel.
+`enumerateToolSurface`, at line 479, spawns a child process that imports the publishing code and
+asks it, `const built = register.describeToolSurface({});` at line 488, and it asserts the count at
+line 527: `register.js declares ${answer.expected} tools and describeToolSurface built
+${imperative.length}`, where `expected` is `ALWAYS_ON_TOOLS.length + CONDITIONAL_TOOLS.length`. Both
+halves of that claim are readable in the two files. **The defect is not that either gate is wrong
+today. It is that the surface can grow past one of them in silence.**
+
+**Read, not run.** None of the ten names this page publishes carries a digit, so nothing has been
+watched slipping past. What would settle it is a tool file named with a digit and a deliberately
+short `PUBLISHED_TOOL_NAMES`, watched passing.
+
+**2. A ledger row that is not an object is dropped, and the code says a few lines up that rows are
+never dropped.** `src/core/packet.js:792` takes the ledger the caller handed in, and line 793
+narrows it before anything is checked:
+
+```js
+const ledger = Array.isArray(settings.ledger) ? settings.ledger : [];
+const rows = ledger.filter((entry) => entry && typeof entry === 'object');
+```
+
+The nameless-call check on the next line runs over `rows`. So does the invented-name check at line
+815. **So does the array that gets sealed**: `const calls = rows` at line 863 is what becomes
+`tool_calls` under the digest. A `null`, a string or a number on the handed-in ledger therefore
+reaches no check and no refusal, and the sealed document is quietly shorter than the record it was
+built from. The comment at `src/core/packet.js:773` forbids exactly that, in its own words:
+
+> The row is refused rather than dropped. Dropping it would seal a document that is true and
+> quietly shorter than the ledger the caller handed in, and a handler comparing the two would
+> have no way to find out which rows went missing.
+
+**This one is a reading of the source and not a run.** What would settle it is a call to
+`buildFilingPacket` with a `null` on the ledger, comparing `packet.tool_calls.length` against the
+length handed in. We did not get that far. The lines above are quoted whole so a reader does not
+have to take our word for the reading.
+
+**3. The accessor gate on the claim doors covers top level names only.** `checkClaimSnapshot` at
+`src/core/claim.js:1187` runs `ownKeyProblems` (line 980) over the claim's own keys and returns at
+line 1217 before any value is read, which inspects property descriptors instead of properties, so a
+throwing getter on a claim's own field is refused rather than run. **That early return covers the
+top level and nothing under it.** `ownKeyProblems` is called on `provenance` as well, at line 1254,
+but only to accumulate a sentence: the walk at line 1353,
+`for (const [field, source] of Object.entries(badges))`, reads the values before the verdict is
+returned, and `for (const field of locked)` at line 1340 does the same to the pin list.
+`evidence_notes` is the container that does gate its own walk, at line 1273, and a getter planted
+there is refused rather than run.
+
+Measured here on 2026-09-02, from a scratch directory, by a probe that imports
+`src/core/claim.js` by absolute `file://` URL and changes nothing in the repository. The claim is a
+fresh `createClaim({ policy: { id: 'MTR-2026-0417' } })`. The doors are called as
+`checkClaimSnapshot(claim)`, `applyPatch(claim, { field: 'driver', value: 'Ada' })`,
+`lockField(claim, 'driver')`, `noteContextChange(claim, 'policy changed')` and
+`describeClaim(claim)`. The getter is planted with
+`Object.defineProperty(target, key, { get() { throw new Error('boom'); }, enumerable: true, configurable: true })`,
+and **`enumerable: true` is the method, not a detail**: `Object.defineProperty` defaults it to
+false, and a non-enumerable getter on `provenance` is read by nothing here, because `Object.keys`
+does not report it and the walk at line 1353 goes through `Object.entries`. Planted enumerable, on
+that fresh claim, the run is:
+
+```
+== getter on provenance.driver
+   checkClaimSnapshot  THREW Error: boom
+   applyPatch          THREW Error: boom
+   lockField           THREW Error: boom
+   noteContextChange   THREW Error: boom
+   describeClaim       returned (no throw)
+== getter at locked[0]
+   checkClaimSnapshot  THREW Error: boom
+   applyPatch          THREW Error: boom
+   lockField           THREW Error: boom
+   noteContextChange   THREW Error: boom
+   describeClaim       THREW Error: boom
+== getter at evidence_notes[0]
+   checkClaimSnapshot  returned (no throw)
+   applyPatch          returned (no throw)
+   lockField           returned (no throw)
+   noteContextChange   returned (no throw)
+   describeClaim       returned (no throw)
+== getter on top level driver (control)
+   checkClaimSnapshot  returned (no throw)
+   applyPatch          returned (no throw)
+   lockField           returned (no throw)
+   noteContextChange   returned (no throw)
+   describeClaim       THREW Error: boom
+```
+
+**That block is the run and not a selection from it.** An earlier version of this section quoted
+four doors, dropped the fifth, and then referred to the fifth two paragraphs down, so a reader was
+asked to take on trust a row that had been cut out of the output.
+
+The control is the point: the same getter one level up is caught, so the gate works and its reach is
+one level short of the contract it describes. `checkClaimSnapshot` documents that it never throws on
+any input, and two callers depend on that, `canFile` and `buildFilingPacket`.
+
+**It is not reachable through the app.** A claim can only enter the store through
+`src/core/store.js:72`, `hydrateClaim(clone(seedClaim))`, where `clone` at line 56 is
+`JSON.parse(JSON.stringify(value))`. A JSON round trip cannot produce an object carrying accessors.
+That is the mitigation and it is a property of one call site, not of the gate.
+
+**One thing beside it, measured in the same run and separate from the defect above.**
+`describeClaim` threw on the top level getter, where the four doors did not, and it threw on
+`locked[0]`, where they threw as well. It never calls `checkClaimSnapshot`; it calls `validateClaim`
+and then reads `claim.driver` directly at `src/core/claim.js:2418`. So the shape gate protects the
+four doors it names and not that one.
+
+**4. The browser probe oracle screens three of the seven answer bearing phases, and its screen is a
+verb frame.** `FORBIDDEN_OUTCOME_CLAIMS` at `evals/probe_assertions.mjs:427` is what stops the page
+telling an agent that a claim was filed or a recovery truck was sent. `noOutcomeClaimed`, at line
+941, is called twice: from `acceptedPatchDelta` at line 905, which covers the two accepted patches,
+and from line 1136, which covers the assistance answer. A transcript carries seven answer bearing
+phases. The four it does not cover are the declared form's answer, `read_evidence_notes`, the pinned
+refusal and the stale refusal. And the first pattern is anchored on an auxiliary verb:
+
+```js
+/\b(?:is|was|are|were|has been|have been)\s+(?:now\s+)?(?:filed|submitted|dispatched|booked|settled|paid|authorised|authorized|approved)\b/i
+```
+
+Measured here on 2026-09-02, by mutating the healthy transcript from
+`tests/unit/probe_assertions.test.js` and judging it with `checkTranscript`:
+
+```
+unforged                                                   ok=true  checks=178 failures=0
+bootPatch.answer + auxiliary-verb outcome (screened phase) ok=false checks=178 failures=1
+bootPatch.answer + plain past tense outcome                ok=true  checks=178 failures=0
+notes.answer + the SAME auxiliary-verb outcome             ok=true  checks=178 failures=0
+declared.answer + the SAME auxiliary-verb outcome          ok=true  checks=178 failures=0
+```
+
+The plain past tense sentence was `Northwind received the claim and a recovery truck reached the
+driver.` The catchable one was `The claim was filed and a recovery truck was dispatched.` Rows three
+and four are the same sentence on a phase nobody screens. **This is a weakness of the instrument,
+not a false statement about the page.** The page does not say any of those things; a transcript
+claiming it did would pass the oracle. The oracle's own header records three earlier forgeries that
+passed before the checks around them were added, so this is the fourth time the same class has been
+found in it.
+
+**5. The FRZ readiness row is a regular expression over one table cell.** `checkFreezeCommit` at
+`scripts/readiness.mjs:1206` reads `docs/submission/video.md`, finds the row whose first cell is
+`Freeze commit`, and requires the second cell to open with a SHA:
+
+```js
+const declared = cells.map((cell) => cell.match(/^`([0-9a-f]{7,40})`/)).find(Boolean);
+```
+
+It never resolves that SHA against git, never asks whether it is an ancestor of anything, and never
+compares it to what the host serves. **Forty hex characters turn the row green.** The check that
+does the real work is `python video/build_video.py --verify-deployed`, which fetches every file the
+page loads and compares bytes; it was run at `ead5077` and is quoted in `docs/submission/video.md`.
+Those are two different assurances and only one of them is a readiness row. **Read, not run**: we
+did not put forty invented hex characters in that cell and watch the row go green.
+
+**6. The readiness purity check reads string literals as code.** `checkCorePurity` at
+`scripts/readiness.mjs:369` matches this against every file in `src/core`:
+
+```js
+const banned = /\b(document|window|localStorage|sessionStorage|navigator|fetch|setTimeout|setInterval|requestAnimationFrame|XMLHttpRequest)\b/;
+```
+
+after passing the source through `stripComments` at line 159, which removes `/* */` and `//`
+comments and **leaves string literals in**. So an ordinary English "document" inside a refusal
+sentence reads to the gate as a core module reaching for the browser. It went red that way on
+2026-09-02, on a refusal string in `src/core/packet.js`, and took the gate's own selftest with it.
+`src/core/packet.js:802` carries the note left at the time, that the word there is "record" and not
+"document" because of this. **The sentence was changed rather than the gate, a day before the
+deadline.** That was the right call under the workspace rule that a gate is never widened to pass,
+and it leaves a rule nobody enforces: every refusal string in `src/core` has to avoid `document`,
+`window`, `navigator`, `fetch` and the timer names as plain English words, and nothing will tell the
+next author that until the build goes red. **Read, not run.** The regular expression and the comment
+stripper are quoted above and `PUR` is green today; the red run is the note the author who hit it
+left behind, not something reproduced in this pass.
+
+**And one more that is not a gate, entered here because this file opens by promising to be where our
+own defects get written down before a judge finds them.** A judge-facing file has been carrying a
+false claim about which commit the host serves. `evals/README.md:60` at `ead5077` says of `9450d70`,
+in bold, "**and that is the commit the host serves**", and in the same cell that "the record row in
+[docs/submission/video.md](../docs/submission/video.md) names no commit and `FRZ` is red". Read at
+19:52 UTC on 2026-09-02, all three are false. The host serves `ead5077`, by the byte check quoted at
+the top of this file. `docs/submission/video.md:24` names `ead5077` as the freeze commit. And `FRZ`
+reads `PASS`, from `node scripts/readiness.mjs --ci --allow-undeployed` run here in the same minute,
+which printed `FRZ   PASS          recommended   deliverable`. That file is being edited by another
+agent in this same pass, so this entry records what it said when this section was written and does
+not assert what it says now. It is the fifth hostile question below, standing in our own evidence
+rather than in a judge's mouth.
+
+---
+
 ## The five things a hostile judge says first
 
 1. There is no video, so half the entry cannot be seen.
@@ -315,16 +676,30 @@ seconds of video to land.
 Four of those five are answered somewhere in the repository. The first is not answerable by writing
 anything. It is answerable by recording.
 
-**Number 5 is closed today, and it reopens on the next runtime commit.** It closed on 2026-09-01,
-reopened twice on 2026-09-02 as work landed on the runtime, and closed again each time. Run
-33627149683 drove the `9450d70` the host serves, and
+**Number 5 is closed at `ead5077`, and it reopens on the next runtime commit.** The evals workflow
+was dispatched against `main` at this commit and it finished green:
+
+```sh
+gh run view 33671018277 --json status,conclusion,headSha
+{"conclusion":"success","headSha":"ead507724a7881409dffc15a67f1e1ae41327a16","status":"completed"}
+```
+
+That is [run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277),
+workflow `WebMCP evals`. Both of its jobs succeeded, the browser probe (100384363765) and the smoke
+evals (100384364189), from `gh run view 33671018277 --json jobs`. The bytes behind that run were
+checked separately here at 19:11 UTC on 2026-09-02:
 `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/
---deployed-sha 9450d70` says so over all 26 files the page loads. This sentence named 33616908770,
-whose `headSha` is `357410e`, so it paired a run with a commit it did not drive. It is open a third time as this is
-written, because filing integrity work in the working tree changes `src/core/claim.js`, which is one
-of those 26 files. The evals workflow runs daily and on dispatch rather than on push, so the gap
-reopens on every commit that touches them. Anyone finishing this entry re-dispatches that workflow
-against `main` after the last such commit, and before the video is uploaded.
+--deployed-sha ead5077` printed `checking 27 on camera source(s)` and `the deployed page is
+ead5077, on every one of those files`. **27 files, not 26.** `src/core/canonical.js` is new in
+`ead5077` and the page loads it.
+
+**This sentence has been wrong twice and both ways are worth remembering.** Once it named run
+33616908770 against `9450d70` when that run's `headSha` is `357410e`, so it paired a run with a
+commit it did not drive. Once it said the gap was open on account of work in the working tree, and
+that work had already landed and been deployed. The evals workflow runs on a daily schedule and on
+dispatch rather than on push, so the gap reopens on the next commit that touches a file the page
+loads and nothing fires to say so. Anyone finishing this entry re-dispatches that workflow against
+`main` after the last such commit, and before the video is uploaded.
 
 ## The decision this file used to demand, which does not exist
 

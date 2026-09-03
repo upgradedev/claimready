@@ -17,9 +17,9 @@
  *      The commit is not optional and the run fails without it. Check it rather than assuming it:
  *      python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ \
  *             --deployed-sha $(git rev-parse HEAD)
- *      compares all 26 files the page loads against this checkout at that commit, and a working
- *      tree that is ahead of the host fails there instead of producing a transcript about bytes
- *      nobody serves.
+ *      compares every file the page loads against this checkout at that commit, 27 of them at
+ *      ead5077, and a working tree that is ahead of the host fails there instead of producing a
+ *      transcript about bytes nobody serves.
  *
  * WHAT CHANGED AND WHY IT MATTERED. This used to print what it saw and exit 0 whatever that was.
  * Pointed at a browser with no WebMCP it printed `api: null` and reported success, so a run that
@@ -86,9 +86,9 @@ const expectedPageUrl = (process.env.CLAIMREADY_URL || '').trim() || EXPECTED_PA
  * describes may have been replaced an hour later and the transcript still reads green, which is
  * exactly the stale evidence this repository keeps catching itself producing. So the run has to be
  * told which commit it is about, the judgement refuses a transcript that cannot name one, and the
- * workflow only sets this after `video/build_video.py --verify-deployed` has compared all 26 files
- * the page loads against that commit. The value is therefore downstream of a measurement rather
- * than a flag this script sets about itself.
+ * workflow only sets this after `video/build_video.py --verify-deployed` has compared every file
+ * the page loads against that commit, 27 of them at ead5077. The value is therefore downstream of a
+ * measurement rather than a flag this script sets about itself.
  *
  * On a desktop, pass it: CLAIMREADY_DEPLOYED_SHA=$(git rev-parse HEAD) node evals/browser_probe.mjs
  * after checking the host really serves that commit.
