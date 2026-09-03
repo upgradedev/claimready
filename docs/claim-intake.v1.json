@@ -25,7 +25,7 @@
   },
   "refusal_codes": {
     "PATCH_REJECTED_STALE": "baseRevision does not match the current revision, or an agent sent none. The message names both numbers. Read the state again, then patch.",
-    "PATCH_REJECTED_LOCKED": "A person pinned this field. The message names the field. A person has to unpin it on the page.",
+    "PATCH_REJECTED_LOCKED": "This field was pinned via the page. The message names the field. It has to be unpinned on the page.",
     "PATCH_REJECTED_PROTECTED": "The field is not patchable by anyone: policy facts, the validation result, revision, provenance, locked, status, anything derived, and every field of a filed claim.",
     "PATCH_REJECTED_FIELD": "No such field, or a malformed change. The message lists the fields that exist.",
     "PATCH_REJECTED_VALUE": "The value fails an enum, a range, a length or a date rule. The message names what was expected and what arrived."

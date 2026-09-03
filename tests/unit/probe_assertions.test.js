@@ -296,8 +296,8 @@ function goodTranscript() {
       stateAfter: draft({ revision: 1 }),
       toolsAfterNotes: [...EXPECTED_STUCK_TOOLS],
       pinnedPatch: {
-        answer: 'PATCH_REJECTED_LOCKED. "vehicle_drivable" was pinned by the person on the page, '
-          + 'so no patch can move it. A person has to unpin it on the page before this value can '
+        answer: 'PATCH_REJECTED_LOCKED. "vehicle_drivable" was pinned via the page, '
+          + 'so no patch can move it, from an agent or from this page. It has to be unpinned on the page before this value can '
           + 'change. Nothing was changed.',
         revisionBefore: 2,
         revisionAfter: 2,

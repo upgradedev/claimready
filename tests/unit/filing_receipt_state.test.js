@@ -335,13 +335,33 @@ test('a context change on a filed claim keeps the receipt, so the packet still b
   const second = build(after);
   assert.equal(second.ok, true, second.reason);
 
-  // The counter moved and the reference carries it, so these are two documents about one filing
-  // rather than one document twice. That is the context change doing its job.
+  // THE COUNTER MOVES AND THE DOCUMENT DOES NOT, AND THIS BLOCK USED TO ASSERT THE OPPOSITE.
+  //
+  // It read `second.packet.reference` against `after.revision` and then asserted the two references
+  // DIFFER, under a comment calling them "two documents about one filing rather than one document
+  // twice". That was the defect, pinned as if it were the design. There is one filing here. It
+  // passed the gate at one revision, under one pack, with one set of steps a person had carried
+  // out, and a context change afterwards is the page saying the rules moved, not a second filing.
+  // So a packet built before the change and a packet built after it describe the same event and
+  // have to be the same document. Measured before the fix, on this exact sequence:
+  //
+  //   filing gate passed at revision 4
+  //   packet after two context changes: reference CR-MTR-2026-0417-R6, filed.revision 6
+  //
+  // A digest over a document whose own `filed` block names a revision the filing did not happen at
+  // is worse than no digest, because it is a false statement somebody can verify the bytes of.
+  //
+  // The equality of the canonical bytes is the assertion that carries this, not the reference.
+  // `packet.js` keeps `generated_at` outside the hashed content for exactly this reason, so two
+  // exports of one filing are two files with one digest. If that stops being true, the digest has
+  // stopped identifying the filing and started identifying the moment somebody pressed export.
   assert.equal(after.revision, filed.revision + 1);
   // This claim carries no reference of its own, so the packet builds one from the policy number.
   assert.equal(first.packet.reference, `CR-${filed.policy_id}-R${filed.revision}`);
-  assert.equal(second.packet.reference, `CR-${after.policy_id}-R${after.revision}`);
-  assert.notEqual(second.packet.reference, first.packet.reference);
+  assert.equal(second.packet.reference, `CR-${filed.policy_id}-R${filed.revision}`);
+  assert.equal(second.packet.reference, first.packet.reference);
+  assert.equal(second.canonical, first.canonical,
+    'two exports of one filing are two files with one digest, or the digest says nothing');
 });
 
 test('the copy a context change hands back is sealed the way the filing was', () => {

@@ -21,6 +21,20 @@
  * to the handler, and README, the page and the description say it in their own words. If one of
  * them starts claiming more, it is that surface that is wrong, not this paragraph.
  *
+ * WHAT THE tool_calls BLOCK IS, AND WHAT NO CHECK IN HERE CAN MAKE IT. Every other block in the
+ * packet is worked out here, from the filed claim and the validated rule pack, or bound to the
+ * filing receipt. The ledger is neither. It arrives on the call, from whoever is building the
+ * packet, and this module has no way to attest that any call in it was ever made. So it is checked
+ * rather than believed, and what the checks can establish is the whole of what the block means:
+ * these rows are well formed, each is written in one of the two shapes a ledger row on this page is
+ * written in, each carries a time this page writes, and each names a tool this page publishes. That
+ * is all. It does NOT say an agent made these calls, that the page saw them, that they happened in
+ * this order, or that the list is the whole of what happened. The digest adds nothing to it either,
+ * for the reason above: it is a statement about bytes, so it covers the rows as written and says
+ * nothing about where they came from. On the page there is one caller and it hands in its own
+ * ledger, so there the block is that ledger. A reader holding an exported file cannot tell that it
+ * was, and this module will not say otherwise on their behalf.
+ *
  * WHAT IT IS NOT. It is not a filing. No insurer backend is connected, nothing is sent anywhere,
  * and the packet says so in its own first field rather than in a footnote. And it is not on the
  * tool surface: src/webmcp never imports this module, so nothing the page registers builds it or
@@ -34,10 +48,12 @@
 
 import { FILE_CODES, filingIdentity } from './filing.js';
 import { checkCoverage, openCoverQuestions } from './coverage.js';
-import { deriveRequirements, outstandingRequirements } from './requirements.js';
+import { deriveRequirements, outstandingRequirements, OPTIONAL_NOTE_CODES } from './requirements.js';
 import {
   checkClaimSnapshot,
   FIELD_LABELS,
+  PATCH_CODES,
+  filedRevisionOf,
   isCalendarDate,
   isFilingInstant,
   PATCHABLE_FIELDS,
@@ -74,9 +90,26 @@ export const PACKET_CODES = {
   // says the row named nothing, so there is no call for a handler to look up. Reusing the other
   // code would put a quoted name in a sentence that has no name to quote.
   namelessCall: 'PACKET_REFUSED_NAMELESS_CALL',
+  // A ledger row that is not a row. A null, a number, a string or an array is not a call, and it
+  // used to be dropped by a filter rather than refused, which sealed a ledger quietly shorter than
+  // the one handed in. It cannot reuse `namelessCall`: that one says a call arrived with no name on
+  // it, and this one says nothing that could carry a name arrived at all.
+  unusableCall: 'PACKET_REFUSED_UNUSABLE_CALL',
+  // A ledger row carrying a key this page never writes on one, or mixing the keys of the two shapes
+  // it does write. The row may name a real tool and still not be a row this page produced, and a
+  // packet that cannot say where a row came from should not be saying the row is a call.
+  foreignCallKey: 'PACKET_REFUSED_FOREIGN_CALL_KEY',
+  // A ledger row whose time is not one this page writes. `at` was any non-empty string, so
+  // "not-a-time" sealed beside a successful call to a real tool, under a digest.
+  callTime: 'PACKET_REFUSED_CALL_TIME',
   // The document was assembled and does not match the shape this build describes. On the ordinary
   // path it cannot happen, because every input was checked on the way in. It is what a change to
   // the build block trips over, and it is the code the verifier reports on a file off a disk.
+  // A code is printed to a handler as something this page decided, so it is held to the four
+  // registries this build publishes rather than to being a non empty string. It has its own name
+  // because `unknownTool` already means the row named a tool nobody published, and a row can name a
+  // real tool and a refusal that does not exist.
+  unknownRefusalCode: 'PACKET_REFUSED_UNKNOWN_REFUSAL_CODE',
   malformed: 'PACKET_REFUSED_MALFORMED',
 };
 
@@ -601,6 +634,109 @@ function refusalCodeOnRow(entry) {
   return first ? first.code : null;
 }
 
+/**
+ * Every refusal code this build publishes, from the four registries that publish them.
+ *
+ * A CODE THIS PAGE NEVER WROTE READ AS A MACHINE STATEMENT ABOUT THE CLAIM. `refusalCodeOnRow`
+ * returned whatever non empty string the caller put there, the mapping copied it into the packet
+ * unchecked, and `packetAsMarkdown` printed it. Measured before this list existed:
+ *
+ *   sealed  : [{"at":"09:13:41","tool":"check_coverage","refused":true,
+ *               "code":"INSURER_APPROVED_PAYOUT_EUR_4200"}]
+ *   markdown: - 09:13:41 check_coverage REFUSED INSURER_APPROVED_PAYOUT_EUR_4200
+ *
+ * A forged time reads as junk. That reads as this page having been told the insurer approved a
+ * payout, under a digest, in the document a handler works from. The tool NAME was already held to
+ * the published surface and the code was held to nothing, which is the same question asked of one
+ * half of the row and not the other.
+ *
+ * IT IS THE UNION OF THE FOUR AND NOT A LIST WRITTEN HERE, so a code added to any of them is
+ * accepted the day it is added and a fifth registry is a compile time import rather than a silent
+ * gap. `tests/unit/packet_seals_the_filing.test.js` holds the count against the four registries
+ * read separately, so a registry dropped from this import fails there rather than here.
+ */
+const PUBLISHED_REFUSAL_CODES = Object.freeze(new Set([
+  ...Object.values(PATCH_CODES),
+  ...Object.values(FILE_CODES),
+  ...Object.values(PACKET_CODES),
+  ...Object.values(OPTIONAL_NOTE_CODES),
+]));
+
+/**
+ * The two shapes a ledger row on this page is written in, and every key each one carries.
+ *
+ * THE SAME TWO SHAPES `nameOnRow` AND `refusalCodeOnRow` ALREADY READ, stated once so the reading
+ * and the checking cannot come to different views of what a row is. src/ui/app.js writes the first
+ * at both of the two places it ledgers a call, and this module's own output writes the second, which
+ * is what a fixture, a round trip through `scripts/verify_packet.mjs` and a packet off a disk all
+ * carry.
+ *
+ * A ROW BELONGS TO ONE SHAPE OR IT IS REFUSED, and that is what catches a row carrying a key nobody
+ * published as well as a row mixing keys from both. Mixing matters because neither writer produces
+ * it, so a row wearing `tool` beside `refusals` was assembled by somebody rather than ledgered here.
+ *
+ * IT IS A SUBSET RULE AND NOT AN EQUALITY, DELIBERATELY. A row is refused for carrying a key that
+ * belongs to no shape, never for leaving one out. The defect is foreignness: this module cannot say
+ * a row it did not write is a call that happened, and a key nobody publishes is the plainest sign
+ * that the row came from somewhere else. Incompleteness is a different thing and is already handled
+ * further down, where a missing `refused` reads as no refusal and a missing name is refused by
+ * `nameOnRow`. Equality would also refuse `{ at, tool }`, which is a row the packet's own tests hand
+ * in, so demanding it would be this check inventing a rule the page never followed.
+ */
+const LEDGER_ROW_SHAPES = Object.freeze([
+  Object.freeze({
+    what: 'the one src/ui/app.js writes',
+    keys: Object.freeze(['at', 'name', 'args', 'text', 'error', 'refusals']),
+  }),
+  Object.freeze({
+    what: 'the one this module writes',
+    keys: Object.freeze(['at', 'tool', 'refused', 'code']),
+  }),
+]);
+
+/**
+ * The keys on a row that belong to no shape this page writes, or an empty list where it fits one.
+ *
+ * Where a row fits nothing, the keys are reported against whichever shape it strayed from least, so
+ * the sentence names the keys that actually strayed rather than every key of the shape that lost.
+ */
+function foreignKeysOn(entry) {
+  const held = Object.keys(entry);
+  let closest = null;
+  for (const shape of LEDGER_ROW_SHAPES) {
+    const strange = held.filter((key) => !shape.keys.includes(key));
+    if (strange.length === 0) return [];
+    if (closest === null || strange.length < closest.length) closest = strange;
+  }
+  return closest;
+}
+
+/**
+ * Is this a time a ledger row on this page is written with.
+ *
+ * TWO SHAPES, AND THE SECOND ONE IS THE PAGE'S OWN. src/core/claim.js refuses anything but a full
+ * UTC instant for a FILING time, because a handler in another country reads that one. A ledger row
+ * is not that: src/ui/app.js writes it with `clockNow`, which is `toTimeString().slice(0, 8)`, a
+ * local wall clock reading such as "19:15:31", and the comment beside it says why the two are split
+ * on purpose. A packet the page builds carries those readings straight through, and so does
+ * docs/handler-packet.example.json. So requiring an instant here would have refused every row this
+ * page has ever written and taken the packet panel down with it, which is why this states the two
+ * shapes the page actually produces rather than the one that would read better.
+ *
+ * THE WALL CLOCK READING IS RANGE CHECKED, NOT PATTERN MATCHED. Three pairs of digits accepts
+ * "99:99:99", which is no more a time than "not-a-time" is, and a check that only caught the
+ * example in the report would be the wrong half of the fix.
+ *
+ * WHAT THIS CANNOT DO. It says the value is shaped like a time this page writes. It does not say
+ * this page wrote it, and no check on a caller supplied row can. See the header of this module.
+ */
+function isLedgerTime(value) {
+  if (isFilingInstant(value)) return true;
+  if (typeof value !== 'string' || !/^\d{2}:\d{2}:\d{2}$/.test(value)) return false;
+  const [hours, minutes, seconds] = value.split(':').map(Number);
+  return hours <= 23 && minutes <= 59 && seconds <= 59;
+}
+
 /** The route an answer arrived on, in the two words the page uses everywhere else. */
 function routeOf(claim, field) {
   const source = claim.provenance && claim.provenance[field];
@@ -756,6 +892,40 @@ export function buildFilingPacket(input) {
     );
   }
 
+  // THE REVISION THE FILING LANDED ON, TAKEN FROM THE FILING AND NEVER OFF THE CLAIM IN FRONT OF US.
+  //
+  // A filed claim goes on moving its counter. `noteContextChange` hands back a copy with the number
+  // advanced and the receipt carried across, and that is deliberate: loading another insurer's rules
+  // changes what every read tool answers, so the number an agent quotes has to move. The verdict a
+  // few lines above accepts that copy, and it is right to, because a counter that has moved FORWARD
+  // is not a substitution. Nothing here was reading the filing, though. It read `claim.revision`,
+  // which is the counter as it stands now. Measured on this tree, filing at revision 4 and then
+  // dispatching two context changes:
+  //
+  //   reference : CR-MTR-2026-0417-R6
+  //   filed     : {"at":"2026-09-01T09:15:00.000Z","revision":6, ...}
+  //   >>> filing happened at revision 4 <<<
+  //
+  // So the block whose whole job is to say when the filing happened said it happened at a revision
+  // it did not happen at, under a digest, which is the one thing that makes a wrong value look
+  // checked. `filed.at` was right the whole time, because `verifyFilingContext` compares it against
+  // the record and no packet is built until it matches. The revision had no such source until
+  // `filedRevisionOf` gave it one.
+  //
+  // TWO WAYS WERE OPEN AND THIS IS THE ONE THAT WAS TAKEN. The other was to refuse to build at all
+  // once the live claim is no longer the exact filing. It would close the same hole and it would
+  // cost more than it closes: src/core/claim.js states at `verifyFilingContext` that a counter moved
+  // forward is a legitimate thing this page does, and refusing it would put back the defect measured
+  // at `noteContextChange`, where the page went on saying `status: "filed"` while refusing to
+  // describe the filing it had just performed. So the packet is built from the filing instead.
+  //
+  // THE RULE THE BLOCK BELOW KEEPS: no field in `content` reads `claim.revision`. Read the filing
+  // revision from this binding, which has exactly one source, and add nothing that reads the live
+  // counter beside it. tests/unit/packet_seals_the_filing.test.js walks the built packet for every
+  // field carrying a revision or a reference, so a field added later is held to this without
+  // anybody remembering to add a case for it.
+  const filedRevision = filedRevisionOf(claim);
+
   // THE LEDGER IS THE ONE INPUT THAT CANNOT BE BOUND, SO IT IS CHECKED INSTEAD.
   //
   // It goes on collecting after the filing, which is right: a page that stopped recording tool
@@ -789,16 +959,66 @@ export function buildFilingPacket(input) {
   // now caught here and named properly instead: `tool: 42` reached PACKET_REFUSED_MALFORMED off the
   // schema at the bottom of the build, and `tool: ""` reached PACKET_REFUSED_UNKNOWN_TOOL with an
   // empty pair of quotes in the sentence.
+  // AND THE ROW THAT WAS NOT A ROW WENT OUT SILENTLY, WHICH THIS LINE USED TO DO ITSELF. The filter
+  // here read `entry && typeof entry === 'object'` and threw away everything else without a word, so
+  // a null, a number or a bare string handed in on the ledger simply was not in the packet.
+  // Measured on this tree, two rows handed in and one of them a null:
+  //
+  //   non-object row ok = true code = null | handed in 2, sealed 1
+  //
+  // That is the same defect the two refusals below exist to stop, committed by the line that was
+  // meant to prepare their input, and the sentence six lines down says so in its own words: a
+  // shorter ledger than the one handed in is a record a handler cannot tell has lost anything. So
+  // nothing is dropped here any more. Every row the caller handed in either reaches the packet or
+  // the packet refuses and says which row and why.
+  // AND THE CONTAINER IS THE SAME DEFECT AS THE ROW, ONE LINE HIGHER UP.
+  //
+  // This read `Array.isArray(settings.ledger) ? settings.ledger : []`, so a ledger that was not an
+  // array became no calls at all, silently, which is the shortest ledger there is and exactly what
+  // the sentence above forbids. Measured before this branch:
+  //
+  //   ledger = "two rows as a string"                     ok=true code=null sealed rows=0
+  //   ledger = 42                                         ok=true code=null sealed rows=0
+  //   ledger = {"0": {...}, "length": 1}                   ok=true code=null sealed rows=0
+  //   ledger = new Set([{ at, tool, refused, code }])      ok=true code=null sealed rows=0
+  //
+  // The Set is the sharp one: a caller holding real calls in the wrong container was told the
+  // packet had described them. An absent ledger is a different thing and stays legal, because most
+  // callers have no ledger to offer and the page's own tests hand none in.
+  if (settings.ledger !== undefined && settings.ledger !== null && !Array.isArray(settings.ledger)) {
+    return refuse(
+      PACKET_CODES.unusableCall,
+      `The ledger handed in is ${describe(settings.ledger)} rather than a list of calls. A packet `
+      + 'lists the calls an agent made against this page, and a container this module cannot read '
+      + 'row by row would be sealed as no calls at all, which tells a handler that nothing was '
+      + 'called. Hand in a list, or hand in nothing.',
+    );
+  }
   const ledger = Array.isArray(settings.ledger) ? settings.ledger : [];
-  const rows = ledger.filter((entry) => entry && typeof entry === 'object');
+
+  const unusable = ledger
+    .map((entry, index) => ({ entry, index }))
+    .filter((row) => !row.entry || typeof row.entry !== 'object' || Array.isArray(row.entry));
+  if (unusable.length > 0) {
+    return refuse(
+      PACKET_CODES.unusableCall,
+      `${unusable.length} of the ${ledger.length} rows on the ledger are not calls at all: `
+      + `${unusable.map((row) => `row ${row.index} is ${describe(row.entry)}`).join(', ')}. A row `
+      + 'carries a tool name, a time and whether the page refused it, and none of those can be read '
+      + 'off that. It is refused rather than dropped, because a ledger quietly shorter than the one '
+      + 'handed in is a record a handler cannot tell has lost anything.',
+    );
+  }
+
+  const rows = ledger;
 
   const nameless = rows.filter((entry) => nameOnRow(entry) === null);
   if (nameless.length > 0) {
     return refuse(
       PACKET_CODES.namelessCall,
       `${nameless.length} of the ${rows.length} rows on the ledger name no tool at all. A packet `
-      + 'lists the calls an agent made against this page, and a call with no name is not one a '
-      + 'handler can look up or this page can stand behind. The row is refused rather than dropped, '
+      + 'carries the tool calls its caller hands in for this filing, and a call with no name is not '
+      + 'one a handler can look up or this page can stand behind. The row is refused rather than dropped, '
       // THE WORD HERE IS "record" AND NOT "document", AND THAT IS THE READINESS GATE, NOT TASTE.
       // checkCorePurity in scripts/readiness.mjs matches its banned word list against the source
       // with comments stripped and STRING LITERALS LEFT IN, so an ordinary English "document"
@@ -819,8 +1039,118 @@ export function buildFilingPacket(input) {
     return refuse(
       PACKET_CODES.unknownTool,
       `The ledger names ${[...new Set(invented)].map((name) => `"${name}"`).join(', ')}, which this `
-      + 'page does not publish as a tool. A packet lists the calls an agent made against this page, '
-      + 'so a call to something that was never on the surface is not a call this page can describe.',
+      + 'page does not publish as a tool. A packet carries the tool calls its caller hands in for '
+      + 'this filing, so a call to something that was never on the surface is not one this page can '
+      + 'describe.',
+    );
+  }
+
+  // A ROW THIS PAGE NEVER WROTE, WEARING THE NAME OF A TOOL IT DOES PUBLISH. The two checks above
+  // read the name and stopped, so everything else on the row went unlooked at. Measured on this
+  // tree, one row naming a real tool with one key invented on the end:
+  //
+  //   foreign key row ok = true code = null
+  //
+  // Nothing of that key reached the packet, because the block further down copies four fields by
+  // name. That is the reason it is worth refusing rather than the reason it is not: a row carrying a
+  // key neither writer produces did not come off this page's ledger, and the block it is going into
+  // is the one block in the packet this module cannot work out for itself. See LEDGER_ROW_SHAPES for
+  // why this is a subset rule and not an equality.
+  const strange = rows
+    .map((entry, index) => ({ index, keys: foreignKeysOn(entry) }))
+    .filter((row) => row.keys.length > 0);
+  if (strange.length > 0) {
+    return refuse(
+      PACKET_CODES.foreignCallKey,
+      `${strange.length} of the ${rows.length} rows on the ledger carry keys this page never writes `
+      + `on a call: ${strange.map((row) => `row ${row.index} carries `
+        + `${row.keys.map((key) => JSON.stringify(key)).join(', ')}`).join('; ')}. A row on this `
+      + `ledger is written in one of two shapes, ${LEDGER_ROW_SHAPES.map((shape) => shape.what).join(' or ')}`
+      + ', and a row belonging to neither was assembled by somebody rather than recorded here.',
+    );
+  }
+
+  // A TIME THAT IS NOT A TIME, SEALED BESIDE A SUCCESSFUL CALL TO A REAL TOOL. `at` was any string
+  // with something in it, and nothing else was ever asked of it. Measured on this tree:
+  //
+  //   forged row ok = true code = null
+  //     sealed tool_calls: [{"at":"not-a-time","tool":"check_coverage","refused":false,"code":null}]
+  //
+  // A handler reading that is told when a call happened by a value that cannot be ordered, compared
+  // or converted, with a digest over it. The two shapes this page writes are stated at
+  // `isLedgerTime`, and a row is refused for holding anything else, a missing time included: every
+  // row src/ui/app.js writes carries one, so a row without one is not one of them.
+  const untimed = rows
+    .map((entry, index) => ({ index, at: entry.at }))
+    .filter((row) => !isLedgerTime(row.at));
+  if (untimed.length > 0) {
+    return refuse(
+      PACKET_CODES.callTime,
+      `${untimed.length} of the ${rows.length} rows on the ledger say they happened at a value that `
+      + `is not a time: ${untimed.map((row) => `row ${row.index} at ${describe(row.at)}`).join(', ')}`
+      + '. This page writes a call time either as a wall clock reading such as "19:15:31" or as a '
+      + 'full UTC instant such as 2026-09-01T09:15:00.000Z, and anything else tells a handler when a '
+      + 'call happened in a form nobody can order, compare or convert.',
+    );
+  }
+
+  // THE OTHER THREE HALVES OF THE ROW, ASKED THE SAME QUESTION THE NAME AND THE TIME ARE ASKED.
+  //
+  // The name was held to the published surface and the time to two stated forms. These three were
+  // held to nothing, and each fails in its own direction. Measured before this block:
+  //
+  //   refusals as a string     handed in a row the caller marked refused, with the code inside a
+  //                            string rather than a list. Sealed as refused: false, code: null. The
+  //                            exact failure `refusalCodeOnRow` above exists to stop, one shape to
+  //                            the left: a call the page turned down, sealed as one that went
+  //                            through.
+  //   refused: 'no'            sealed as refused: true. It errs safe and the sealed row is still
+  //                            not the row handed in, and nothing said so.
+  //   code: 'INSURER_APPROVED_PAYOUT_EUR_4200'
+  //                            sealed verbatim and rendered into the handler's markdown.
+  //
+  // A list is required rather than tolerated because `refusalCodeOnRow` reads it as one, and a
+  // boolean is required rather than coerced because a document under a digest has to hold the value
+  // it was given or say it refused it.
+  const malformedRefusals = rows
+    .map((entry, index) => ({ index, value: entry.refusals }))
+    .filter((row) => row.value !== undefined && !Array.isArray(row.value));
+  if (malformedRefusals.length > 0) {
+    return refuse(
+      PACKET_CODES.unusableCall,
+      `${malformedRefusals.length} of the ${rows.length} rows on the ledger carry a refusals value `
+      + `that is not a list: ${malformedRefusals.map((row) => `row ${row.index} carries `
+        + `${describe(row.value)}`).join(', ')}. The page writes the refusals it collected while a `
+      + 'call was on the stack as a list, and anything else is read as no refusals at all, which '
+      + 'seals a call this page turned down as one that went through.',
+    );
+  }
+
+  const badFlags = rows
+    .map((entry, index) => ({ index, refused: entry.refused, error: entry.error }))
+    .filter((row) => (row.refused !== undefined && typeof row.refused !== 'boolean')
+      || (row.error !== undefined && typeof row.error !== 'boolean'));
+  if (badFlags.length > 0) {
+    return refuse(
+      PACKET_CODES.unusableCall,
+      `${badFlags.length} of the ${rows.length} rows on the ledger say whether the call was refused `
+      + `in something other than true or false: ${badFlags.map((row) => `row ${row.index} carries `
+        + `refused ${describe(row.refused)} and error ${describe(row.error)}`).join('; ')}. Reading `
+      + 'those as truthy would seal a row that is not the row handed in.',
+    );
+  }
+
+  const inventedCodes = rows
+    .map((entry, index) => ({ index, code: refusalCodeOnRow(entry) }))
+    .filter((row) => row.code !== null && !PUBLISHED_REFUSAL_CODES.has(row.code));
+  if (inventedCodes.length > 0) {
+    return refuse(
+      PACKET_CODES.unknownRefusalCode,
+      `${inventedCodes.length} of the ${rows.length} rows on the ledger name a refusal this build never `
+      + `publishes: ${inventedCodes.map((row) => `row ${row.index} names `
+        + `${JSON.stringify(row.code)}`).join(', ')}. A code in this block is printed to a handler as `
+      + 'something this page decided, so a string nobody here can produce would read as a statement '
+      + 'about the claim that no part of this build ever made.',
     );
   }
 
@@ -937,11 +1267,11 @@ export function buildFilingPacket(input) {
     synthetic: true,
     notice: SYNTHETIC_NOTICE,
     reference: claim.reference
-      ? `${claim.reference}-R${claim.revision}`
-      : `CR-${claim.policy_id || 'UNKNOWN'}-R${claim.revision}`,
+      ? `${claim.reference}-R${filedRevision}`
+      : `CR-${claim.policy_id || 'UNKNOWN'}-R${filedRevision}`,
     filed: {
       at: claim.filed_at ?? null,
-      revision: claim.revision,
+      revision: filedRevision,
       through: FILED_THROUGH,
     },
     policy: {

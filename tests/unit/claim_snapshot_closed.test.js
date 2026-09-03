@@ -383,6 +383,7 @@ const READERS = [
   'checkClaimSnapshot',
   'createClaim',
   'describeClaim',
+  'filedRevisionOf',
   'hydrateClaim',
   'isCalendarDate',
   'isFilingInstant',

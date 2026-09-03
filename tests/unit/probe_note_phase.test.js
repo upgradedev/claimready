@@ -134,7 +134,7 @@ function shellNotes() {
     stateAfter: SHELL_DRAFT,
     toolsAfterNotes: [...EXPECTED_STUCK_TOOLS],
     pinnedPatch: {
-      answer: `PATCH_REJECTED_LOCKED. "${PINNED_FIELD}" was pinned by the person on the page, so no patch can move it. Nothing was changed.`,
+      answer: `PATCH_REJECTED_LOCKED. "${PINNED_FIELD}" was pinned via the page, so no patch can move it. Nothing was changed.`,
       revisionBefore: 3,
       revisionAfter: 3,
       stateBefore: SHELL_DRAFT,

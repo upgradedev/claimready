@@ -478,7 +478,11 @@ test('a patch to a field the person pinned is refused, and says a person has to 
     });
 
     assert.match(text, new RegExp(PATCH_CODES.locked));
-    assert.match(text, /pinned by the person on the page/i);
+    assert.match(text, /pinned via the page/i);
+    // THE ASSERTION MOVED BECAUSE THE PRODUCT DID, NOT TO GO GREEN. The refusal named an author
+    // and the badge beside the same field named a surface. This pins the true wording; it is not
+    // deleted, and a refusal that goes back to naming an author fails here.
+    assert.doesNotMatch(text, /by the person|set by you|by the claimant/i);
     assert.equal(context.store.getState().claim.severity, 'dent');
     assert.equal(context.store.getState().claim.location, null, 'the whole patch is refused, not part of it');
     assert.equal(context.store.getState().claim.revision, revision);
