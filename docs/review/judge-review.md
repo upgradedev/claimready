@@ -1069,8 +1069,14 @@ hidden. **The figure is no longer in the description at all, and it did not come
 description grew again.** It was cut on 2026-09-02, when the description came down from 1,265 words
 to 746. The file then went back up to the **885** words `wc -w docs/submission/description.md`
 prints, at `b5a43e8` the same afternoon, and the figure is still absent at that length:
-`grep -n "9 against 8" docs/submission/description.md` prints nothing, and the only spelled number
-left in the file is the tool count on line 70. Cutting it is the honest end of this row: a
+`grep -n "9 against 8" docs/submission/description.md` prints nothing. **An earlier version of this
+sentence went on to say that was the only spelled number left in the description, and that was
+false when it was written.** `grep -nE "(Three|two|three|five)" docs/submission/description.md`
+returns four more: `Three prompts to paste` at line 36, `wrote two answers contradicting the
+driver's account` at 81, `three answers the fixture already held` at 82 and `all five attributes I
+asked about` at 87. Two of those are measurement claims, and this same paragraph quotes one of them
+approvingly nine lines further down. The claim being made here is narrower and survives: the
+**headline comparative** figure is gone. Cutting it is the honest end of this row: a
 number counted on fixtures we wrote was never going to carry a headline, and the space went to the
 negative study instead.
 **What the standard actually asks for, a metric that beats an obvious baseline with an n beside it,
