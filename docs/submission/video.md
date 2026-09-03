@@ -292,7 +292,11 @@ it. A sentence here used to give both of them `e942ee3`, which is only the secon
 81 as well. [Run 33560224732](https://github.com/upgradedev/claimready/actions/runs/33560224732)
 at `c93b138` reported `probe: PASS. 71 checks`, and the probe's judgement has grown since: the note
 phase and the declarative phase were each found passing a forged transcript, so both compare a whole
-claim state now. Ten checks were added to the oracle, not to the product.
+claim state now. Ten checks were added to the oracle. **They were not added to the oracle alone, and
+an earlier version of this sentence said they were.** The runtime moved in the same step:
+`git diff --shortstat c93b138 e942ee3 -- index.html src assets fixtures` prints
+`9 files changed, 1084 insertions(+), 63 deletions(-)`. So 71 and 81 sit at two different runtimes
+as well as two different rulers, and nothing here says how much of the rise belongs to which.
 
 **The record row is what the gate reads, and it reads only that row.** `FRZ` used to take the first
 line anywhere in this file that said freeze commit and carried a backticked hex string, which meant
@@ -664,9 +668,13 @@ I have just corrected the drivable answer on the page myself. Read the claim aga
 
 **Stop on:** the strip reading `9 tools registered`, with the recomputed requirements list on screen.
 
-**The count is asked for here as a state, `9`, not as a change from `8`.** That change happened in
-take 2, the instant the drivable answer was corrected, because the tool surface is subscribed to the
-store. A take that starts afterwards cannot contain it, so the narration says the correction has
+**The count is asked for here as a state, `9`, not as a change from `8`.** That change belongs to
+take 2, because `startToolSurface` in `src/webmcp/register.js` is subscribed to the store and the
+correction is what publishes the tool. **It is not instant, and an earlier version of this paragraph
+said it was.** The store notification is synchronous; the registration is not, and
+`src/webmcp/register.js:542` says so: `Reconciles are queued behind one another because registering
+is asynchronous and the store is not`. Either way a take that starts afterwards cannot contain the
+transition, so the narration says the correction has
 already published the tool rather than claiming the registration happens here. What is new in this
 take is the agent reading the claim again, finding the tool, and reading out a requirement that no
 tool on the page can close.

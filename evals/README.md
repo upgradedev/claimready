@@ -124,7 +124,7 @@ host serves now.
 | Browser | `Google Chrome 154.0.8025.0 dev`, printed by the install step. That string was read from the log of 33588857520; the dev channel moves, so re-read it from the run you are quoting |
 | Harness | cloned and built from `GoogleChromeLabs/webmcp-tools` at the pinned commit `d39eae4bd51e8c12736b8cae840bd98f190f3179`, which is pinned in the workflow and so is the same in both runs |
 | Result | `Passed steps: 16/16 across 3 case(s).` The negative control ran in the same job and reported `Passed steps: 7/8 across 1 case(s).`, then `ASSERTION 1 passed: the harness exited 1.`, `ASSERTION 2 passed: seven of eight steps passed, so the patch at step 5 landed.` and `ASSERTION 3 passed: step 8 found the ninth tool withdrawn.` Its eighth step is REQUIRED to fail, because the ninth tool must be gone after a patch that puts the car back on the road. **This cell gave that half the verdict `PROVEN` until 2026-09-02, and the browser half never printed one.** In this run's smoke job log, read with `gh api repos/upgradedev/claimready/actions/jobs/100237645110/logs`, `VERDICT: PROVEN. The lifecycle answered a patch that was applied.` is at 11:56:29.9085720, before the `Google Chrome 154.0.8025.0 dev` line at 11:57:04.8711262, so it is the offline replay. The browser half printed the three `ASSERTION` lines at 11:57:16.53 and no verdict |
-| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 110 checks against the deployed page, none failed`. The run before it, 33616908770 at `357410e`, printed 81. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle, not to the product. **That run's 81 is now history too.** Later on 2026-09-02 the two accepted patches and the read between them were found to have no reading of the draft either side of them, so a collateral write by any of the three was recorded by nothing. Closing that took the matrix to 110, which is what this run printed. The page did not change between it and the run before it. The judgement did, and 29 checks that did not exist before pass against the same bytes. The judgement has since grown again, to 178, and the first browser run at that size is 33671018277 at the top of this section, which printed `probe: PASS. 178 checks against the deployed page, none failed.` |
+| Second job, ours | `node evals/browser_probe.mjs` ran on the same runner against the same deployed page and printed `probe: PASS. 110 checks against the deployed page, none failed`. The run before it, 33616908770 at `357410e`, printed 81. It reported 71 on 2026-09-01 and the page is not why: the note phase and the declarative phase were each found passing a forged transcript, so both compare a whole claim state now. Ten checks were added to the oracle. **That run's 81 is now history too.** Later on 2026-09-02 the two accepted patches and the read between them were found to have no reading of the draft either side of them, so a collateral write by any of the three was recorded by nothing. Closing that took the matrix to 110, which is what this run printed. **This cell used to say the page did not change between it and the run before it, and that the 29 new checks passed against the same bytes. Both are false, and so is the same shape of claim about the step before.** The runtime moved under every one of these rises: `git diff --shortstat 357410e 9450d70 -- index.html src assets fixtures` prints `1 file changed, 77 insertions(+), 8 deletions(-)` for this step, and `git diff --shortstat c93b138 e942ee3 -- index.html src assets fixtures` prints `9 files changed, 1084 insertions(+), 63 deletions(-)` for the 71 to 81 step. So a rise here is a bigger ruler over a different page, and nothing recorded anywhere separates the two. The judgement has since grown again, to 178, and the first browser run at that size is 33671018277 at the top of this section, which printed `probe: PASS. 178 checks against the deployed page, none failed.` against `ead5077` |
 
 Earlier runs were green as well:
 [33070316906](https://github.com/upgradedev/claimready/actions/runs/33070316906),
@@ -256,8 +256,12 @@ checks, 0 failures`: a patch answering `Applied. The claim is filed and roadside
 dispatched automatically.`, an assistance read answering `Roadside assistance is booked. No action
 from the claimant is needed.`, and the real roadside rule replaced throughout by
 `- settlement_authorisation, send location: The claim is authorised for settlement`. Closing those
-took the matrix from 110 to 178. So no number recorded against any
-run above can be reproduced by re-running the probe as it is now. **Where the 178 comes from,
+took the matrix from 110 to 178. So no number recorded against any run above **except 178** can be
+reproduced by re-running the probe as it is now. That carve out is new: when this sentence was
+written the largest number any run had printed was 110, and the run of record now sits at the top of
+this section. [Run 33671018277](https://github.com/upgradedev/claimready/actions/runs/33671018277),
+at `ead5077`, printed `probe: PASS. 178 checks against the deployed page, none failed.`, so 178 is
+the one figure here that a re-run reproduces. **Where the 178 comes from,
 because a count needs its command.** `tests/unit/probe_assertions.test.js` holds a floor at
 `verdict.checks >= 178` over the healthy transcript, and the judgement runs exactly that many: raise
 the floor above it and the assertion message prints the count it actually ran. Measured that way on
@@ -935,13 +939,20 @@ node scripts/gen_scenarios.mjs --count 180 --json
    gh workflow run evals.yml --repo upgradedev/claimready --ref <the branch>
    ```
 
-   Until that output is in this file, the honest statement is the one made above: the pair is
-   proven against the domain and the registration path, and the browser half is proven for journey 2
-   only. Do not write that the pair has been observed in a browser before it has.
+   The paragraph above is kept in its original wording because it is what this file said before the
+   sightings below, and the correction is worth more than a tidy page. It is superseded. Do not read
+   `Do not write that the pair has been observed in a browser before it has` as current: it has been.
 
    **Settled, 2026-08-30 and 2026-08-31. This paragraph used to say the withdrawal half had never
-   been seen in a browser, and that is no longer true.** It has now been seen twice, and the two
-   sightings are on different Chrome builds:
+   been seen in a browser, and that is no longer true.** It then said it had been seen **twice**,
+   which undercounted it. Counted rather than remembered, from the logs:
+   `gh run list --workflow "WebMCP evals" --limit 60` returns 23 runs, and in **18** of them the
+   browser half of the smoke job, meaning everything below the `Google Chrome` install line, prints a
+   real `Passed steps: 7/8 across 1 case(s).` together with
+   `step 8 (get_assistance_options): tool "get_assistance_options" is not available.` The five that
+   do not are 33069947791, 33070316906, 33074580188, 33151418595 and the cancelled 33627136266. The
+   newest of the 18 is 33671018277, at the declared freeze `ead5077`. Read the two below as the
+   first sighting on each Chrome build rather than as the whole count:
 
    - In CI, run 33334936720, the negative control job reported `Passed steps: 7/8` and named the
      reason: `step 8 (get_assistance_options): tool "get_assistance_options" is not available.`
