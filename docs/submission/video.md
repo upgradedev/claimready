@@ -518,6 +518,42 @@ The order is forced by the product, not by preference:
 
 ---
 
+## The two slide beats: `00-context` and `09-closing`
+
+**Nobody records these and nobody should try.** They are generated, by
+
+```sh
+python video/make_slides.py
+```
+
+which rewrites `video/beats/00-context/take.mp4` and `video/beats/09-closing/take.mp4` from the text
+and the timings in that one file. They are declared `owner` beats because the pipeline's two kinds
+are the deployed page filmed by Playwright and a file that already exists, and a slide is the second
+of those. The build's runbook check counts them as owner beats and that is why this section exists.
+
+**Why the cut has them at all.** It used to open on a screen recording of a claim page, and nothing
+said what the recording was of. `first notice of loss`, `intake` and `clause` all arrive inside the
+first fifteen seconds and none of them was explained, so a judge who has never filed a motor claim
+had no way in. The organizer asks for a video that covers what you built, and a demo that assumes
+its own domain does not cover it.
+
+**Why twelve seconds and six.** `video/sync_gate.py` caps the cut at 170 seconds and the eight
+recorded beats spend 149.4 of them, so 20.6 were left and these two take 18 of that. The lengths are
+what the budget allowed, not what an introduction wants. Raising the cap was the other way to make
+room and it was refused: 170 is this build's own margin under the organizer's three minute rule, and
+moving a threshold to fit content is what this repository refuses everywhere else.
+
+**What is deliberately not in them.** No stock footage, no photograph of a crash and no rendered
+person. Every frame of this cut is either the product running or type on the product's own
+background, and mixing in footage nobody here made would be the one part of the video a viewer could
+not check. The colours come from `assets/styles.css`, so the slides and the page are the same
+object.
+
+**To change a word**, edit the string in `video/make_slides.py`, run it, and rebuild. The narration
+lives in `narration.txt` beside each take as it does for every other beat, and the two have to agree
+by hand: nothing checks a slide against what is spoken over it, which is a gap and is written here
+rather than left to be discovered.
+
 ## Owner take 1 of 6: `03-agent-fills`
 
 **Save to:** `video/beats/03-agent-fills/take.mp4`
