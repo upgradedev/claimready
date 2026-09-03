@@ -224,7 +224,7 @@ flowchart TB
   subgraph origin["claimready: one origin, zero runtime network calls"]
     MCP["WebMCP layer: detect document.modelContext,<br/>register tools with an AbortSignal each"]
     TOOLS["Nine registered tools:<br/>describe, read, requirements, patch,<br/>validate, check cover, estimate,<br/>evidence notes, assistance options"]
-    FORM["Declared form in index.html:<br/>toolname, tooldescription, toolautosubmit"]
+    FORM["Declared form in index.html:<br/>toolname, tooldescription,<br/>toolparamdescription, toolautosubmit"]
     STORE["Store: one claim draft,<br/>notifies subscribers on change"]
     CORE["Core domain: claim rules, rule packs,<br/>coverage table, repair bands (Pure, no DOM)"]
     UI["Page: fields, evidence,<br/>live tool call ledger"]
