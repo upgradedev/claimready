@@ -195,36 +195,34 @@ for, and `roadside_collection`, a requirement no field can answer at all.
 
 ## How it fits together
 
-![ClaimReady Architecture and Business Flow](assets/architecture.jpg)
-
 ```mermaid
 flowchart TB
   subgraph outside["The visitor's own agent"]
-    AG["ChatGPT desktop browser, or Chrome with the WebMCP testing flag"]
+    AG["ChatGPT desktop browser, or<br/>Chrome with WebMCP testing flag"]
   end
 
-  subgraph origin["claimready, one origin, no runtime network calls"]
-    MCP["WebMCP layer: detect document.modelContext, register tools with an AbortSignal each"]
-    TOOLS["Nine registered tools: describe, read, requirements, patch, validate, check cover, estimate, evidence notes, assistance options"]
-    FORM["Declared, not registered: one form in index.html carrying toolname, tooldescription, toolautosubmit"]
-    STORE["Store: one claim draft, subscribers notified on every change"]
-    CORE["Core domain: claim rules, insurer rule packs, derived requirements, coverage table, repair bands. Pure, no DOM"]
-    UI["Page: fields, evidence, live tool call ledger"]
-    HUMAN["No tool reaches these: File claim, Request roadside assistance, Pin a field"]
+  subgraph origin["claimready: one origin, zero runtime network calls"]
+    MCP["WebMCP layer: detect document.modelContext,<br/>register tools with an AbortSignal each"]
+    TOOLS["Nine registered tools:<br/>describe, read, requirements, patch,<br/>validate, check cover, estimate,<br/>evidence notes, assistance options"]
+    FORM["Declared form in index.html:<br/>toolname, tooldescription, toolautosubmit"]
+    STORE["Store: one claim draft,<br/>notifies subscribers on change"]
+    CORE["Core domain: claim rules, rule packs,<br/>coverage table, repair bands (Pure, no DOM)"]
+    UI["Page: fields, evidence,<br/>live tool call ledger"]
+    HUMAN["Guarded (Human click only):<br/>• File claim<br/>• Request roadside assistance<br/>• Pin a field"]
   end
 
   AG -->|"registerTool and execute"| MCP
-  AG -->|"the browser reads the attributes and submits the form"| FORM
+  AG -->|"browser submits declarative form"| FORM
   MCP --> TOOLS
   FORM -->|"dispatch, same store, same refusals"| STORE
   TOOLS -->|"dispatch"| STORE
   TOOLS -->|"read and compute"| CORE
   STORE -->|"subscribe"| UI
   CORE --> STORE
-  UI -.->|"a control on the page, no tool exists for it"| HUMAN
+  UI -.->|"human UI control"| HUMAN
   HUMAN --> STORE
 
-  classDef guarded fill:#fce8e6,stroke:#a50e0e,color:#a50e0e
+  classDef guarded fill:#3d1414,stroke:#f85149,stroke-width:2px,color:#ff7b72
   class HUMAN guarded
 ```
 
