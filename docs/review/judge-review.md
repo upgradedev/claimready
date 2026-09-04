@@ -1,5 +1,26 @@
 # Judge review, written against ourselves
 
+> ## Where this entry actually stands, 2026-09-04
+>
+> **Read this box before anything below it.** Most of this file was written while the entry was
+> incomplete, and it argues against a state that no longer exists. It is kept as the record of what
+> we found and when, not as a description of today. What is true today, each with the command that
+> says so:
+>
+> | | |
+> | --- | --- |
+> | Public video | **published**, <https://youtu.be/cazdzwy2qKU>, 2:49, Public not Unlisted. `curl -s -L "https://www.youtube.com/watch?v=cazdzwy2qKU"` returns `"isPrivate":false`, `"isUnlisted":false`, `"lengthSeconds":"169"` |
+> | Devpost entry | **reads `SUBMITTED`**, all five steps done, re-checked after every edit |
+> | Commit the host serves | **`ecd4c09`**. `python video/build_video.py --verify-deployed --url https://upgradedev.github.io/claimready/ --deployed-sha ecd4c09` prints `the deployed page is ecd4c09, on every one of those files`, exit 0 |
+> | Browser evidence at that commit | [run 33828470561](https://github.com/upgradedev/claimready/actions/runs/33828470561), `probe: PASS. 178 checks against the deployed page, none failed.`, smoke `16/16` with the negative control at `7/8` |
+> | Readiness | `node scripts/readiness.mjs` prints **27 of 27 automated rows PASS**, `deliverable rows outstanding: 0`, exit 0 |
+>
+> **The one sentence in this file a judge should not read straight.** Under
+> [The five things a hostile judge says first](#the-five-things-a-hostile-judge-says-first), item 1
+> reads "There is no video". That was true when it was written and it is false now, and it is left
+> standing with this correction beside it rather than quietly edited, which is the same rule the rest
+> of this file follows.
+
 **This file used to carry four scores out of ten, one per criterion, and it does not any more.**
 They were removed on 2026-09-02. Each was labelled `Ours, not measured`, and the label was true and
 was not the point: a number awarded by the people who built the entry, sitting in a folder anybody
@@ -22,7 +43,7 @@ is the same class as the run attributed to a commit it did not drive, recorded b
 2026-09-01 against `ab2db69`, and again on 2026-09-02 against `b5a43e8`, which was not a released
 commit and was the weaker footing this line used to apologise for.
 
-**SUPERSEDED ON 2026-09-03. The commit the host serves is `61b4d8b`, not `ead5077`.** `ead5077` was
+**SUPERSEDED. The commit the host serves is `ecd4c09`, not `ead5077`.** This line said `61b4d8b` from 2026-09-03 until 2026-09-04, when a change to `index.html` moved the freeze again; the box at the top of this file carries the current commit and the run that drove it. `ead5077` was
 lifted the morning of 2026-09-03 for a defect this file records below: the sealed handler packet
 reported a filing revision the filing did not happen at. `61b4d8b` closed it, was deployed, and was
 verified over all 27 files the page loads, with a native Chrome run at the same commit,
@@ -932,16 +953,16 @@ beside each one is there so the choice can be checked rather than taken on trust
 
 ## The five things a hostile judge says first
 
-1. There is no video, so half the entry cannot be seen.
+1. There is no video, so half the entry cannot be seen. **No longer true, and left standing on purpose.** The video was published on 2026-09-03 at <https://youtu.be/cazdzwy2qKU>, and `node scripts/readiness.mjs` prints `D4    PASS` and `deliverable rows outstanding: 0`. This was the sharpest thing anyone could say about the entry, and deleting it once it stopped being true would hide that it was ever said.
 2. Every number about the world is derived from fixtures you wrote yourself.
 3. Your own study says the rules made the notices worse, not better.
 4. The agent cannot file the claim, which is the thing a claim page is for.
 5. Your browser evidence is against a commit your site no longer serves.
 
-Four of those five are answered somewhere in the repository. The first is not answerable by writing
-anything. It is answerable by recording.
+Four of those five are answered somewhere in the repository. The first was not answerable by writing
+anything, only by recording, and the recording exists: eleven beats, 169.30s, published 2026-09-03.
 
-**Number 5 is closed at `ead5077`, and it reopens on the next runtime commit.** The evals workflow
+**Number 5 is closed at `ecd4c09`, and it reopens on the next runtime commit.** It has reopened and closed three times since this paragraph was written, at `ead5077`, `61b4d8b` and now `ecd4c09`, each time by deploying the new runtime and dispatching the workflow against it. The current run is [33828470561](https://github.com/upgradedev/claimready/actions/runs/33828470561), in the box at the top. The run named below is the one that closed it at `ead5077` and stays true about that commit. The evals workflow
 was dispatched against `main` at this commit and it finished green:
 
 ```sh
