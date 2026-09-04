@@ -234,12 +234,18 @@ for, and `roadside_collection`, a requirement no field can answer at all.
      `estimate_repair`. The real nine are describe_claim, read_claim_state, get_requirements,
      apply_claim_patch, validate_claim, check_coverage, get_repair_estimate, read_evidence_notes
      and get_assistance_options, from `grep -hoE "name: '[a-z_]+'" src/webmcp/tools/*.js`. It also
-     carried two different test counts in one picture, `930 / 930 TESTS PASSED` in the badge and
-     `939 Passing` in the footer, against the 953 that `node --test tests/unit` prints.
+     carried a test count of `939 / 939 TESTS PASSED` in the badge and `939 Passing` in the footer,
+     against the 953 that `node --test tests/unit` prints, and `Source Line Coverage: 98.22%`
+     against the 98.11 the reporter prints. Six wrong facts in one picture.
      A judge reading it and then opening the page looks for a tool that is not there.
      The Mermaid diagram below says the same thing in text this repository can check, correct and
      diff, so it stays and the picture does not. The file is left on disk rather than deleted, so
-     the claim above can be verified against it.
+     the claim above can be verified against it, and every one of the six is now listed beside it
+     in docs/assets/README.md, which GitHub renders when somebody opens that folder. This comment
+     is invisible to a reader on github.com, which is why the warning could not live only here.
+     THIS COMMENT ALSO USED TO SAY THE BADGE READ `930 / 930` AND THAT THE PICTURE CARRIED TWO
+     DIFFERENT COUNTS. It reads `939 / 939`, the footer agrees with it, and the correction was
+     wrong about the thing it was correcting until 2026-09-04.
 
      AND THE IMAGES LIVE UNDER docs/assets AND NOT UNDER assets, WHICH IS A SECOND GATE.
      CAMERA_PATHS in video/build_video.py is index.html, src, assets and fixtures: the files the
