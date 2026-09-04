@@ -103,7 +103,18 @@
       <p>The page works on its own. You can fill the draft by hand and every panel still runs.</p>
       <p>To watch an agent drive it, open this page in a browser that supports WebMCP, then ask the
         agent to read the claim, fill what is missing, and check your cover.</p>
-      <p><a href="./README.md">Read the short setup note in the README</a></p>
+      <!--
+        THIS LINK USED TO READ "the short setup note in the README" AND POINT AT ./README.md ON THIS
+        ORIGIN. Both halves were wrong, and the second one was the expensive half. The file is 87,209
+        bytes, which is not a note, and GitHub Pages serves it as text/markdown rather than a page:
+        `curl -sI https://upgradedev.github.io/claimready/README.md` on 2026-09-04 returned
+        `content-type: text/markdown` with `etag: "6a99cc4e-154a9"`, and 0x154a9 is that byte count.
+        So a visitor who could not find an agent, and clicked the one link offered to help, was
+        handed raw markup. It now names the section that answers the question and points at the
+        rendered copy, which has a contents list and headings a person can navigate.
+      -->
+      <p><a href="https://github.com/upgradedev/claimready#open-it-yourself" rel="noopener">Turning
+        tools on in your browser, in the README</a></p>
     </div>
   </details>
 </section>
@@ -150,9 +161,23 @@
   <section class="panel panel-claim" aria-labelledby="h-claim">
     <div class="panel-head">
       <h2 id="h-claim">Claim draft</h2>
+      <!--
+        THREE ROUTES, NOT TWO, AND NOT FOUR EITHER. This sentence named two of them until 2026-09-04
+        and the page has always shown three: `BADGE_WORDS` in src/ui/render.js:80 maps human to
+        `via page`, agent to `via tool` and policy to `on file`, and every field the synthetic
+        incident arrives with is written `policy` at src/core/claim.js:630, so `on file` is on
+        screen before a visitor touches anything.
+        There is a fourth word in that map, `derived`, and it is NOT claimed here, because nothing
+        in src/ ever writes it. The only three places provenance is assigned are claim.js:630
+        (`policy`), claim.js:1614 (an actor, gated to `human` or `agent` by ACTORS at claim.js:225)
+        and claim.js:738, which copies a value a claim already carried. `grep -rn "derived" src/`
+        returns readers only: the badge map, its class, its hover text, the packet route map and one
+        suffix in read_claim_state.js. A word the renderer can draw and the core never produces is
+        not a route this page offers, so it is not sold as one.
+      -->
       <p class="panel-sub">Your agent and you write to the same draft. Every row shows how the
-        answer arrived, through a control on this page or through a tool call, and you can pin a
-        row so no patch can move it.</p>
+        answer arrived, through a control on this page, through a tool call, or already on file
+        when the page opened, and you can pin a row so no patch can move it.</p>
     </div>
     <p class="claim-note" data-el="claim-note"></p>
     <p class="loading-note" data-el="claim-busy" role="status">Reading this insurer's rules. The
