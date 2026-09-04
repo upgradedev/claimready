@@ -43,8 +43,9 @@ Now set **Still drivable** to no on the page yourself, and press **Pin** on that
 
 That note is a planted instruction inside third party evidence, and it asks for the row you just
 pinned, so the answer is PATCH_REJECTED_LOCKED. Every answer also carries the route it arrived on:
-on file, via page, via tool or derived. That names a surface, not a person: the page cannot see who
-is at the keyboard.
+on file, via page, via tool. That names a surface, not a person: the page cannot see who is at the
+keyboard. There is a fourth badge word in the renderer, derived, and it is not claimed here because
+nothing under src ever writes it.
 
 **Filing is human only.** No tool files, dispatches, pins or unlocks, and a test reads the source to
 keep it that way. Filing leaves a handler packet from that exact revision, with the clause, the
@@ -96,9 +97,12 @@ needs, and whether ClaimReady does is not measured here.
 <https://devpost.com/software/claimready-fy4toi>, and that page, not this file, is what a judge
 reads. This file is the source it was written from, and on 2026-09-03 the two had drifted apart in
 three places, all corrected above: this file named two of the declared form's four attributes where
-the published page named four, it listed three of the page's four route words where
-`src/ui/render.js` defines four, and neither surface said that eight of the nine registered tools
-are there at load and the ninth arrives with the answer, which is the count the narration says out
-loud at 0:20. Two sections also exist on the published page and not here,
+the published page named four; it left out that eight of the nine registered tools are there at load
+and the ninth arrives with the answer, which is the count the narration says out loud at 0:20; and
+the route words went wrong in both directions on 2026-09-04. This file and the published text were
+first changed to name four, counting `derived`, and that overclaimed: `grep -rn derived src/` returns
+readers only, and the only three places provenance is assigned are `claim.js:630` (`policy`),
+`claim.js:1614` (an actor, gated to `human` or `agent`) and `claim.js:738`, which copies a value a
+claim already carried. Both are back to three, which is what a visitor can see. Two sections also exist on the published page and not here,
 **Evidence** and **What the demo video shows**, because they were written straight into the form.
 Nothing in CI compares the two, so an edit to either one has to be made twice by hand.
