@@ -20,7 +20,7 @@ through WebMCP.
 | **Watch it.** Two minutes forty nine | <https://youtu.be/cazdzwy2qKU> |
 | **The tools need a browser that has WebMCP** | Chrome with `chrome://flags/#enable-webmcp-testing` turned on and relaunched, verified on Chrome `151.0.7922.174` stable, or the ChatGPT desktop app's built in browser on a Work or Codex plan. In any other browser the page still works by hand and says on screen why no tools are registered |
 | **Three prompts to paste**, and what each one should answer | [Quickstart, with nothing installed](#quickstart-with-nothing-installed) |
-| **The two numbers, with the commands that print them** | `node --test tests/unit` prints 953 passing. The same command with `--experimental-test-coverage` and this repository's own reporter prints `src, 22 files \| 98.11` |
+| **The two numbers, with the commands that print them** | `node --test tests/unit` prints 961 passing. The same command with `--experimental-test-coverage` and this repository's own reporter prints `src, 22 files \| 98.11` |
 | **What is deliberately not a tool** | filing, pinning and asking for roadside assistance. [Never tools, by design](#never-tools-by-design) |
 
 **What this file is, so you can decide how much of it to read.** It is a record rather than a
@@ -235,7 +235,7 @@ for, and `roadside_collection`, a requirement no field can answer at all.
      apply_claim_patch, validate_claim, check_coverage, get_repair_estimate, read_evidence_notes
      and get_assistance_options, from `grep -hoE "name: '[a-z_]+'" src/webmcp/tools/*.js`. It also
      carried a test count of `939 / 939 TESTS PASSED` in the badge and `939 Passing` in the footer,
-     against the 953 that `node --test tests/unit` prints, and `Source Line Coverage: 98.22%`
+     against the 961 that `node --test tests/unit` prints, and `Source Line Coverage: 98.22%`
      against the 98.11 the reporter prints. Six wrong facts in one picture.
      A judge reading it and then opening the page looks for a tool that is not there.
      The Mermaid diagram below says the same thing in text this repository can check, correct and

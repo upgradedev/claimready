@@ -13,7 +13,7 @@ can check, correct and diff.
 
 | What the picture says | What is true | Command |
 | --- | --- | --- |
-| `939 / 939 TESTS PASSED` in the badge, and `Unit Tests: 939 Passing` in the footer | **953** | `node --test tests/unit` |
+| `939 / 939 TESTS PASSED` in the badge, and `Unit Tests: 939 Passing` in the footer | **961** | `node --test tests/unit` |
 | `Source Line Coverage: 98.22%` | **98.11** | `node --test --experimental-test-coverage --test-reporter=./tests/support/coverage_report.mjs --test-reporter-destination=stdout tests/unit` |
 | tool 1, `describe_claim_surface` | `describe_claim` | `grep -hoE "name: '[a-z_]+'" src/webmcp/tools/*.js` |
 | tool 3, `read_policy_requirements` | `get_requirements` | same |

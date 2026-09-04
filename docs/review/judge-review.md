@@ -244,7 +244,7 @@ Cannot answer: whether a model, rather than a script, drives the declared form i
 ## 2. Execution, 25 percent
 
 What earns it. No dependencies, no build step, no lockfile, so what a judge clones is what the host
-serves and it can be proved in one command. **953 unit tests, 953 passing, 0 failing**, from `node --test tests/unit`, measured 2026-09-03
+serves and it can be proved in one command. **961 unit tests, 961 passing, 0 failing**, from `node --test tests/unit`, measured 2026-09-04. This read 953 until 2026-09-04, when eight tests landed with the readiness gate fix they exist to prove
 at `61b4d8b`. It read 939 at `ead5077`, and the filing integrity work added fourteen,
 [run 33670779453](https://github.com/upgradedev/claimready/actions/runs/33670779453), whose unit
 test job on an Ubuntu runner printed `# tests 939`, `# pass 939` and `# fail 0`. Read back with

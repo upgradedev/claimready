@@ -835,12 +835,19 @@ function checkVideo(root) {
   if (!text) {
     return row('D4', 'deliverable: public video under three minutes', FAIL, 'docs/submission/video.md does not exist', DELIVERABLE, MANDATORY);
   }
-  const link = text.match(/https:\/\/(www\.)?(youtube\.com|youtu\.be)\/\S+/);
+  // THE MATCH RAN PAST THE END OF THE URL AND THE ROW PRINTED THE RESULT. The link in
+  // docs/submission/video.md is bolded, so this row printed a URL with the closing asterisks
+  // still on it, and a reader who copied it got a 404. The match stays greedy, because a URL
+  // may legitimately contain almost anything, and trailing markdown and sentence punctuation
+  // is stripped afterwards. tests/unit/readiness_video_link.test.js feeds the bolded form in
+  // and requires the clean URL back.
+  const found = text.match(/https:\/\/(www\.)?(youtube\.com|youtu\.be)\/\S+/);
+  const link = found ? found[0].replace(/[*_`~)\]>.,;:!?'"]+$/, '') : null;
   return row(
     'D4',
     'deliverable: public video under three minutes',
     link ? PASS : FAIL,
-    link ? link[0] : 'no public video link recorded yet',
+    link || 'no public video link recorded yet',
     DELIVERABLE,
     MANDATORY,
   );
@@ -1672,6 +1679,49 @@ function checkPrimaryAction(root) {
  * Each row prints what closes it, prefixed "to close:", because the manual step is the only part of
  * an owner gated row that a reader can act on.
  */
+/**
+ * What the owner says they did, for the four rows no script can watch.
+ *
+ * WHY THIS EXISTS, AND WHAT IT IS NOT. The four rows below stay OWNER GATED forever and this
+ * function cannot change that: it returns text to print beside a row, never a status. The defect
+ * it closes is narrower and was real. This gate's last line read "the owner gated rows above are
+ * still owed by a person" for a day after the entry was submitted, in the one command the README
+ * tells a judge to run, so the gate reported the submission as outstanding while the form read
+ * SUBMITTED.
+ *
+ * IT REFUSES RATHER THAN IGNORES. An id that is not an owner gated row, or a table row that does
+ * not parse, throws. A reader that can silently find nothing is a check that passes on a file it
+ * could not read, and this repository has been bitten by that shape more than once.
+ */
+function ownerAttestations(root, ids) {
+  const text = read(join(root, 'docs', 'submission', 'owner-attestation.md'));
+  if (!text) return new Map();
+
+  const found = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    if (!/^\s*\|/.test(line)) continue;
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    if (cells.length !== 3) continue;
+    if (cells[0] === 'Row' || /^-+$/.test(cells[0])) continue;
+    const [id, date, note] = cells;
+    if (!ids.includes(id)) {
+      throw new Error(
+        `docs/submission/owner-attestation.md attests "${id}", which is not an owner gated row. `
+        + `The rows are ${ids.join(', ')}. Either that file or this gate is out of date, and a `
+        + 'mismatch there is not something to print past.',
+      );
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !note) {
+      throw new Error(
+        `docs/submission/owner-attestation.md row "${id}" needs an ISO date and a note. Read: `
+        + `date "${date}", note "${note}".`,
+      );
+    }
+    found.set(id, { date, note });
+  }
+  return found;
+}
+
 function ownerGatedRows() {
   return [
     {
@@ -2649,12 +2699,19 @@ async function main() {
   const percent = rows.length === 0 ? 0 : Math.round((passed.length / rows.length) * 1000) / 10;
 
   const owner = ownerGatedRows();
+  const attested = ownerAttestations(ROOT, owner.map((o) => o.id));
   console.log('\nOWNER GATED. No script can prove any of these, so none of them is ever a PASS. They ARE counted');
   console.log('-'.repeat(110));
   for (const o of owner) {
     console.log(`${pad(o.id, 6)}${pad('OWNER GATED', 14)}${pad(OWNER_GATED, 14)}${pad('manual', 13)}${o.label}`);
     console.log(`${' '.repeat(47)}backs ${o.backs}`);
-    console.log(`${' '.repeat(47)}to close: ${o.step}`);
+    const said = attested.get(o.id);
+    if (said) {
+      console.log(`${' '.repeat(47)}the owner attests, ${said.date}: ${said.note}`);
+      console.log(`${' '.repeat(47)}still OWNER GATED. An attestation is a person's word, not a check`);
+    } else {
+      console.log(`${' '.repeat(47)}to close: ${o.step}`);
+    }
   }
 
   const optional = optionalRows();
@@ -2723,7 +2780,12 @@ async function main() {
     console.error(`\nNOT READY. ${percent} percent is below the 95 percent gate.`);
     process.exit(1);
   }
-  console.log('\nREADY. The owner gated rows above are still owed by a person.');
+  const owed = owner.filter((o) => !attested.has(o.id));
+  console.log(owed.length === 0
+    ? `\nREADY. All ${owner.length} owner gated rows are attested in docs/submission/owner-attestation.md. `
+      + 'That is a person\'s word and not a check: this gate proves none of them.'
+    : `\nREADY. ${owed.length} of the ${owner.length} owner gated rows above are still owed by a person: `
+      + `${owed.map((o) => o.id).join(', ')}.`);
   process.exit(0);
 }
 
@@ -2749,4 +2811,4 @@ if (invokedDirectly) {
 // video.md files that a reader would skim past as a declaration and requires a refusal for each.
 // That test runs in milliseconds and needs no sandbox, so it sits beside the selftest case rather
 // than replacing it.
-export { editFile, replaceAnyEol, checkFreezeCommit };
+export { editFile, replaceAnyEol, checkFreezeCommit, checkVideo, ownerAttestations, ownerGatedRows };
